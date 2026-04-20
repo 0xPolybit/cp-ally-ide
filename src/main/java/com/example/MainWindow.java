@@ -2,32 +2,38 @@ package com.example;
 
 import com.formdev.flatlaf.FlatDarkLaf;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
+import org.fife.ui.rsyntaxtextarea.Style;
+import org.fife.ui.rsyntaxtextarea.SyntaxScheme;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
-import org.fife.ui.rsyntaxtextarea.Theme;
+import org.fife.ui.rsyntaxtextarea.Token;
 import org.fife.ui.rtextarea.RTextScrollPane;
 
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JFrame;
-import javax.swing.JLabel;
+import javax.swing.JMenuBar;
 import javax.swing.JPanel;
 import javax.swing.JSplitPane;
 import javax.swing.JTextField;
 import javax.swing.JToolBar;
-import javax.swing.SwingConstants;
 import javax.swing.UIManager;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Font;
-import java.io.IOException;
-import java.io.InputStream;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
 
 public class MainWindow {
 
+    private static final String APP_NAME = "Competitive Programming Ally";
+    private static final String PROBLEM_PLACEHOLDER = "Enter problem code (eg: 2208A)";
     private static final Color ACCENT = new Color(55, 247, 19);
     private static final int MIN_WINDOW_WIDTH = 1000;
     private static final int MIN_WINDOW_HEIGHT = 680;
@@ -35,17 +41,19 @@ public class MainWindow {
     private static final int MIN_RIGHT_PANEL_WIDTH = 420;
 
     public void showWindow() {
+        JFrame.setDefaultLookAndFeelDecorated(true);
         FlatDarkLaf.setup();
-        UIManager.put("Component.accentColor", ACCENT);
-        UIManager.put("Button.default.background", ACCENT);
-        UIManager.put("Button.default.foreground", new Color(15, 15, 15));
+        applyGlobalDarkPalette();
 
-        JFrame frame = new JFrame("CodeForces Helper IDE");
+        JFrame frame = new JFrame(APP_NAME);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setLayout(new BorderLayout());
         frame.setMinimumSize(new Dimension(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT));
+        frame.getRootPane().putClientProperty("JRootPane.menuBarEmbedded", true);
+        frame.getRootPane().putClientProperty("JRootPane.titleBarBackground", new Color(43, 45, 48));
+        frame.getRootPane().putClientProperty("JRootPane.titleBarForeground", new Color(230, 233, 238));
+        frame.setJMenuBar(createEmbeddedTitleBar());
 
-        frame.add(createMainToolbar(), BorderLayout.NORTH);
         frame.add(createContentSplit(), BorderLayout.CENTER);
 
         frame.setSize(1200, 760);
@@ -53,17 +61,80 @@ public class MainWindow {
         frame.setVisible(true);
     }
 
-    private JToolBar createMainToolbar() {
-        JToolBar toolbar = new JToolBar();
-        toolbar.setFloatable(false);
-        toolbar.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+    private void applyGlobalDarkPalette() {
+        Color surface0 = new Color(30, 31, 34);
+        Color surface1 = new Color(43, 45, 48);
+        Color surface2 = new Color(50, 53, 58);
+        Color surface3 = new Color(60, 63, 68);
+        Color border = new Color(67, 71, 76);
+        Color text = new Color(223, 225, 229);
 
-        toolbar.add(createToolbarButton("File"));
-        toolbar.add(createToolbarButton("Edit"));
-        toolbar.add(createToolbarButton("View"));
-        toolbar.add(createToolbarButton("Help"));
+        UIManager.put("Component.accentColor", ACCENT);
+        UIManager.put("Component.focusColor", ACCENT);
 
-        return toolbar;
+        UIManager.put("Panel.background", surface0);
+        UIManager.put("RootPane.background", surface0);
+        UIManager.put("Label.foreground", text);
+
+        UIManager.put("ToolBar.background", surface1);
+        UIManager.put("ToolBar.borderColor", border);
+        UIManager.put("ToolBar.dockingBackground", surface1);
+        UIManager.put("ToolBar.overflowBackground", surface1);
+
+        UIManager.put("Button.background", surface2);
+        UIManager.put("Button.foreground", text);
+        UIManager.put("Button.hoverBackground", surface3);
+        UIManager.put("Button.default.background", ACCENT);
+        UIManager.put("Button.default.foreground", new Color(10, 11, 14));
+
+        UIManager.put("TextField.background", surface3);
+        UIManager.put("TextField.foreground", text);
+        UIManager.put("TextField.caretForeground", ACCENT);
+        UIManager.put("TextField.selectionBackground", new Color(55, 247, 19, 70));
+        UIManager.put("TextField.selectionForeground", text);
+
+        UIManager.put("SplitPane.background", surface0);
+        UIManager.put("SplitPaneDivider.background", surface1);
+        UIManager.put("SplitPaneDivider.style", "plain");
+        UIManager.put("SplitPaneDivider.draggingColor", ACCENT);
+
+        UIManager.put("ScrollBar.background", surface0);
+        UIManager.put("ScrollBar.track", new Color(36, 38, 41));
+        UIManager.put("ScrollBar.thumb", new Color(80, 84, 90));
+        UIManager.put("ScrollBar.thumbHover", new Color(96, 101, 108));
+        UIManager.put("ScrollBar.thumbPressed", new Color(110, 115, 122));
+    }
+
+    private JMenuBar createEmbeddedTitleBar() {
+        JMenuBar titleBar = new JMenuBar();
+        titleBar.setLayout(new BorderLayout());
+        titleBar.setOpaque(true);
+        titleBar.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
+        titleBar.setBackground(new Color(43, 45, 48));
+
+        JToolBar leftToolbar = new JToolBar();
+        leftToolbar.setFloatable(false);
+        leftToolbar.setOpaque(false);
+        leftToolbar.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+        disableFocus(leftToolbar);
+        leftToolbar.add(createToolbarButton("File"));
+        leftToolbar.add(Box.createHorizontalStrut(6));
+        leftToolbar.add(createToolbarButton("Edit"));
+        leftToolbar.add(Box.createHorizontalStrut(6));
+        leftToolbar.add(createToolbarButton("View"));
+
+        JToolBar rightToolbar = new JToolBar();
+        rightToolbar.setFloatable(false);
+        rightToolbar.setOpaque(false);
+        rightToolbar.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+        disableFocus(rightToolbar);
+        rightToolbar.add(createToolbarButton("Settings"));
+        rightToolbar.add(Box.createHorizontalStrut(6));
+        rightToolbar.add(createToolbarButton("Help"));
+
+        titleBar.add(leftToolbar, BorderLayout.WEST);
+        titleBar.add(rightToolbar, BorderLayout.EAST);
+        return titleBar;
     }
 
     private JSplitPane createContentSplit() {
@@ -77,6 +148,7 @@ public class MainWindow {
         splitPane.setResizeWeight(0.35);
         splitPane.setDividerLocation(420);
         splitPane.setBorder(BorderFactory.createEmptyBorder(0, 10, 10, 10));
+        disableFocus(splitPane);
 
         // Keep left panel within [MIN_LEFT_PANEL_WIDTH, half of available width].
         splitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, evt -> clampDivider(splitPane));
@@ -114,28 +186,39 @@ public class MainWindow {
 
     private JPanel createProblemStatementPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 8));
+        panel.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 10));
+        panel.setBackground(new Color(30, 31, 34));
 
-        JLabel title = new JLabel("Problem Statement", SwingConstants.LEFT);
-        title.setFont(title.getFont().deriveFont(Font.BOLD, 18f));
-        panel.add(title, BorderLayout.NORTH);
+        JPanel centerBox = new JPanel(new GridBagLayout());
+        centerBox.setOpaque(false);
 
-        JPanel centerBox = new JPanel();
-        centerBox.setLayout(new BoxLayout(centerBox, BoxLayout.Y_AXIS));
+        JPanel form = new JPanel();
+        form.setOpaque(true);
+        form.setBackground(new Color(43, 45, 48));
+        form.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(67, 71, 76)),
+            BorderFactory.createEmptyBorder(18, 18, 18, 18)));
+        form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
 
-        JTextField input = new JTextField();
+        JTextField input = createPlaceholderField(PROBLEM_PLACEHOLDER);
         input.setMaximumSize(new Dimension(320, 36));
         input.setPreferredSize(new Dimension(320, 36));
+        input.setHorizontalAlignment(JTextField.CENTER);
         input.setAlignmentX(Component.CENTER_ALIGNMENT);
 
         JButton fetchButton = new JButton("Fetch from CodeForces");
         fetchButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        fetchButton.setPreferredSize(new Dimension(220, 34));
 
-        centerBox.add(Box.createVerticalGlue());
-        centerBox.add(input);
-        centerBox.add(Box.createRigidArea(new Dimension(0, 12)));
-        centerBox.add(fetchButton);
-        centerBox.add(Box.createVerticalGlue());
+        form.add(input);
+        form.add(Box.createRigidArea(new Dimension(0, 12)));
+        form.add(fetchButton);
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.anchor = GridBagConstraints.CENTER;
+        centerBox.add(form, gbc);
 
         panel.add(centerBox, BorderLayout.CENTER);
         return panel;
@@ -143,17 +226,24 @@ public class MainWindow {
 
     private JPanel createEditorPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBorder(BorderFactory.createEmptyBorder(16, 8, 16, 16));
+        panel.setBorder(BorderFactory.createEmptyBorder(16, 10, 16, 16));
+        panel.setBackground(new Color(30, 31, 34));
 
         JToolBar editorToolbar = new JToolBar();
         editorToolbar.setFloatable(false);
-        editorToolbar.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
+        editorToolbar.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
+        editorToolbar.setOpaque(false);
+        disableFocus(editorToolbar);
         editorToolbar.add(createToolbarButton("Run"));
+        editorToolbar.add(Box.createHorizontalGlue());
+        editorToolbar.add(createToolbarButton("Language: Java"));
 
         RSyntaxTextArea codeEditor = new RSyntaxTextArea(24, 80);
         codeEditor.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_JAVA);
         codeEditor.setCodeFoldingEnabled(true);
-        applyEditorDarkTheme(codeEditor);
+        codeEditor.setFocusable(true);
+        codeEditor.setRequestFocusEnabled(true);
+        applyEclipseEditorTheme(codeEditor);
         codeEditor.setText("public class Main {\n" +
                 "    public static void main(String[] args) {\n" +
                 "        System.out.println(\"Hello, CodeForces!\");\n" +
@@ -162,32 +252,115 @@ public class MainWindow {
 
         RTextScrollPane scrollPane = new RTextScrollPane(codeEditor);
         scrollPane.setFoldIndicatorEnabled(true);
+        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(67, 71, 76)));
+        scrollPane.getGutter().setBackground(new Color(36, 38, 41));
+        scrollPane.getGutter().setLineNumberColor(new Color(169, 176, 188));
+        scrollPane.getGutter().setBorderColor(new Color(67, 71, 76));
+        scrollPane.getVerticalScrollBar().setBackground(new Color(30, 31, 34));
+        scrollPane.getVerticalScrollBar().setForeground(new Color(84, 89, 96));
+        scrollPane.getHorizontalScrollBar().setBackground(new Color(30, 31, 34));
+        scrollPane.getHorizontalScrollBar().setForeground(new Color(84, 89, 96));
+        scrollPane.getVerticalScrollBar().setUnitIncrement(14);
+        scrollPane.setBackground(new Color(43, 45, 48));
 
         panel.add(editorToolbar, BorderLayout.NORTH);
         panel.add(scrollPane, BorderLayout.CENTER);
         return panel;
     }
 
-    private void applyEditorDarkTheme(RSyntaxTextArea editor) {
-        try (InputStream stream = getClass().getResourceAsStream("/org/fife/ui/rsyntaxtextarea/themes/dark.xml")) {
-            if (stream != null) {
-                Theme.load(stream).apply(editor);
-                return;
-            }
-        } catch (IOException ignored) {
-            // Fallback colors are applied below if theme load fails.
+    private void applyEclipseEditorTheme(RSyntaxTextArea editor) {
+        Color background = new Color(30, 31, 34);
+        Color foreground = new Color(187, 187, 187);
+        Color keyword = new Color(204, 120, 50);
+        Color typeColor = new Color(152, 118, 170);
+        Color comment = new Color(128, 128, 128);
+        Color stringColor = new Color(106, 135, 89);
+        Color numberColor = new Color(104, 151, 187);
+        Color functionColor = new Color(255, 198, 109);
+        Color operatorColor = new Color(169, 183, 198);
+
+        editor.setBackground(background);
+        editor.setForeground(foreground);
+        editor.setCaretColor(new Color(240, 240, 240));
+        editor.setCurrentLineHighlightColor(new Color(50, 54, 60));
+        editor.setSelectionColor(new Color(55, 247, 19, 58));
+        editor.setMatchedBracketBGColor(new Color(58, 63, 70));
+        editor.setMatchedBracketBorderColor(new Color(55, 247, 19, 140));
+        editor.setAnimateBracketMatching(false);
+        editor.setPaintMatchedBracketPair(true);
+
+        SyntaxScheme scheme = editor.getSyntaxScheme();
+        setTokenStyle(scheme, Token.RESERVED_WORD, keyword, true, false);
+        setTokenStyle(scheme, Token.RESERVED_WORD_2, typeColor, true, false);
+        setTokenStyle(scheme, Token.DATA_TYPE, typeColor, false, false);
+        setTokenStyle(scheme, Token.FUNCTION, functionColor, false, false);
+        setTokenStyle(scheme, Token.LITERAL_STRING_DOUBLE_QUOTE, stringColor, false, false);
+        setTokenStyle(scheme, Token.LITERAL_CHAR, stringColor, false, false);
+        setTokenStyle(scheme, Token.LITERAL_NUMBER_DECIMAL_INT, numberColor, false, false);
+        setTokenStyle(scheme, Token.LITERAL_NUMBER_FLOAT, numberColor, false, false);
+        setTokenStyle(scheme, Token.LITERAL_NUMBER_HEXADECIMAL, numberColor, false, false);
+        setTokenStyle(scheme, Token.COMMENT_EOL, comment, false, true);
+        setTokenStyle(scheme, Token.COMMENT_MULTILINE, comment, false, true);
+        setTokenStyle(scheme, Token.COMMENT_DOCUMENTATION, comment, false, true);
+        setTokenStyle(scheme, Token.OPERATOR, operatorColor, false, false);
+        setTokenStyle(scheme, Token.SEPARATOR, operatorColor, false, false);
+        setTokenStyle(scheme, Token.IDENTIFIER, foreground, false, false);
+
+        editor.revalidate();
+        editor.repaint();
+    }
+
+    private void setTokenStyle(SyntaxScheme scheme, int token, Color color, boolean bold, boolean italic) {
+        Style current = scheme.getStyle(token);
+        Font baseFont = current != null && current.font != null ? current.font : new Font(Font.MONOSPACED, Font.PLAIN, 14);
+
+        int fontStyle = Font.PLAIN;
+        if (bold) {
+            fontStyle |= Font.BOLD;
+        }
+        if (italic) {
+            fontStyle |= Font.ITALIC;
         }
 
-        editor.setBackground(new Color(24, 24, 24));
-        editor.setCurrentLineHighlightColor(new Color(45, 45, 45));
-        editor.setCaretColor(new Color(230, 230, 230));
-        editor.setForeground(new Color(230, 230, 230));
-        editor.setSelectionColor(new Color(55, 247, 19, 90));
+        Style style = new Style(color, null, baseFont.deriveFont(fontStyle));
+        scheme.setStyle(token, style);
+    }
+
+    private JTextField createPlaceholderField(String placeholder) {
+        JTextField field = new JTextField(placeholder);
+        field.setForeground(new Color(145, 150, 159));
+        field.setFocusable(true);
+        field.setRequestFocusEnabled(true);
+        field.addFocusListener(new FocusAdapter() {
+            @Override
+            public void focusGained(FocusEvent e) {
+                if (placeholder.equals(field.getText())) {
+                    field.setText("");
+                    field.setForeground(new Color(223, 225, 229));
+                }
+            }
+
+            @Override
+            public void focusLost(FocusEvent e) {
+                if (field.getText().trim().isEmpty()) {
+                    field.setText(placeholder);
+                    field.setForeground(new Color(145, 150, 159));
+                }
+            }
+        });
+        return field;
     }
 
     private JButton createToolbarButton(String text) {
         JButton button = new JButton(text);
-        button.setFocusable(false);
+        disableFocus(button);
         return button;
+    }
+
+    private void disableFocus(Component component) {
+        component.setFocusable(false);
+        if (component instanceof JComponent jComponent) {
+            jComponent.setRequestFocusEnabled(false);
+        }
     }
 }
