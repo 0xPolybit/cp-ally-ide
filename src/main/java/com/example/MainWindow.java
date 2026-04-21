@@ -14,11 +14,13 @@ import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
+import javax.swing.JLabel;
 import javax.swing.JMenuBar;
 import javax.swing.JPanel;
 import javax.swing.JSplitPane;
 import javax.swing.JTextField;
 import javax.swing.JToolBar;
+import javax.swing.SwingWorker;
 import javax.swing.UIManager;
 import java.awt.BorderLayout;
 import java.awt.Color;
@@ -29,11 +31,18 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.UnknownHostException;
 
 public class MainWindow {
 
     private static final String APP_NAME = "Competitive Programming Ally";
     private static final String PROBLEM_PLACEHOLDER = "Enter problem code (eg: 2208A)";
+    private static final int LEFT_FIELD_WIDTH = 280;
+    private static final int LEFT_FIELD_HEIGHT = 32;
     private static final Color ACCENT = new Color(55, 247, 19);
     private static final int MIN_WINDOW_WIDTH = 1000;
     private static final int MIN_WINDOW_HEIGHT = 680;
@@ -95,7 +104,8 @@ public class MainWindow {
 
         UIManager.put("SplitPane.background", surface0);
         UIManager.put("SplitPaneDivider.background", surface1);
-        UIManager.put("SplitPaneDivider.style", "plain");
+        UIManager.put("SplitPaneDivider.style", "grip");
+        UIManager.put("SplitPaneDivider.gripColor", new Color(122, 128, 137));
         UIManager.put("SplitPaneDivider.draggingColor", ACCENT);
 
         UIManager.put("ScrollBar.background", surface0);
@@ -147,6 +157,7 @@ public class MainWindow {
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, rightPanel);
         splitPane.setResizeWeight(0.35);
         splitPane.setDividerLocation(420);
+        splitPane.setDividerSize(14);
         splitPane.setBorder(BorderFactory.createEmptyBorder(0, 10, 10, 10));
         disableFocus(splitPane);
 
@@ -201,18 +212,30 @@ public class MainWindow {
         form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
 
         JTextField input = createPlaceholderField(PROBLEM_PLACEHOLDER);
-        input.setMaximumSize(new Dimension(320, 36));
-        input.setPreferredSize(new Dimension(320, 36));
+        input.setMaximumSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
+        input.setMinimumSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
+        input.setPreferredSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
         input.setHorizontalAlignment(JTextField.CENTER);
         input.setAlignmentX(Component.CENTER_ALIGNMENT);
 
         JButton fetchButton = new JButton("Fetch from CodeForces");
         fetchButton.setAlignmentX(Component.CENTER_ALIGNMENT);
-        fetchButton.setPreferredSize(new Dimension(220, 34));
+        fetchButton.setMaximumSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
+        fetchButton.setMinimumSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
+        fetchButton.setPreferredSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
+
+        JLabel connectivityLabel = new JLabel("Checking CodeForces...");
+        connectivityLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        connectivityLabel.setForeground(new Color(160, 167, 177));
+        connectivityLabel.setFont(connectivityLabel.getFont().deriveFont(Font.PLAIN, 12f));
 
         form.add(input);
         form.add(Box.createRigidArea(new Dimension(0, 12)));
         form.add(fetchButton);
+        form.add(Box.createRigidArea(new Dimension(0, 14)));
+        form.add(connectivityLabel);
+
+        checkCodeforcesStatusAsync(connectivityLabel);
 
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.gridx = 0;
@@ -234,21 +257,22 @@ public class MainWindow {
         editorToolbar.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
         editorToolbar.setOpaque(false);
         disableFocus(editorToolbar);
-        editorToolbar.add(createToolbarButton("Run"));
+        JButton runButton = createToolbarButton("Run");
+        runButton.setEnabled(false);
+        editorToolbar.add(runButton);
         editorToolbar.add(Box.createHorizontalGlue());
-        editorToolbar.add(createToolbarButton("Language: Java"));
+        JButton languageButton = createToolbarButton("Language: Java");
+        languageButton.setEnabled(false);
+        editorToolbar.add(languageButton);
 
         RSyntaxTextArea codeEditor = new RSyntaxTextArea(24, 80);
-        codeEditor.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_JAVA);
-        codeEditor.setCodeFoldingEnabled(true);
+        codeEditor.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
+        codeEditor.setCodeFoldingEnabled(false);
         codeEditor.setFocusable(true);
         codeEditor.setRequestFocusEnabled(true);
         applyEclipseEditorTheme(codeEditor);
-        codeEditor.setText("public class Main {\n" +
-                "    public static void main(String[] args) {\n" +
-                "        System.out.println(\"Hello, CodeForces!\");\n" +
-                "    }\n" +
-                "}\n");
+        codeEditor.setText("Select a problem to get started...");
+        codeEditor.setCaretPosition(0);
 
         RTextScrollPane scrollPane = new RTextScrollPane(codeEditor);
         scrollPane.setFoldIndicatorEnabled(true);
@@ -355,6 +379,65 @@ public class MainWindow {
         JButton button = new JButton(text);
         disableFocus(button);
         return button;
+    }
+
+    private void checkCodeforcesStatusAsync(JLabel statusLabel) {
+        statusLabel.setText("Checking CodeForces...");
+        statusLabel.setForeground(new Color(160, 167, 177));
+
+        SwingWorker<ConnectivityResult, Void> worker = new SwingWorker<>() {
+            @Override
+            protected ConnectivityResult doInBackground() {
+                return evaluateCodeforcesConnectivity();
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    ConnectivityResult result = get();
+                    statusLabel.setText(result.message());
+                    statusLabel.setForeground(result.color());
+                } catch (Exception ignored) {
+                    statusLabel.setText("CodeForces unresponsive");
+                    statusLabel.setForeground(new Color(246, 86, 86));
+                }
+            }
+        };
+        worker.execute();
+    }
+
+    private ConnectivityResult evaluateCodeforcesConnectivity() {
+        try {
+            InetAddress address = InetAddress.getByName("codeforces.com");
+            boolean pingReachable = address.isReachable(2500);
+            boolean httpReachable = isCodeforcesHttpResponsive();
+
+            if (pingReachable || httpReachable) {
+                return new ConnectivityResult("CodeForces online and responsive", new Color(97, 214, 110));
+            }
+            return new ConnectivityResult("CodeForces unresponsive", new Color(246, 86, 86));
+        } catch (UnknownHostException e) {
+            return new ConnectivityResult("CodeForces offline", new Color(246, 86, 86));
+        } catch (IOException e) {
+            return new ConnectivityResult("CodeForces unresponsive", new Color(246, 86, 86));
+        }
+    }
+
+    private boolean isCodeforcesHttpResponsive() {
+        try {
+            URL url = new URL("https://codeforces.com/");
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("HEAD");
+            connection.setConnectTimeout(3000);
+            connection.setReadTimeout(3000);
+            int code = connection.getResponseCode();
+            return code >= 200 && code < 500;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private record ConnectivityResult(String message, Color color) {
     }
 
     private void disableFocus(Component component) {
