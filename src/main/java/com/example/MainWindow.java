@@ -16,6 +16,7 @@ import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JEditorPane;
 import javax.swing.JFrame;
+import javax.swing.ImageIcon;
 import javax.swing.JLabel;
 import javax.swing.JMenuBar;
 import javax.swing.JOptionPane;
@@ -35,12 +36,15 @@ import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.Image;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -75,10 +79,13 @@ public class MainWindow {
     private JTextField problemCodeInput;
     private JButton fetchProblemButton;
     private JLabel fetchStatusLabel;
+    private JButton runButton;
+    private RSyntaxTextArea codeEditor;
     private JPanel leftPanelContainer;
     private JPanel problemEntryPanel;
     private final Map<String, String> copyPayloads = new HashMap<>();
     private JSplitPane contentSplitPane;
+    private boolean problemStatementLoaded;
 
     public void showWindow() {
         JFrame.setDefaultLookAndFeelDecorated(true);
@@ -321,8 +328,9 @@ public class MainWindow {
         editorToolbar.setOpaque(false);
         disableFocus(editorToolbar);
 
-        JButton runButton = createToolbarButton("Run");
+        runButton = createToolbarButton("Run");
         runButton.setEnabled(false);
+        applyRunButtonIcons();
         editorToolbar.add(runButton);
         editorToolbar.add(Box.createHorizontalGlue());
 
@@ -358,9 +366,14 @@ public class MainWindow {
         languageDropdown.setMaximumSize(new Dimension(220, LEFT_FIELD_HEIGHT));
         languageDropdown.setFocusable(false);
         languageDropdown.setRequestFocusEnabled(false);
+        languageDropdown.addActionListener(e -> {
+            if (problemStatementLoaded) {
+                applyLanguageTemplate();
+            }
+        });
         editorToolbar.add(languageDropdown);
 
-        RSyntaxTextArea codeEditor = new RSyntaxTextArea(24, 80);
+        codeEditor = new RSyntaxTextArea(24, 80);
         codeEditor.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
         codeEditor.setCodeFoldingEnabled(false);
         codeEditor.setEditable(false);
@@ -618,10 +631,226 @@ public class MainWindow {
         leftPanelContainer.add(scrollPane, BorderLayout.CENTER);
         leftPanelContainer.revalidate();
         leftPanelContainer.repaint();
+
+        problemStatementLoaded = true;
+        enableEditorForProblem();
     }
 
     private void copyToClipboard(String text) {
         Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(text), null);
+    }
+
+    private void enableEditorForProblem() {
+        if (runButton != null) {
+            runButton.setEnabled(true);
+        }
+
+        if (codeEditor != null) {
+            codeEditor.setEditable(true);
+            codeEditor.setFocusable(true);
+            codeEditor.setRequestFocusEnabled(true);
+        }
+
+        applyLanguageTemplate();
+    }
+
+    private void applyLanguageTemplate() {
+        if (codeEditor == null || languageDropdown == null || languageDropdown.getSelectedItem() == null) {
+            return;
+        }
+
+        String language = languageDropdown.getSelectedItem().toString();
+        codeEditor.setSyntaxEditingStyle(resolveSyntaxStyle(language));
+        String boilerplate = boilerplateFor(language);
+        codeEditor.setText(boilerplate);
+
+        int cursor = boilerplate.indexOf("// code goes here...");
+        if (cursor < 0) {
+            cursor = boilerplate.indexOf("# code goes here...");
+        }
+        codeEditor.setCaretPosition(Math.max(0, cursor));
+    }
+
+    private void applyRunButtonIcons() {
+        if (runButton == null) {
+            return;
+        }
+
+        ImageIcon normal = loadToolbarIcon("run.png");
+        ImageIcon hover = loadToolbarIcon("run-hover.png");
+        if (normal == null) {
+            return;
+        }
+
+        runButton.setText("");
+        runButton.setIcon(normal);
+        runButton.setDisabledIcon(normal);
+        runButton.setRolloverEnabled(hover != null);
+        if (hover != null) {
+            runButton.setRolloverIcon(hover);
+        }
+    }
+
+    private ImageIcon loadToolbarIcon(String fileName) {
+        try {
+            Path iconPath = Path.of("assets", fileName);
+            if (!Files.exists(iconPath)) {
+                return null;
+            }
+
+            ImageIcon raw = new ImageIcon(iconPath.toAbsolutePath().toString());
+            if (raw.getIconWidth() <= 0 || raw.getIconHeight() <= 0) {
+                return null;
+            }
+
+            Image scaled = raw.getImage().getScaledInstance(18, 18, Image.SCALE_SMOOTH);
+            return new ImageIcon(scaled);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String resolveSyntaxStyle(String language) {
+        if (language.startsWith("Python") || language.startsWith("PyPy")) {
+            return SyntaxConstants.SYNTAX_STYLE_PYTHON;
+        }
+        if (language.startsWith("GNU G++") || language.startsWith("GNU C11") || language.startsWith("GNU G11")) {
+            return SyntaxConstants.SYNTAX_STYLE_CPLUSPLUS;
+        }
+        if (language.startsWith("Java ")) {
+            return SyntaxConstants.SYNTAX_STYLE_JAVA;
+        }
+        if (language.startsWith("Kotlin")) {
+            return SyntaxConstants.SYNTAX_STYLE_KOTLIN;
+        }
+        if (language.startsWith("C#")) {
+            return SyntaxConstants.SYNTAX_STYLE_CSHARP;
+        }
+        if (language.startsWith("Go")) {
+            return SyntaxConstants.SYNTAX_STYLE_GO;
+        }
+        if (language.startsWith("Rust")) {
+            return SyntaxConstants.SYNTAX_STYLE_RUST;
+        }
+        if (language.startsWith("Node.js") || language.startsWith("JavaScript")) {
+            return SyntaxConstants.SYNTAX_STYLE_JAVASCRIPT;
+        }
+        if (language.startsWith("PHP")) {
+            return SyntaxConstants.SYNTAX_STYLE_PHP;
+        }
+        if (language.startsWith("Ruby")) {
+            return SyntaxConstants.SYNTAX_STYLE_RUBY;
+        }
+        if (language.startsWith("Perl")) {
+            return SyntaxConstants.SYNTAX_STYLE_PERL;
+        }
+        if (language.startsWith("Scala")) {
+            return SyntaxConstants.SYNTAX_STYLE_SCALA;
+        }
+        return SyntaxConstants.SYNTAX_STYLE_NONE;
+    }
+
+    private String boilerplateFor(String language) {
+        if (language.startsWith("Python") || language.startsWith("PyPy")) {
+            return "def main():\n"
+                    + "    # code goes here...\n"
+                    + "\n"
+                    + "if __name__ == \"__main__\":\n"
+                    + "    main()\n";
+        }
+        if (language.startsWith("GNU G++") || language.startsWith("GNU C11") || language.startsWith("GNU G11")) {
+            return "#include <bits/stdc++.h>\n"
+                    + "using namespace std;\n"
+                    + "\n"
+                    + "int main() {\n"
+                    + "    // code goes here...\n"
+                    + "    return 0;\n"
+                    + "}\n";
+        }
+        if (language.startsWith("Java ")) {
+            return "import java.io.*;\n"
+                    + "import java.util.*;\n"
+                    + "\n"
+                    + "public class Main {\n"
+                    + "    public static void main(String[] args) throws Exception {\n"
+                    + "        // code goes here...\n"
+                    + "    }\n"
+                    + "}\n";
+        }
+        if (language.startsWith("Kotlin")) {
+            return "fun main() {\n"
+                    + "    // code goes here...\n"
+                    + "}\n";
+        }
+        if (language.startsWith("C#")) {
+            return "using System;\n"
+                    + "\n"
+                    + "public class Program {\n"
+                    + "    public static void Main() {\n"
+                    + "        // code goes here...\n"
+                    + "    }\n"
+                    + "}\n";
+        }
+        if (language.startsWith("Go")) {
+            return "package main\n"
+                    + "\n"
+                    + "func main() {\n"
+                    + "    // code goes here...\n"
+                    + "}\n";
+        }
+        if (language.startsWith("Rust")) {
+            return "fn main() {\n"
+                    + "    // code goes here...\n"
+                    + "}\n";
+        }
+        if (language.startsWith("Node.js") || language.startsWith("JavaScript")) {
+            return "function main() {\n"
+                    + "    // code goes here...\n"
+                    + "}\n"
+                    + "\n"
+                    + "main();\n";
+        }
+        if (language.startsWith("PHP")) {
+            return "<?php\n"
+                    + "// code goes here...\n";
+        }
+        if (language.startsWith("Ruby")) {
+            return "def main\n"
+                    + "  # code goes here...\n"
+                    + "end\n"
+                    + "\n"
+                    + "main\n";
+        }
+        if (language.startsWith("Perl")) {
+            return "use strict;\n"
+                    + "use warnings;\n"
+                    + "\n"
+                    + "# code goes here...\n";
+        }
+        if (language.startsWith("Haskell")) {
+            return "main :: IO ()\n"
+                    + "main = do\n"
+                    + "    -- code goes here...\n";
+        }
+        if (language.startsWith("OCaml")) {
+            return "let () =\n"
+                    + "  (* code goes here... *)\n"
+                    + "  ()\n";
+        }
+        if (language.startsWith("Scala")) {
+            return "object Main {\n"
+                    + "  def main(args: Array[String]): Unit = {\n"
+                    + "    // code goes here...\n"
+                    + "  }\n"
+                    + "}\n";
+        }
+        if (language.startsWith("Pascal")) {
+            return "program Main;\n"
+                    + "begin\n"
+                    + "  // code goes here...\n"
+                    + "end.\n";
+        }
+        return "// code goes here...\n";
     }
 
     private void persistSettings(JFrame frame) {
