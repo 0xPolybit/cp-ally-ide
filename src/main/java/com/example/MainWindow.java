@@ -1,6 +1,9 @@
 package com.example;
 
 import com.formdev.flatlaf.FlatDarkLaf;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.Style;
 import org.fife.ui.rsyntaxtextarea.SyntaxScheme;
@@ -17,7 +20,10 @@ import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JMenuBar;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JEditorPane;
+import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTextField;
 import javax.swing.JToolBar;
@@ -46,12 +52,16 @@ import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Properties;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class MainWindow {
 
     private static final String APP_NAME = "Competitive Programming Ally";
     private static final String PROBLEM_PLACEHOLDER = "Enter problem code (eg: 2208A)";
+    private static final Pattern PROBLEM_CODE_PATTERN = Pattern.compile("^(\\d{1,6})([A-Za-z][A-Za-z0-9]{0,2})$");
     private static final String DEFAULT_LANGUAGE = "Python 3";
     private static final String SETTINGS_DIR_NAME = "CompetitiveProgrammingAlly";
     private static final String SETTINGS_FILE_NAME = "settings.properties";
@@ -65,6 +75,11 @@ public class MainWindow {
     private JButton initialFocusButton;
     private JComboBox<String> languageDropdown;
     private AppSettings appSettings;
+    private JTextField problemCodeInput;
+    private JButton fetchProblemButton;
+    private JLabel fetchStatusLabel;
+    private JPanel leftPanelContainer;
+    private JPanel problemEntryPanel;
 
     public void showWindow() {
         JFrame.setDefaultLookAndFeelDecorated(true);
@@ -227,12 +242,18 @@ public class MainWindow {
     }
 
     private JPanel createProblemStatementPanel() {
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 10));
-        panel.setBackground(new Color(30, 31, 34));
+        leftPanelContainer = new JPanel(new BorderLayout());
+        leftPanelContainer.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 10));
+        leftPanelContainer.setBackground(new Color(30, 31, 34));
 
-        JPanel centerBox = new JPanel(new GridBagLayout());
-        centerBox.setOpaque(false);
+        problemEntryPanel = createProblemEntryPanel();
+        leftPanelContainer.add(problemEntryPanel, BorderLayout.CENTER);
+        return leftPanelContainer;
+    }
+
+    private JPanel createProblemEntryPanel() {
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setOpaque(false);
 
         JPanel form = new JPanel();
         form.setOpaque(true);
@@ -242,30 +263,38 @@ public class MainWindow {
             BorderFactory.createEmptyBorder(18, 18, 18, 18)));
         form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
 
-        JTextField input = createPlaceholderField(PROBLEM_PLACEHOLDER);
-        input.setMaximumSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
-        input.setMinimumSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
-        input.setPreferredSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
-        input.setHorizontalAlignment(JTextField.CENTER);
-        input.setAlignmentX(Component.CENTER_ALIGNMENT);
+        problemCodeInput = createPlaceholderField(PROBLEM_PLACEHOLDER);
+        problemCodeInput.setMaximumSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
+        problemCodeInput.setMinimumSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
+        problemCodeInput.setPreferredSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
+        problemCodeInput.setHorizontalAlignment(JTextField.CENTER);
+        problemCodeInput.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        JButton fetchButton = new JButton("Fetch from CodeForces");
-        fetchButton.setAlignmentX(Component.CENTER_ALIGNMENT);
-        fetchButton.setMaximumSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
-        fetchButton.setMinimumSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
-        fetchButton.setPreferredSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
-        initialFocusButton = fetchButton;
+        fetchProblemButton = new JButton("Fetch from CodeForces");
+        fetchProblemButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        fetchProblemButton.setMaximumSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
+        fetchProblemButton.setMinimumSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
+        fetchProblemButton.setPreferredSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
+        fetchProblemButton.addActionListener(e -> onFetchProblemClicked());
+        initialFocusButton = fetchProblemButton;
 
         JLabel connectivityLabel = new JLabel("Checking CodeForces...");
         connectivityLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         connectivityLabel.setForeground(new Color(160, 167, 177));
         connectivityLabel.setFont(connectivityLabel.getFont().deriveFont(Font.PLAIN, 12f));
 
-        form.add(input);
+        fetchStatusLabel = new JLabel(" ");
+        fetchStatusLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        fetchStatusLabel.setForeground(new Color(246, 86, 86));
+        fetchStatusLabel.setFont(fetchStatusLabel.getFont().deriveFont(Font.PLAIN, 12f));
+
+        form.add(problemCodeInput);
         form.add(Box.createRigidArea(new Dimension(0, 12)));
-        form.add(fetchButton);
+        form.add(fetchProblemButton);
         form.add(Box.createRigidArea(new Dimension(0, 14)));
         form.add(connectivityLabel);
+        form.add(Box.createRigidArea(new Dimension(0, 8)));
+        form.add(fetchStatusLabel);
 
         checkCodeforcesStatusAsync(connectivityLabel);
 
@@ -273,9 +302,7 @@ public class MainWindow {
         gbc.gridx = 0;
         gbc.gridy = 0;
         gbc.anchor = GridBagConstraints.CENTER;
-        centerBox.add(form, gbc);
-
-        panel.add(centerBox, BorderLayout.CENTER);
+        panel.add(form, gbc);
         return panel;
     }
 
@@ -468,6 +495,150 @@ public class MainWindow {
         worker.execute();
     }
 
+    private void onFetchProblemClicked() {
+        String rawCode = problemCodeInput.getText() != null ? problemCodeInput.getText().trim() : "";
+        if (rawCode.isEmpty() || PROBLEM_PLACEHOLDER.equals(rawCode)) {
+            showFetchWarning("Enter a problem code, for example 2208A.");
+            return;
+        }
+
+        Matcher matcher = PROBLEM_CODE_PATTERN.matcher(rawCode);
+        if (!matcher.matches()) {
+            showFetchWarning("Invalid problem code. Use format like 2208A.");
+            return;
+        }
+
+        String contestId = matcher.group(1);
+        String index = matcher.group(2).toUpperCase();
+
+        showLeftPanelLoading(contestId + index);
+
+        SwingWorker<ProblemDetails, Void> worker = new SwingWorker<>() {
+            @Override
+            protected ProblemDetails doInBackground() throws Exception {
+                return fetchProblemDetails(contestId, index);
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    ProblemDetails details = get();
+                    showCodeforcesProblemView(details);
+                } catch (Exception ex) {
+                    restoreProblemEntryPanelWithError("Could not fetch that problem.");
+                    JOptionPane.showMessageDialog(null,
+                            "Could not fetch the specified CodeForces problem. Please verify the code and try again.",
+                            APP_NAME,
+                            JOptionPane.WARNING_MESSAGE);
+                }
+            }
+        };
+        worker.execute();
+    }
+
+    private void showFetchWarning(String message) {
+        fetchStatusLabel.setForeground(new Color(246, 86, 86));
+        fetchStatusLabel.setText(message);
+        JOptionPane.showMessageDialog(null, message, APP_NAME, JOptionPane.WARNING_MESSAGE);
+    }
+
+    private JLabel createLoadingLabel(String text) {
+        JLabel label = new JLabel(text);
+        label.setForeground(new Color(160, 167, 177));
+        label.setBorder(BorderFactory.createEmptyBorder(12, 6, 12, 6));
+        return label;
+    }
+
+    private ProblemDetails fetchProblemDetails(String contestId, String index) throws IOException {
+        String url = "https://codeforces.com/problemset/problem/" + contestId + "/" + index;
+        Document document = Jsoup.connect(url)
+                .userAgent("Mozilla/5.0")
+                .timeout(15000)
+                .get();
+
+        Element statementRoot = document.selectFirst("div.problem-statement");
+        if (statementRoot == null) {
+            throw new IOException("Missing problem statement");
+        }
+
+        Element titleElement = statementRoot.selectFirst("div.header div.title");
+        String title = titleElement != null ? titleElement.text() : (contestId + index);
+
+        // Remove scripts/styles and keep statement markup so rendering matches Codeforces structure.
+        Element statementClone = statementRoot.clone();
+        statementClone.select("script, style").remove();
+
+        return new ProblemDetails(contestId + index, title, statementClone.outerHtml());
+    }
+
+    private void showLeftPanelLoading(String problemCode) {
+        fetchProblemButton.setEnabled(false);
+        fetchStatusLabel.setForeground(new Color(160, 167, 177));
+        fetchStatusLabel.setText("Fetching problem " + problemCode + "...");
+
+        JPanel loadingPanel = new JPanel(new GridBagLayout());
+        loadingPanel.setOpaque(false);
+        loadingPanel.add(createLoadingLabel("Loading statement and sample tests..."));
+
+        leftPanelContainer.removeAll();
+        leftPanelContainer.add(loadingPanel, BorderLayout.CENTER);
+        leftPanelContainer.revalidate();
+        leftPanelContainer.repaint();
+    }
+
+    private void restoreProblemEntryPanelWithError(String message) {
+        fetchProblemButton.setEnabled(true);
+        fetchStatusLabel.setForeground(new Color(246, 86, 86));
+        fetchStatusLabel.setText(message);
+
+        leftPanelContainer.removeAll();
+        leftPanelContainer.add(problemEntryPanel, BorderLayout.CENTER);
+        leftPanelContainer.revalidate();
+        leftPanelContainer.repaint();
+    }
+
+    private void showCodeforcesProblemView(ProblemDetails details) {
+        String html = buildCodeforcesLikeHtml(details);
+
+        JEditorPane pane = new JEditorPane();
+        pane.setContentType("text/html");
+        pane.setEditable(false);
+        pane.setFocusable(false);
+        pane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
+        pane.setText(html);
+        pane.setCaretPosition(0);
+        pane.setBackground(new Color(30, 31, 34));
+
+        JScrollPane scrollPane = new JScrollPane(pane);
+        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(67, 71, 76)));
+        scrollPane.getViewport().setBackground(new Color(30, 31, 34));
+        scrollPane.getVerticalScrollBar().setUnitIncrement(14);
+
+        leftPanelContainer.removeAll();
+        leftPanelContainer.add(scrollPane, BorderLayout.CENTER);
+        leftPanelContainer.revalidate();
+        leftPanelContainer.repaint();
+    }
+
+    private String buildCodeforcesLikeHtml(ProblemDetails details) {
+        String css = """
+                <style>
+                body { background:#1e1f22; color:#dfe1e5; font-family:Segoe UI, Arial, sans-serif; margin:12px; }
+                .problem-statement { background:#2b2d30; border:1px solid #43474c; border-radius:8px; padding:14px; }
+                .header .title { font-size:18px; font-weight:700; color:#eceff4; margin-bottom:10px; }
+                .time-limit, .memory-limit, .input-file, .output-file { color:#b8bec8; margin-bottom:4px; }
+                .section-title { font-weight:700; margin-top:12px; margin-bottom:6px; color:#e8ebf0; }
+                .sample-tests .input, .sample-tests .output { margin-top:8px; }
+                pre { background:#24262a; color:#d9dde4; border:1px solid #43474c; border-radius:6px; padding:10px; white-space:pre-wrap; }
+                p { color:#d3d7de; line-height:1.45; }
+                .tex-font-style-bf { font-weight:bold; }
+                </style>
+                """;
+
+        String body = "<div class='problem-statement'>" + details.problemHtml() + "</div>";
+        return "<html><head>" + css + "</head><body>" + body + "</body></html>";
+    }
+
     private ConnectivityResult evaluateCodeforcesConnectivity() {
         try {
             InetAddress address = InetAddress.getByName("codeforces.com");
@@ -603,6 +774,12 @@ public class MainWindow {
         private static AppSettings defaults() {
             return new AppSettings(-1, -1, 1200, 760, false, DEFAULT_LANGUAGE);
         }
+    }
+
+    private record ProblemDetails(
+            String code,
+            String title,
+            String problemHtml) {
     }
 
     private void disableFocus(Component component) {

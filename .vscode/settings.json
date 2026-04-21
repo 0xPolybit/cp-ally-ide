@@ -4,5 +4,6 @@
   "code-runner.executorMap": {
     "java": "cd $workspaceRoot && mvn -q -DskipTests exec:java"
   },
-  "java.debug.settings.onBuildFailureProceed": true
+  "java.debug.settings.onBuildFailureProceed": true,
+  "java.configuration.updateBuildConfiguration": "interactive"
 }
