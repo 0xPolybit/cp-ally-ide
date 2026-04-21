@@ -4,6 +4,7 @@ import com.formdev.flatlaf.FlatDarkLaf;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.jsoup.parser.Tag;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.Style;
 import org.fife.ui.rsyntaxtextarea.SyntaxScheme;
@@ -30,6 +31,7 @@ import javax.swing.JToolBar;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.UIManager;
+import javax.swing.event.HyperlinkEvent;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
@@ -41,6 +43,10 @@ import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.awt.RenderingHints;
+import java.awt.Toolkit;
+import java.awt.datatransfer.StringSelection;
+import java.awt.image.BufferedImage;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
@@ -52,10 +58,12 @@ import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.imageio.ImageIO;
 
 public class MainWindow {
 
@@ -80,6 +88,9 @@ public class MainWindow {
     private JLabel fetchStatusLabel;
     private JPanel leftPanelContainer;
     private JPanel problemEntryPanel;
+    private final Map<String, String> copyPayloads = new HashMap<>();
+    private final Map<String, String> iconSourceCache = new HashMap<>();
+    private JSplitPane contentSplitPane;
 
     public void showWindow() {
         JFrame.setDefaultLookAndFeelDecorated(true);
@@ -106,6 +117,10 @@ public class MainWindow {
 
         applyWindowSettings(frame, appSettings);
         frame.setVisible(true);
+
+        if (contentSplitPane != null && appSettings.dividerLocation() > 0) {
+            SwingUtilities.invokeLater(() -> contentSplitPane.setDividerLocation(appSettings.dividerLocation()));
+        }
 
         if (appSettings.maximized()) {
             SwingUtilities.invokeLater(() -> frame.setExtendedState(frame.getExtendedState() | JFrame.MAXIMIZED_BOTH));
@@ -202,10 +217,11 @@ public class MainWindow {
 
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, rightPanel);
         splitPane.setResizeWeight(0.35);
-        splitPane.setDividerLocation(420);
+        splitPane.setDividerLocation(appSettings != null ? appSettings.dividerLocation() : 420);
         splitPane.setDividerSize(14);
         splitPane.setBorder(BorderFactory.createEmptyBorder(0, 10, 10, 10));
         disableFocus(splitPane);
+        contentSplitPane = splitPane;
 
         // Keep left panel within [MIN_LEFT_PANEL_WIDTH, half of available width].
         splitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, evt -> clampDivider(splitPane));
@@ -608,9 +624,21 @@ public class MainWindow {
         pane.setText(html);
         pane.setCaretPosition(0);
         pane.setBackground(new Color(30, 31, 34));
+        pane.addHyperlinkListener(event -> {
+            if (event.getEventType() != HyperlinkEvent.EventType.ACTIVATED || event.getDescription() == null) {
+                return;
+            }
+            if (event.getDescription().startsWith("copy:")) {
+                String key = event.getDescription().substring("copy:".length());
+                String payload = copyPayloads.get(key);
+                if (payload != null) {
+                    copyToClipboard(payload);
+                }
+            }
+        });
 
         JScrollPane scrollPane = new JScrollPane(pane);
-        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(67, 71, 76)));
+        scrollPane.setBorder(BorderFactory.createEmptyBorder());
         scrollPane.getViewport().setBackground(new Color(30, 31, 34));
         scrollPane.getVerticalScrollBar().setUnitIncrement(14);
 
@@ -621,22 +649,224 @@ public class MainWindow {
     }
 
     private String buildCodeforcesLikeHtml(ProblemDetails details) {
+        String problemHtml = prepareProblemHtml(details.problemHtml());
         String css = """
                 <style>
                 body { background:#1e1f22; color:#dfe1e5; font-family:Segoe UI, Arial, sans-serif; margin:12px; }
-                .problem-statement { background:#2b2d30; border:1px solid #43474c; border-radius:8px; padding:14px; }
+                .problem-statement { background:#2b2d30; border-radius:8px; padding:14px; }
                 .header .title { font-size:18px; font-weight:700; color:#eceff4; margin-bottom:10px; }
-                .time-limit, .memory-limit, .input-file, .output-file { color:#b8bec8; margin-bottom:4px; }
+                .metrics-row { margin-top:4px; margin-bottom:12px; display:flex; flex-wrap:wrap; gap:20px; }
+                .metric-item { display:inline-flex; align-items:center; color:#b8bec8; white-space:nowrap; }
+                .metric-icon { width:14px; height:14px; vertical-align:middle; margin-right:6px; }
                 .section-title { font-weight:700; margin-top:12px; margin-bottom:6px; color:#e8ebf0; }
                 .sample-tests .input, .sample-tests .output { margin-top:8px; }
+                .io-header { display:flex; align-items:center; justify-content:space-between; min-height:18px; margin-bottom:4px; }
+                .io-label { display:inline-flex; align-items:center; line-height:18px; }
+                .copy-btn { display:inline-flex; align-items:center; justify-content:center; height:18px; width:18px; text-decoration:none; border:none; outline:none; background:transparent; }
+                .copy-btn img { width:14px; height:14px; vertical-align:middle; opacity:0.92; border:none; }
                 pre { background:#24262a; color:#d9dde4; border:1px solid #43474c; border-radius:6px; padding:10px; white-space:pre-wrap; }
                 p { color:#d3d7de; line-height:1.45; }
                 .tex-font-style-bf { font-weight:bold; }
                 </style>
                 """;
 
-        String body = "<div class='problem-statement'>" + details.problemHtml() + "</div>";
+        String body = "<div class='problem-statement'>" + problemHtml + "</div>";
         return "<html><head>" + css + "</head><body>" + body + "</body></html>";
+    }
+
+    private String prepareProblemHtml(String rawProblemHtml) {
+        copyPayloads.clear();
+
+        Document doc = Jsoup.parseBodyFragment(rawProblemHtml);
+        Element root = doc.body().children().isEmpty() ? doc.body() : doc.body().child(0);
+
+        enhanceHeaderMetrics(root);
+        enhanceSampleTestsWithCopy(root);
+        return root.outerHtml();
+    }
+
+    private void enhanceHeaderMetrics(Element root) {
+        Element header = root.selectFirst("div.header");
+        if (header == null) {
+            return;
+        }
+
+        Element timeLimit = header.selectFirst("div.time-limit");
+        Element memoryLimit = header.selectFirst("div.memory-limit");
+        Element inputFile = header.selectFirst("div.input-file");
+        Element outputFile = header.selectFirst("div.output-file");
+
+        if (timeLimit == null && memoryLimit == null && inputFile == null && outputFile == null) {
+            return;
+        }
+
+        String timeText = metricValueOnly(timeLimit != null ? timeLimit.text() : "", "time limit per test");
+        String memoryText = metricValueOnly(memoryLimit != null ? memoryLimit.text() : "", "memory limit per test");
+        String inputText = metricValueOnly(inputFile != null ? inputFile.text() : "", "input", "input file");
+        String outputText = metricValueOnly(outputFile != null ? outputFile.text() : "", "output", "output file");
+
+        if (timeLimit != null) {
+            timeLimit.remove();
+        }
+        if (memoryLimit != null) {
+            memoryLimit.remove();
+        }
+        if (inputFile != null) {
+            inputFile.remove();
+        }
+        if (outputFile != null) {
+            outputFile.remove();
+        }
+
+        Element row = new Element(Tag.valueOf("div"), "");
+        row.addClass("metrics-row");
+
+        addMetricItem(row, "time.png", timeText);
+        addMetricItem(row, "memory.png", memoryText);
+        String ioMetric = combineInputOutputMetric(inputText, outputText);
+        addMetricItem(row, "input.png", ioMetric);
+
+        header.appendChild(row);
+    }
+
+    private void addMetricItem(Element row, String iconFile, String text) {
+        if (text == null || text.isBlank()) {
+            return;
+        }
+        String iconSrc = loadIconSource(iconFile, 14);
+        Element item = new Element(Tag.valueOf("span"), "").addClass("metric-item");
+        if (!iconSrc.isBlank()) {
+            Element icon = new Element(Tag.valueOf("img"), "");
+            icon.addClass("metric-icon");
+            icon.attr("src", iconSrc);
+            icon.attr("alt", "");
+            item.appendChild(icon);
+        }
+        item.appendText(text);
+        row.appendChild(item);
+    }
+
+    private void enhanceSampleTestsWithCopy(Element root) {
+        String copyIcon = loadIconSource("copy.png", 14);
+        if (copyIcon.isBlank()) {
+            return;
+        }
+
+        int inputCounter = 1;
+        for (Element input : root.select("div.sample-tests div.input")) {
+            Element pre = input.selectFirst("pre");
+            if (pre == null) {
+                continue;
+            }
+            String key = "sample-input-" + inputCounter++;
+            copyPayloads.put(key, pre.text());
+            decorateIoBlockHeader(input, "Input", key, copyIcon);
+        }
+
+        int outputCounter = 1;
+        for (Element output : root.select("div.sample-tests div.output")) {
+            Element pre = output.selectFirst("pre");
+            if (pre == null) {
+                continue;
+            }
+            String key = "sample-output-" + outputCounter++;
+            copyPayloads.put(key, pre.text());
+            decorateIoBlockHeader(output, "Output", key, copyIcon);
+        }
+    }
+
+    private void decorateIoBlockHeader(Element ioBlock, String fallbackLabel, String key, String copyIcon) {
+        Element existingTitle = ioBlock.selectFirst("div.title");
+        String label = existingTitle != null ? existingTitle.text() : fallbackLabel;
+        if (existingTitle != null) {
+            existingTitle.remove();
+        }
+        ioBlock.prepend(createCopyHeaderHtml(label, key, copyIcon));
+    }
+
+    private String createCopyHeaderHtml(String label, String key, String copyIconDataUri) {
+        return "<div class='io-header'><span class='io-label'>" + label + "</span><a class='copy-btn' href='copy:" + key + "'><img src='" + copyIconDataUri + "' alt=''/></a></div>";
+    }
+
+    private String combineInputOutputMetric(String inputText, String outputText) {
+        if ((inputText == null || inputText.isBlank()) && (outputText == null || outputText.isBlank())) {
+            return "";
+        }
+        if (inputText == null || inputText.isBlank()) {
+            return outputText;
+        }
+        if (outputText == null || outputText.isBlank()) {
+            return inputText;
+        }
+        return inputText + " / " + outputText;
+    }
+
+    private String loadIconSource(String iconFile, int size) {
+        String cacheKey = iconFile + "@" + size;
+        if (iconSourceCache.containsKey(cacheKey)) {
+            return iconSourceCache.get(cacheKey);
+        }
+
+        try {
+            Path iconPath = Path.of("assets", iconFile);
+            if (!Files.exists(iconPath)) {
+                return "";
+            }
+
+            BufferedImage source = ImageIO.read(iconPath.toFile());
+            if (source == null) {
+                return "";
+            }
+
+            BufferedImage target = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+            java.awt.Graphics2D g2 = target.createGraphics();
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g2.drawImage(source, 0, 0, size, size, null);
+            g2.dispose();
+
+            Path iconCacheDir = getSettingsFilePath().getParent().resolve("cache").resolve("icons");
+            Files.createDirectories(iconCacheDir);
+            String sanitized = iconFile.replace('.', '_');
+            Path scaledFile = iconCacheDir.resolve(sanitized + "_" + size + "px.png");
+            ImageIO.write(target, "png", scaledFile.toFile());
+
+            String src = scaledFile.toUri().toString();
+            iconSourceCache.put(cacheKey, src);
+            return src;
+        } catch (IOException e) {
+            return "";
+        }
+    }
+
+    private String metricValueOnly(String text, String... prefixes) {
+        if (text == null) {
+            return "";
+        }
+
+        String cleaned = text.trim();
+        String lowered = cleaned.toLowerCase();
+
+        for (String prefix : prefixes) {
+            String lowerPrefix = prefix.toLowerCase();
+            if (lowered.startsWith(lowerPrefix)) {
+                cleaned = cleaned.substring(prefix.length()).trim();
+                if (cleaned.startsWith(":")) {
+                    cleaned = cleaned.substring(1).trim();
+                }
+                return cleaned;
+            }
+        }
+
+        int colon = cleaned.indexOf(':');
+        if (colon >= 0 && colon + 1 < cleaned.length()) {
+            return cleaned.substring(colon + 1).trim();
+        }
+        return cleaned;
+    }
+
+    private void copyToClipboard(String text) {
+        Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(text), null);
     }
 
     private ConnectivityResult evaluateCodeforcesConnectivity() {
@@ -692,10 +922,11 @@ public class MainWindow {
             int y = parseInt(properties.getProperty("window.y"), -1);
             int width = parseInt(properties.getProperty("window.width"), 1200);
             int height = parseInt(properties.getProperty("window.height"), 760);
+            int divider = parseInt(properties.getProperty("window.dividerLocation"), 420);
             boolean maximized = Boolean.parseBoolean(properties.getProperty("window.maximized", "false"));
             String language = properties.getProperty("language.last", DEFAULT_LANGUAGE);
 
-            return new AppSettings(x, y, width, height, maximized, language);
+            return new AppSettings(x, y, width, height, divider, maximized, language);
         } catch (IOException e) {
             return AppSettings.defaults();
         }
@@ -708,12 +939,14 @@ public class MainWindow {
         if (languageDropdown != null && languageDropdown.getSelectedItem() != null) {
             language = languageDropdown.getSelectedItem().toString();
         }
+        int dividerLocation = contentSplitPane != null ? contentSplitPane.getDividerLocation() : 420;
 
         AppSettings settings = new AppSettings(
                 frame.getX(),
                 frame.getY(),
                 frame.getWidth(),
                 frame.getHeight(),
+            dividerLocation,
                 maximized,
                 language);
         saveSettings(settings);
@@ -728,6 +961,7 @@ public class MainWindow {
             properties.setProperty("window.y", Integer.toString(settings.y()));
             properties.setProperty("window.width", Integer.toString(settings.width()));
             properties.setProperty("window.height", Integer.toString(settings.height()));
+            properties.setProperty("window.dividerLocation", Integer.toString(settings.dividerLocation()));
             properties.setProperty("window.maximized", Boolean.toString(settings.maximized()));
             properties.setProperty("language.last", settings.lastLanguage());
 
@@ -770,9 +1004,9 @@ public class MainWindow {
         }
     }
 
-    private record AppSettings(int x, int y, int width, int height, boolean maximized, String lastLanguage) {
+    private record AppSettings(int x, int y, int width, int height, int dividerLocation, boolean maximized, String lastLanguage) {
         private static AppSettings defaults() {
-            return new AppSettings(-1, -1, 1200, 760, false, DEFAULT_LANGUAGE);
+            return new AppSettings(-1, -1, 1200, 760, 420, false, DEFAULT_LANGUAGE);
         }
     }
 
