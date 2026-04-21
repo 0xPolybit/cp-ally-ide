@@ -3,7 +3,11 @@ package com.example;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.jsoup.nodes.Node;
 import org.jsoup.parser.Tag;
+import org.scilab.forge.jlatexmath.TeXConstants;
+import org.scilab.forge.jlatexmath.TeXFormula;
+import org.scilab.forge.jlatexmath.TeXIcon;
 
 import javax.imageio.ImageIO;
 import java.awt.Image;
@@ -19,6 +23,7 @@ class ProblemHtmlRenderer {
 
     private final Path appDataDirectory;
     private final Map<String, String> iconSourceCache = new HashMap<>();
+    private final Map<String, String> latexImageCache = new HashMap<>();
 
     ProblemHtmlRenderer(Path appDataDirectory) {
         this.appDataDirectory = appDataDirectory;
@@ -59,9 +64,45 @@ class ProblemHtmlRenderer {
         Document doc = Jsoup.parseBodyFragment(rawProblemHtml);
         Element root = doc.body().children().isEmpty() ? doc.body() : doc.body().child(0);
 
+        renderLatexNodes(root);
         enhanceHeaderMetrics(root);
         enhanceSampleTestsWithCopy(root, copyPayloads);
+        normalizePreBlocks(root);
         return root.outerHtml();
+    }
+
+    private void renderLatexNodes(Element root) {
+        for (Element script : root.select("script[type^=math/tex]")) {
+            String type = script.attr("type");
+            boolean display = type != null && type.contains("mode=display");
+            String expression = normalizeLatexExpression(script.data().isBlank() ? script.html() : script.data());
+            String src = renderLatexToImageSource(expression, display);
+            if (src.isBlank()) {
+                script.replaceWith(new Element(Tag.valueOf("span"), "").text(expression));
+                continue;
+            }
+
+            Element img = new Element(Tag.valueOf("img"), "");
+            img.attr("src", src);
+            img.attr("alt", "");
+            img.attr("style", display
+                    ? "display:block; margin:8px 0;"
+                    : "vertical-align:middle;");
+            script.replaceWith(img);
+        }
+
+        for (Element texSpan : root.select("span.tex-span, div.tex-span")) {
+            String expression = normalizeLatexExpression(texSpan.text());
+            String src = renderLatexToImageSource(expression, false);
+            if (src.isBlank()) {
+                continue;
+            }
+            Element img = new Element(Tag.valueOf("img"), "");
+            img.attr("src", src);
+            img.attr("alt", "");
+            img.attr("style", "vertical-align:middle;");
+            texSpan.replaceWith(img);
+        }
     }
 
     private void enhanceHeaderMetrics(Element root) {
@@ -182,6 +223,47 @@ class ProblemHtmlRenderer {
         ioBlock.prepend(createCopyHeaderHtml(label, key, copyIcon));
     }
 
+    private void normalizePreBlocks(Element root) {
+        for (Element pre : root.select("pre")) {
+            String original = pre.wholeText();
+            if (original == null || original.isBlank()) {
+                original = pre.text();
+            }
+            String wrapped = wrapLongPreLines(original, 84);
+            pre.empty();
+            pre.appendText(wrapped);
+        }
+    }
+
+    private String wrapLongPreLines(String source, int maxTokenLength) {
+        String normalized = source.replace("\r\n", "\n").replace("\r", "\n");
+        String[] lines = normalized.split("\n", -1);
+        StringBuilder out = new StringBuilder();
+
+        for (int i = 0; i < lines.length; i++) {
+            String[] chunks = lines[i].split("(?<=\\s)|(?=\\s)");
+            for (String chunk : chunks) {
+                if (chunk.isBlank() || chunk.length() <= maxTokenLength) {
+                    out.append(chunk);
+                    continue;
+                }
+                int idx = 0;
+                while (idx < chunk.length()) {
+                    int end = Math.min(chunk.length(), idx + maxTokenLength);
+                    out.append(chunk, idx, end);
+                    idx = end;
+                    if (idx < chunk.length()) {
+                        out.append('\n');
+                    }
+                }
+            }
+            if (i < lines.length - 1) {
+                out.append('\n');
+            }
+        }
+        return out.toString();
+    }
+
     private String createCopyHeaderHtml(String label, String key, String copyIconDataUri) {
         return "<table class='io-table'><tr>"
                 + "<td class='io-label-cell'><span class='io-label'>" + label + "</span></td>"
@@ -238,6 +320,62 @@ class ProblemHtmlRenderer {
         } catch (IOException e) {
             return "";
         }
+    }
+
+    private String renderLatexToImageSource(String expression, boolean display) {
+        if (expression == null || expression.isBlank()) {
+            return "";
+        }
+
+        String normalized = expression.trim();
+        String cacheKey = (display ? "d:" : "i:") + normalized;
+        if (latexImageCache.containsKey(cacheKey)) {
+            return latexImageCache.get(cacheKey);
+        }
+
+        try {
+            TeXFormula formula = new TeXFormula(normalized);
+            float size = display ? 18f : 16f;
+            int style = display ? TeXConstants.STYLE_DISPLAY : TeXConstants.STYLE_TEXT;
+            TeXIcon icon = formula.createTeXIcon(style, size);
+
+            BufferedImage image = new BufferedImage(icon.getIconWidth(), icon.getIconHeight(), BufferedImage.TYPE_INT_ARGB);
+            java.awt.Graphics2D g2 = image.createGraphics();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            icon.paintIcon(null, g2, 0, 0);
+            g2.dispose();
+
+            Path latexCacheDir = appDataDirectory.resolve("cache").resolve("latex");
+            Files.createDirectories(latexCacheDir);
+            String fileName = Integer.toHexString(cacheKey.hashCode()) + ".png";
+            Path file = latexCacheDir.resolve(fileName);
+            ImageIO.write(image, "png", file.toFile());
+
+            String src = file.toUri().toString();
+            latexImageCache.put(cacheKey, src);
+            return src;
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private String normalizeLatexExpression(String raw) {
+        if (raw == null) {
+            return "";
+        }
+
+        String text = raw.trim();
+        if (text.startsWith("$$$") && text.endsWith("$$$") && text.length() > 6) {
+            return text.substring(3, text.length() - 3).trim();
+        }
+        if (text.startsWith("$$") && text.endsWith("$$") && text.length() > 4) {
+            return text.substring(2, text.length() - 2).trim();
+        }
+        if (text.startsWith("$") && text.endsWith("$") && text.length() > 2) {
+            return text.substring(1, text.length() - 1).trim();
+        }
+        return text;
     }
 
     private String metricValueOnly(String text, String... prefixes) {

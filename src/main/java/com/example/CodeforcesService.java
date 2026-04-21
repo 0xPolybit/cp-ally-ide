@@ -29,7 +29,7 @@ class CodeforcesService {
         String title = titleElement != null ? titleElement.text() : (contestId + index);
 
         Element statementClone = statementRoot.clone();
-        statementClone.select("script, style").remove();
+        statementClone.select("style, script:not([type^=math/tex])").remove();
 
         return new ProblemDetails(contestId + index, title, statementClone.outerHtml());
     }
