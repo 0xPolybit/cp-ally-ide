@@ -12,6 +12,7 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -20,6 +21,7 @@ import javax.swing.JPanel;
 import javax.swing.JSplitPane;
 import javax.swing.JTextField;
 import javax.swing.JToolBar;
+import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.UIManager;
 import java.awt.BorderLayout;
@@ -31,16 +33,28 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.UnknownHostException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Properties;
 
 public class MainWindow {
 
     private static final String APP_NAME = "Competitive Programming Ally";
     private static final String PROBLEM_PLACEHOLDER = "Enter problem code (eg: 2208A)";
+    private static final String DEFAULT_LANGUAGE = "Python 3";
+    private static final String SETTINGS_DIR_NAME = "CompetitiveProgrammingAlly";
+    private static final String SETTINGS_FILE_NAME = "settings.properties";
     private static final int LEFT_FIELD_WIDTH = 280;
     private static final int LEFT_FIELD_HEIGHT = 32;
     private static final Color ACCENT = new Color(55, 247, 19);
@@ -48,11 +62,15 @@ public class MainWindow {
     private static final int MIN_WINDOW_HEIGHT = 680;
     private static final int MIN_LEFT_PANEL_WIDTH = 280;
     private static final int MIN_RIGHT_PANEL_WIDTH = 420;
+    private JButton initialFocusButton;
+    private JComboBox<String> languageDropdown;
+    private AppSettings appSettings;
 
     public void showWindow() {
         JFrame.setDefaultLookAndFeelDecorated(true);
         FlatDarkLaf.setup();
         applyGlobalDarkPalette();
+        appSettings = loadSettings();
 
         JFrame frame = new JFrame(APP_NAME);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -64,10 +82,23 @@ public class MainWindow {
         frame.setJMenuBar(createEmbeddedTitleBar());
 
         frame.add(createContentSplit(), BorderLayout.CENTER);
+        frame.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                persistSettings(frame);
+            }
+        });
 
-        frame.setSize(1200, 760);
-        frame.setLocationRelativeTo(null);
+        applyWindowSettings(frame, appSettings);
         frame.setVisible(true);
+
+        if (appSettings.maximized()) {
+            SwingUtilities.invokeLater(() -> frame.setExtendedState(frame.getExtendedState() | JFrame.MAXIMIZED_BOTH));
+        }
+
+        if (initialFocusButton != null) {
+            SwingUtilities.invokeLater(() -> initialFocusButton.requestFocusInWindow());
+        }
     }
 
     private void applyGlobalDarkPalette() {
@@ -223,6 +254,7 @@ public class MainWindow {
         fetchButton.setMaximumSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
         fetchButton.setMinimumSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
         fetchButton.setPreferredSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
+        initialFocusButton = fetchButton;
 
         JLabel connectivityLabel = new JLabel("Checking CodeForces...");
         connectivityLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -261,15 +293,45 @@ public class MainWindow {
         runButton.setEnabled(false);
         editorToolbar.add(runButton);
         editorToolbar.add(Box.createHorizontalGlue());
-        JButton languageButton = createToolbarButton("Language: Java");
-        languageButton.setEnabled(false);
-        editorToolbar.add(languageButton);
+        languageDropdown = new JComboBox<>(new String[]{
+            "Python 3",
+            "GNU G++17 7.3.0",
+            "GNU G++20 13.2",
+            "GNU C11 5.1.0",
+            "GNU G11 5.1.0",
+            "Java 21",
+            "Kotlin 1.9",
+            "C# 8",
+            "Go 1.22",
+            "Rust 2021",
+            "Node.js 20",
+            "PHP 8.2",
+            "Ruby 3.2",
+            "Perl 5",
+            "Haskell GHC 8.10",
+            "OCaml 4.02",
+            "Scala 2.12",
+            "Pascal 3.0",
+            "JavaScript V8",
+            "PyPy 3"
+        });
+        String preferredLanguage = appSettings != null ? appSettings.lastLanguage() : DEFAULT_LANGUAGE;
+        languageDropdown.setSelectedItem(preferredLanguage);
+        if (languageDropdown.getSelectedItem() == null) {
+            languageDropdown.setSelectedItem(DEFAULT_LANGUAGE);
+        }
+        languageDropdown.setPreferredSize(new Dimension(190, LEFT_FIELD_HEIGHT));
+        languageDropdown.setMaximumSize(new Dimension(220, LEFT_FIELD_HEIGHT));
+        languageDropdown.setFocusable(false);
+        languageDropdown.setRequestFocusEnabled(false);
+        editorToolbar.add(languageDropdown);
 
         RSyntaxTextArea codeEditor = new RSyntaxTextArea(24, 80);
         codeEditor.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
         codeEditor.setCodeFoldingEnabled(false);
-        codeEditor.setFocusable(true);
-        codeEditor.setRequestFocusEnabled(true);
+        codeEditor.setEditable(false);
+        codeEditor.setFocusable(false);
+        codeEditor.setRequestFocusEnabled(false);
         applyEclipseEditorTheme(codeEditor);
         codeEditor.setText("Select a problem to get started...");
         codeEditor.setCaretPosition(0);
@@ -438,6 +500,109 @@ public class MainWindow {
     }
 
     private record ConnectivityResult(String message, Color color) {
+    }
+
+    private AppSettings loadSettings() {
+        Path settingsFile = getSettingsFilePath();
+        try {
+            Files.createDirectories(settingsFile.getParent());
+            if (!Files.exists(settingsFile)) {
+                AppSettings defaults = AppSettings.defaults();
+                saveSettings(defaults);
+                return defaults;
+            }
+
+            Properties properties = new Properties();
+            try (InputStream input = new BufferedInputStream(Files.newInputStream(settingsFile))) {
+                properties.load(input);
+            }
+
+            int x = parseInt(properties.getProperty("window.x"), -1);
+            int y = parseInt(properties.getProperty("window.y"), -1);
+            int width = parseInt(properties.getProperty("window.width"), 1200);
+            int height = parseInt(properties.getProperty("window.height"), 760);
+            boolean maximized = Boolean.parseBoolean(properties.getProperty("window.maximized", "false"));
+            String language = properties.getProperty("language.last", DEFAULT_LANGUAGE);
+
+            return new AppSettings(x, y, width, height, maximized, language);
+        } catch (IOException e) {
+            return AppSettings.defaults();
+        }
+    }
+
+    private void persistSettings(JFrame frame) {
+        int state = frame.getExtendedState();
+        boolean maximized = (state & JFrame.MAXIMIZED_BOTH) == JFrame.MAXIMIZED_BOTH;
+        String language = DEFAULT_LANGUAGE;
+        if (languageDropdown != null && languageDropdown.getSelectedItem() != null) {
+            language = languageDropdown.getSelectedItem().toString();
+        }
+
+        AppSettings settings = new AppSettings(
+                frame.getX(),
+                frame.getY(),
+                frame.getWidth(),
+                frame.getHeight(),
+                maximized,
+                language);
+        saveSettings(settings);
+    }
+
+    private void saveSettings(AppSettings settings) {
+        Path settingsFile = getSettingsFilePath();
+        try {
+            Files.createDirectories(settingsFile.getParent());
+            Properties properties = new Properties();
+            properties.setProperty("window.x", Integer.toString(settings.x()));
+            properties.setProperty("window.y", Integer.toString(settings.y()));
+            properties.setProperty("window.width", Integer.toString(settings.width()));
+            properties.setProperty("window.height", Integer.toString(settings.height()));
+            properties.setProperty("window.maximized", Boolean.toString(settings.maximized()));
+            properties.setProperty("language.last", settings.lastLanguage());
+
+            try (OutputStream output = new BufferedOutputStream(Files.newOutputStream(settingsFile))) {
+                properties.store(output, "Competitive Programming Ally settings");
+            }
+        } catch (IOException ignored) {
+            // Ignore persistence failures silently to avoid disrupting app startup/shutdown.
+        }
+    }
+
+    private void applyWindowSettings(JFrame frame, AppSettings settings) {
+        int width = Math.max(MIN_WINDOW_WIDTH, settings.width());
+        int height = Math.max(MIN_WINDOW_HEIGHT, settings.height());
+        frame.setSize(width, height);
+
+        if (settings.x() >= 0 && settings.y() >= 0) {
+            frame.setLocation(settings.x(), settings.y());
+        } else {
+            frame.setLocationRelativeTo(null);
+        }
+    }
+
+    private Path getSettingsFilePath() {
+        String appData = System.getenv("APPDATA");
+        Path basePath;
+        if (appData != null && !appData.isBlank()) {
+            basePath = Path.of(appData);
+        } else {
+            basePath = Path.of(System.getProperty("user.home"), "AppData", "Roaming");
+        }
+        return basePath.resolve(SETTINGS_DIR_NAME).resolve(SETTINGS_FILE_NAME);
+    }
+
+    private int parseInt(String value, int fallback) {
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    private record AppSettings(int x, int y, int width, int height, boolean maximized, String lastLanguage) {
+        private static AppSettings defaults() {
+            return new AppSettings(-1, -1, 1200, 760, false, DEFAULT_LANGUAGE);
+        }
     }
 
     private void disableFocus(Component component) {
