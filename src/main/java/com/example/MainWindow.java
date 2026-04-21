@@ -520,17 +520,18 @@ public class MainWindow {
 
         showLeftPanelLoading(contestId + index);
 
-        SwingWorker<ProblemDetails, Void> worker = new SwingWorker<>() {
+        SwingWorker<RenderedProblemView, Void> worker = new SwingWorker<>() {
             @Override
-            protected ProblemDetails doInBackground() throws Exception {
-                return codeforcesService.fetchProblemDetails(contestId, index);
+            protected RenderedProblemView doInBackground() throws Exception {
+                ProblemDetails details = codeforcesService.fetchProblemDetails(contestId, index);
+                return problemHtmlRenderer.render(details);
             }
 
             @Override
             protected void done() {
                 try {
-                    ProblemDetails details = get();
-                    showCodeforcesProblemView(details);
+                    RenderedProblemView rendered = get();
+                    showCodeforcesProblemView(rendered);
                 } catch (Exception ex) {
                     restoreProblemEntryPanelWithError("Could not fetch that problem.");
                     JOptionPane.showMessageDialog(
@@ -583,8 +584,7 @@ public class MainWindow {
         leftPanelContainer.repaint();
     }
 
-    private void showCodeforcesProblemView(ProblemDetails details) {
-        RenderedProblemView rendered = problemHtmlRenderer.render(details);
+    private void showCodeforcesProblemView(RenderedProblemView rendered) {
         copyPayloads.clear();
         copyPayloads.putAll(rendered.copyPayloads());
 

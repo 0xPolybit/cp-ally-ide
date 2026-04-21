@@ -4,22 +4,27 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.nodes.Node;
+import org.jsoup.nodes.TextNode;
 import org.jsoup.parser.Tag;
 import org.scilab.forge.jlatexmath.TeXConstants;
 import org.scilab.forge.jlatexmath.TeXFormula;
 import org.scilab.forge.jlatexmath.TeXIcon;
 
 import javax.imageio.ImageIO;
-import java.awt.Image;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 class ProblemHtmlRenderer {
+
+    private static final String LATEX_PROCESSED_ATTR = "data-cpa-latex-processed";
+    private static final String LATEX_FALLBACK_COLOR = "#dfe1e5";
 
     private final Path appDataDirectory;
     private final Map<String, String> iconSourceCache = new HashMap<>();
@@ -52,6 +57,7 @@ class ProblemHtmlRenderer {
                 pre { background:#24262a; color:#d9dde4; border:1px solid #43474c; border-radius:6px; padding:10px; white-space:pre-wrap; }
                 p { color:#d3d7de; line-height:1.45; }
                 .tex-font-style-bf { font-weight:bold; }
+                .latex-warning-box { background:#3d4949; border-left:4px solid #f7d71a; border-radius:4px; padding:12px; margin:12px 0; color:#e8ebf0; font-size:13px; line-height:1.5; }
                 </style>
                 """;
 
@@ -66,11 +72,23 @@ class ProblemHtmlRenderer {
 
         renderLatexNodes(root);
         enhanceHeaderMetrics(root);
+        insertLatexWarningBox(root);
         enhanceSampleTestsWithCopy(root, copyPayloads);
         normalizePreBlocks(root);
         return root.outerHtml();
     }
 
+    
+    private void insertLatexWarningBox(Element root) {
+        Element header = root.selectFirst("div.header");
+        if (header == null) {
+            return;
+        }
+        Element warningBox = new Element(Tag.valueOf("div"), "");
+        warningBox.addClass("latex-warning-box");
+        warningBox.html("<strong>Note:</strong> LaTeX rendering is limited in this view. If mathematical formulas or complex content are not displaying correctly, please visit <a href='https://codeforces.com' style='color:#dfe1e5; text-decoration:underline;'>CodeForces.com</a> to view the problem statement with full support.");
+        header.after(warningBox);
+    }
     private void renderLatexNodes(Element root) {
         for (Element script : root.select("script[type^=math/tex]")) {
             String type = script.attr("type");
@@ -78,7 +96,11 @@ class ProblemHtmlRenderer {
             String expression = normalizeLatexExpression(script.data().isBlank() ? script.html() : script.data());
             String src = renderLatexToImageSource(expression, display);
             if (src.isBlank()) {
-                script.replaceWith(new Element(Tag.valueOf("span"), "").text(expression));
+                Element fallback = new Element(Tag.valueOf("span"), "");
+                fallback.attr("style", "color:" + LATEX_FALLBACK_COLOR + ";");
+                fallback.attr(LATEX_PROCESSED_ATTR, "1");
+                fallback.text(expression);
+                script.replaceWith(fallback);
                 continue;
             }
 
@@ -95,6 +117,8 @@ class ProblemHtmlRenderer {
             String expression = normalizeLatexExpression(texSpan.text());
             String src = renderLatexToImageSource(expression, false);
             if (src.isBlank()) {
+                texSpan.attr("style", appendStyle(texSpan.attr("style"), "color:" + LATEX_FALLBACK_COLOR + ";"));
+                texSpan.attr(LATEX_PROCESSED_ATTR, "1");
                 continue;
             }
             Element img = new Element(Tag.valueOf("img"), "");
@@ -103,6 +127,124 @@ class ProblemHtmlRenderer {
             img.attr("style", "vertical-align:middle;");
             texSpan.replaceWith(img);
         }
+
+        renderLatexInTextNodes(root);
+    }
+
+    private void renderLatexInTextNodes(Element root) {
+        for (TextNode textNode : root.textNodes()) {
+            String text = textNode.getWholeText();
+            if (text == null || text.isBlank()) {
+                continue;
+            }
+            if (!containsLatexDelimiter(text)) {
+                continue;
+            }
+
+            Node parentNode = textNode.parent();
+            if (!(parentNode instanceof Element parent)) {
+                continue;
+            }
+            if (parent.hasAttr(LATEX_PROCESSED_ATTR)) {
+                continue;
+            }
+            String parentTag = parent.tagName().toLowerCase();
+            if ("pre".equals(parentTag) || "code".equals(parentTag) || "script".equals(parentTag) || "style".equals(parentTag)) {
+                continue;
+            }
+
+            List<Element> rendered = renderTextWithLatex(text);
+            if (rendered.isEmpty()) {
+                continue;
+            }
+
+            for (int i = rendered.size() - 1; i >= 0; i--) {
+                textNode.after(rendered.get(i));
+            }
+            textNode.remove();
+        }
+
+        for (Element child : root.children()) {
+            String tag = child.tagName().toLowerCase();
+            if ("pre".equals(tag) || "code".equals(tag) || "script".equals(tag) || "style".equals(tag)) {
+                continue;
+            }
+            renderLatexInTextNodes(child);
+        }
+    }
+
+    private List<Element> renderTextWithLatex(String text) {
+        List<Element> nodes = new ArrayList<>();
+        int cursor = 0;
+
+        while (cursor < text.length()) {
+            int start = text.indexOf('$', cursor);
+            if (start < 0) {
+                nodes.add(createProcessedTextSpan(text.substring(cursor)));
+                break;
+            }
+
+            if (start > cursor) {
+                nodes.add(createProcessedTextSpan(text.substring(cursor, start)));
+            }
+
+            int delimiterLength = latexDelimiterLengthAt(text, start);
+            if (delimiterLength == 0) {
+                nodes.add(createProcessedTextSpan("$"));
+                cursor = start + 1;
+                continue;
+            }
+
+            int end = findClosingDelimiter(text, start + delimiterLength, delimiterLength);
+            if (end < 0) {
+                nodes.add(createProcessedTextSpan(text.substring(start)));
+                break;
+            }
+
+            String expression = text.substring(start + delimiterLength, end).trim();
+            boolean display = delimiterLength >= 2;
+            String src = renderLatexToImageSource(expression, display);
+            if (src.isBlank()) {
+                Element fallback = createProcessedTextSpan(text.substring(start, end + delimiterLength));
+                fallback.attr("style", "color:" + LATEX_FALLBACK_COLOR + ";");
+                nodes.add(fallback);
+            } else {
+                Element img = new Element(Tag.valueOf("img"), "");
+                img.attr("src", src);
+                img.attr("alt", "");
+                img.attr("style", display ? "display:block; margin:8px 0;" : "vertical-align:middle;");
+                nodes.add(img);
+            }
+
+            cursor = end + delimiterLength;
+        }
+
+        return nodes;
+    }
+
+    private Element createProcessedTextSpan(String text) {
+        Element span = new Element(Tag.valueOf("span"), "");
+        span.attr(LATEX_PROCESSED_ATTR, "1");
+        span.text(text);
+        return span;
+    }
+
+    private boolean containsLatexDelimiter(String text) {
+        return text.indexOf('$') >= 0;
+    }
+
+    private int latexDelimiterLengthAt(String text, int index) {
+        int len = 0;
+        while (index + len < text.length() && text.charAt(index + len) == '$' && len < 3) {
+            len++;
+        }
+        return len;
+    }
+
+    private int findClosingDelimiter(String text, int from, int delimiterLength) {
+        String delimiter = "$".repeat(delimiterLength);
+        int idx = text.indexOf(delimiter, from);
+        return idx;
     }
 
     private void enhanceHeaderMetrics(Element root) {
@@ -198,7 +340,7 @@ class ProblemHtmlRenderer {
                 continue;
             }
             String key = "sample-input-" + inputCounter++;
-            copyPayloads.put(key, pre.text());
+            copyPayloads.put(key, extractPreText(pre));
             decorateIoBlockHeader(input, "Input", key, copyIcon);
         }
 
@@ -209,7 +351,7 @@ class ProblemHtmlRenderer {
                 continue;
             }
             String key = "sample-output-" + outputCounter++;
-            copyPayloads.put(key, pre.text());
+            copyPayloads.put(key, extractPreText(pre));
             decorateIoBlockHeader(output, "Output", key, copyIcon);
         }
     }
@@ -225,14 +367,62 @@ class ProblemHtmlRenderer {
 
     private void normalizePreBlocks(Element root) {
         for (Element pre : root.select("pre")) {
-            String original = pre.wholeText();
-            if (original == null || original.isBlank()) {
-                original = pre.text();
-            }
+            String original = extractPreText(pre);
             String wrapped = wrapLongPreLines(original, 84);
             pre.empty();
-            pre.appendText(wrapped);
+            pre.append(buildPreHtml(wrapped));
         }
+    }
+
+    private String extractPreText(Element pre) {
+        Element clone = pre.clone();
+        for (Element br : clone.select("br")) {
+            br.after("\n");
+            br.remove();
+        }
+
+        StringBuilder text = new StringBuilder();
+        for (Node node : clone.childNodes()) {
+            appendNodeText(node, text);
+        }
+        return text.toString().replace("\u00a0", " ");
+    }
+
+    private void appendNodeText(Node node, StringBuilder out) {
+        if (node instanceof TextNode textNode) {
+            out.append(textNode.getWholeText());
+            return;
+        }
+
+        if (!(node instanceof Element element)) {
+            return;
+        }
+
+        if ("br".equalsIgnoreCase(element.tagName())) {
+            out.append('\n');
+            return;
+        }
+
+        for (Node child : element.childNodes()) {
+            appendNodeText(child, out);
+        }
+
+        String tag = element.tagName().toLowerCase();
+        if (isLineBreakElement(tag) && !endsWithNewline(out)) {
+            out.append('\n');
+        }
+    }
+
+    private boolean isLineBreakElement(String tag) {
+        return "div".equals(tag)
+                || "p".equals(tag)
+                || "li".equals(tag)
+                || "tr".equals(tag)
+                || "td".equals(tag);
+    }
+
+    private boolean endsWithNewline(StringBuilder out) {
+        return out.length() > 0 && out.charAt(out.length() - 1) == '\n';
     }
 
     private String wrapLongPreLines(String source, int maxTokenLength) {
@@ -262,6 +452,14 @@ class ProblemHtmlRenderer {
             }
         }
         return out.toString();
+    }
+
+    private String buildPreHtml(String text) {
+        String escaped = text
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;");
+        return escaped.replace("\n", "<br>");
     }
 
     private String createCopyHeaderHtml(String label, String key, String copyIconDataUri) {
@@ -338,6 +536,7 @@ class ProblemHtmlRenderer {
             float size = display ? 18f : 16f;
             int style = display ? TeXConstants.STYLE_DISPLAY : TeXConstants.STYLE_TEXT;
             TeXIcon icon = formula.createTeXIcon(style, size);
+            icon.setForeground(new java.awt.Color(223, 225, 229));
 
             BufferedImage image = new BufferedImage(icon.getIconWidth(), icon.getIconHeight(), BufferedImage.TYPE_INT_ARGB);
             java.awt.Graphics2D g2 = image.createGraphics();
@@ -358,6 +557,16 @@ class ProblemHtmlRenderer {
         } catch (Exception e) {
             return "";
         }
+    }
+
+    private String appendStyle(String existing, String addition) {
+        if (existing == null || existing.isBlank()) {
+            return addition;
+        }
+        if (existing.endsWith(";")) {
+            return existing + addition;
+        }
+        return existing + ";" + addition;
     }
 
     private String normalizeLatexExpression(String raw) {
