@@ -1,14 +1,10 @@
 package com.example;
 
 import com.formdev.flatlaf.FlatDarkLaf;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
-import org.jsoup.parser.Tag;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.Style;
-import org.fife.ui.rsyntaxtextarea.SyntaxScheme;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
+import org.fife.ui.rsyntaxtextarea.SyntaxScheme;
 import org.fife.ui.rsyntaxtextarea.Token;
 import org.fife.ui.rtextarea.RTextScrollPane;
 
@@ -18,12 +14,12 @@ import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
+import javax.swing.JEditorPane;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JMenuBar;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JEditorPane;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTextField;
@@ -39,31 +35,16 @@ import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.Toolkit;
+import java.awt.datatransfer.StringSelection;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.awt.RenderingHints;
-import java.awt.Toolkit;
-import java.awt.datatransfer.StringSelection;
-import java.awt.image.BufferedImage;
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.InetAddress;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.net.UnknownHostException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import javax.imageio.ImageIO;
 
 public class MainWindow {
 
@@ -80,6 +61,14 @@ public class MainWindow {
     private static final int MIN_WINDOW_HEIGHT = 680;
     private static final int MIN_LEFT_PANEL_WIDTH = 280;
     private static final int MIN_RIGHT_PANEL_WIDTH = 420;
+
+    private final SettingsRepository settingsRepository = new SettingsRepository(
+            SETTINGS_DIR_NAME,
+            SETTINGS_FILE_NAME,
+            DEFAULT_LANGUAGE);
+    private final CodeforcesService codeforcesService = new CodeforcesService();
+
+    private ProblemHtmlRenderer problemHtmlRenderer;
     private JButton initialFocusButton;
     private JComboBox<String> languageDropdown;
     private AppSettings appSettings;
@@ -89,14 +78,15 @@ public class MainWindow {
     private JPanel leftPanelContainer;
     private JPanel problemEntryPanel;
     private final Map<String, String> copyPayloads = new HashMap<>();
-    private final Map<String, String> iconSourceCache = new HashMap<>();
     private JSplitPane contentSplitPane;
 
     public void showWindow() {
         JFrame.setDefaultLookAndFeelDecorated(true);
         FlatDarkLaf.setup();
         applyGlobalDarkPalette();
-        appSettings = loadSettings();
+
+        appSettings = settingsRepository.load();
+        problemHtmlRenderer = new ProblemHtmlRenderer(settingsRepository.getAppDataDirectory());
 
         JFrame frame = new JFrame(APP_NAME);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -223,7 +213,6 @@ public class MainWindow {
         disableFocus(splitPane);
         contentSplitPane = splitPane;
 
-        // Keep left panel within [MIN_LEFT_PANEL_WIDTH, half of available width].
         splitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, evt -> clampDivider(splitPane));
         splitPane.addComponentListener(new java.awt.event.ComponentAdapter() {
             @Override
@@ -246,7 +235,6 @@ public class MainWindow {
         int current = splitPane.getDividerLocation();
         int clamped = Math.max(minLeft, Math.min(current, maxLeft));
 
-        // Also respect right panel minimum width where possible.
         int rightLimited = width - MIN_RIGHT_PANEL_WIDTH;
         if (rightLimited > minLeft) {
             clamped = Math.min(clamped, rightLimited);
@@ -275,8 +263,8 @@ public class MainWindow {
         form.setOpaque(true);
         form.setBackground(new Color(43, 45, 48));
         form.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(67, 71, 76)),
-            BorderFactory.createEmptyBorder(18, 18, 18, 18)));
+                BorderFactory.createLineBorder(new Color(67, 71, 76)),
+                BorderFactory.createEmptyBorder(18, 18, 18, 18)));
         form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
 
         problemCodeInput = createPlaceholderField(PROBLEM_PLACEHOLDER);
@@ -332,32 +320,35 @@ public class MainWindow {
         editorToolbar.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
         editorToolbar.setOpaque(false);
         disableFocus(editorToolbar);
+
         JButton runButton = createToolbarButton("Run");
         runButton.setEnabled(false);
         editorToolbar.add(runButton);
         editorToolbar.add(Box.createHorizontalGlue());
-        languageDropdown = new JComboBox<>(new String[]{
-            "Python 3",
-            "GNU G++17 7.3.0",
-            "GNU G++20 13.2",
-            "GNU C11 5.1.0",
-            "GNU G11 5.1.0",
-            "Java 21",
-            "Kotlin 1.9",
-            "C# 8",
-            "Go 1.22",
-            "Rust 2021",
-            "Node.js 20",
-            "PHP 8.2",
-            "Ruby 3.2",
-            "Perl 5",
-            "Haskell GHC 8.10",
-            "OCaml 4.02",
-            "Scala 2.12",
-            "Pascal 3.0",
-            "JavaScript V8",
-            "PyPy 3"
+
+        languageDropdown = new JComboBox<>(new String[] {
+                "Python 3",
+                "GNU G++17 7.3.0",
+                "GNU G++20 13.2",
+                "GNU C11 5.1.0",
+                "GNU G11 5.1.0",
+                "Java 21",
+                "Kotlin 1.9",
+                "C# 8",
+                "Go 1.22",
+                "Rust 2021",
+                "Node.js 20",
+                "PHP 8.2",
+                "Ruby 3.2",
+                "Perl 5",
+                "Haskell GHC 8.10",
+                "OCaml 4.02",
+                "Scala 2.12",
+                "Pascal 3.0",
+                "JavaScript V8",
+                "PyPy 3"
         });
+
         String preferredLanguage = appSettings != null ? appSettings.lastLanguage() : DEFAULT_LANGUAGE;
         languageDropdown.setSelectedItem(preferredLanguage);
         if (languageDropdown.getSelectedItem() == null) {
@@ -493,7 +484,7 @@ public class MainWindow {
         SwingWorker<ConnectivityResult, Void> worker = new SwingWorker<>() {
             @Override
             protected ConnectivityResult doInBackground() {
-                return evaluateCodeforcesConnectivity();
+                return codeforcesService.evaluateConnectivity();
             }
 
             @Override
@@ -532,7 +523,7 @@ public class MainWindow {
         SwingWorker<ProblemDetails, Void> worker = new SwingWorker<>() {
             @Override
             protected ProblemDetails doInBackground() throws Exception {
-                return fetchProblemDetails(contestId, index);
+                return codeforcesService.fetchProblemDetails(contestId, index);
             }
 
             @Override
@@ -542,7 +533,8 @@ public class MainWindow {
                     showCodeforcesProblemView(details);
                 } catch (Exception ex) {
                     restoreProblemEntryPanelWithError("Could not fetch that problem.");
-                    JOptionPane.showMessageDialog(null,
+                    JOptionPane.showMessageDialog(
+                            null,
                             "Could not fetch the specified CodeForces problem. Please verify the code and try again.",
                             APP_NAME,
                             JOptionPane.WARNING_MESSAGE);
@@ -563,28 +555,6 @@ public class MainWindow {
         label.setForeground(new Color(160, 167, 177));
         label.setBorder(BorderFactory.createEmptyBorder(12, 6, 12, 6));
         return label;
-    }
-
-    private ProblemDetails fetchProblemDetails(String contestId, String index) throws IOException {
-        String url = "https://codeforces.com/problemset/problem/" + contestId + "/" + index;
-        Document document = Jsoup.connect(url)
-                .userAgent("Mozilla/5.0")
-                .timeout(15000)
-                .get();
-
-        Element statementRoot = document.selectFirst("div.problem-statement");
-        if (statementRoot == null) {
-            throw new IOException("Missing problem statement");
-        }
-
-        Element titleElement = statementRoot.selectFirst("div.header div.title");
-        String title = titleElement != null ? titleElement.text() : (contestId + index);
-
-        // Remove scripts/styles and keep statement markup so rendering matches Codeforces structure.
-        Element statementClone = statementRoot.clone();
-        statementClone.select("script, style").remove();
-
-        return new ProblemDetails(contestId + index, title, statementClone.outerHtml());
     }
 
     private void showLeftPanelLoading(String problemCode) {
@@ -614,14 +584,16 @@ public class MainWindow {
     }
 
     private void showCodeforcesProblemView(ProblemDetails details) {
-        String html = buildCodeforcesLikeHtml(details);
+        RenderedProblemView rendered = problemHtmlRenderer.render(details);
+        copyPayloads.clear();
+        copyPayloads.putAll(rendered.copyPayloads());
 
         JEditorPane pane = new JEditorPane();
         pane.setContentType("text/html");
         pane.setEditable(false);
         pane.setFocusable(false);
         pane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
-        pane.setText(html);
+        pane.setText(rendered.html());
         pane.setCaretPosition(0);
         pane.setBackground(new Color(30, 31, 34));
         pane.addHyperlinkListener(event -> {
@@ -648,297 +620,19 @@ public class MainWindow {
         leftPanelContainer.repaint();
     }
 
-    private String buildCodeforcesLikeHtml(ProblemDetails details) {
-        String problemHtml = prepareProblemHtml(details.problemHtml());
-        String css = """
-                <style>
-                body { background:#1e1f22; color:#dfe1e5; font-family:Segoe UI, Arial, sans-serif; margin:12px; }
-                .problem-statement { background:#2b2d30; border-radius:8px; padding:14px; }
-                .header .title { font-size:18px; font-weight:700; color:#eceff4; margin-bottom:10px; }
-                .metrics-row { margin-top:4px; margin-bottom:12px; display:flex; flex-wrap:wrap; gap:20px; }
-                .metric-item { display:inline-flex; align-items:center; color:#b8bec8; white-space:nowrap; }
-                .metric-icon { width:14px; height:14px; vertical-align:middle; margin-right:6px; }
-                .section-title { font-weight:700; margin-top:12px; margin-bottom:6px; color:#e8ebf0; }
-                .sample-tests .input, .sample-tests .output { margin-top:8px; }
-                .io-header { display:flex; align-items:center; justify-content:space-between; min-height:18px; margin-bottom:4px; }
-                .io-label { display:inline-flex; align-items:center; line-height:18px; }
-                .copy-btn { display:inline-flex; align-items:center; justify-content:center; height:18px; width:18px; text-decoration:none; border:none; outline:none; background:transparent; }
-                .copy-btn img { width:14px; height:14px; vertical-align:middle; opacity:0.92; border:none; }
-                pre { background:#24262a; color:#d9dde4; border:1px solid #43474c; border-radius:6px; padding:10px; white-space:pre-wrap; }
-                p { color:#d3d7de; line-height:1.45; }
-                .tex-font-style-bf { font-weight:bold; }
-                </style>
-                """;
-
-        String body = "<div class='problem-statement'>" + problemHtml + "</div>";
-        return "<html><head>" + css + "</head><body>" + body + "</body></html>";
-    }
-
-    private String prepareProblemHtml(String rawProblemHtml) {
-        copyPayloads.clear();
-
-        Document doc = Jsoup.parseBodyFragment(rawProblemHtml);
-        Element root = doc.body().children().isEmpty() ? doc.body() : doc.body().child(0);
-
-        enhanceHeaderMetrics(root);
-        enhanceSampleTestsWithCopy(root);
-        return root.outerHtml();
-    }
-
-    private void enhanceHeaderMetrics(Element root) {
-        Element header = root.selectFirst("div.header");
-        if (header == null) {
-            return;
-        }
-
-        Element timeLimit = header.selectFirst("div.time-limit");
-        Element memoryLimit = header.selectFirst("div.memory-limit");
-        Element inputFile = header.selectFirst("div.input-file");
-        Element outputFile = header.selectFirst("div.output-file");
-
-        if (timeLimit == null && memoryLimit == null && inputFile == null && outputFile == null) {
-            return;
-        }
-
-        String timeText = metricValueOnly(timeLimit != null ? timeLimit.text() : "", "time limit per test");
-        String memoryText = metricValueOnly(memoryLimit != null ? memoryLimit.text() : "", "memory limit per test");
-        String inputText = metricValueOnly(inputFile != null ? inputFile.text() : "", "input", "input file");
-        String outputText = metricValueOnly(outputFile != null ? outputFile.text() : "", "output", "output file");
-
-        if (timeLimit != null) {
-            timeLimit.remove();
-        }
-        if (memoryLimit != null) {
-            memoryLimit.remove();
-        }
-        if (inputFile != null) {
-            inputFile.remove();
-        }
-        if (outputFile != null) {
-            outputFile.remove();
-        }
-
-        Element row = new Element(Tag.valueOf("div"), "");
-        row.addClass("metrics-row");
-
-        addMetricItem(row, "time.png", timeText);
-        addMetricItem(row, "memory.png", memoryText);
-        String ioMetric = combineInputOutputMetric(inputText, outputText);
-        addMetricItem(row, "input.png", ioMetric);
-
-        header.appendChild(row);
-    }
-
-    private void addMetricItem(Element row, String iconFile, String text) {
-        if (text == null || text.isBlank()) {
-            return;
-        }
-        String iconSrc = loadIconSource(iconFile, 14);
-        Element item = new Element(Tag.valueOf("span"), "").addClass("metric-item");
-        if (!iconSrc.isBlank()) {
-            Element icon = new Element(Tag.valueOf("img"), "");
-            icon.addClass("metric-icon");
-            icon.attr("src", iconSrc);
-            icon.attr("alt", "");
-            item.appendChild(icon);
-        }
-        item.appendText(text);
-        row.appendChild(item);
-    }
-
-    private void enhanceSampleTestsWithCopy(Element root) {
-        String copyIcon = loadIconSource("copy.png", 14);
-        if (copyIcon.isBlank()) {
-            return;
-        }
-
-        int inputCounter = 1;
-        for (Element input : root.select("div.sample-tests div.input")) {
-            Element pre = input.selectFirst("pre");
-            if (pre == null) {
-                continue;
-            }
-            String key = "sample-input-" + inputCounter++;
-            copyPayloads.put(key, pre.text());
-            decorateIoBlockHeader(input, "Input", key, copyIcon);
-        }
-
-        int outputCounter = 1;
-        for (Element output : root.select("div.sample-tests div.output")) {
-            Element pre = output.selectFirst("pre");
-            if (pre == null) {
-                continue;
-            }
-            String key = "sample-output-" + outputCounter++;
-            copyPayloads.put(key, pre.text());
-            decorateIoBlockHeader(output, "Output", key, copyIcon);
-        }
-    }
-
-    private void decorateIoBlockHeader(Element ioBlock, String fallbackLabel, String key, String copyIcon) {
-        Element existingTitle = ioBlock.selectFirst("div.title");
-        String label = existingTitle != null ? existingTitle.text() : fallbackLabel;
-        if (existingTitle != null) {
-            existingTitle.remove();
-        }
-        ioBlock.prepend(createCopyHeaderHtml(label, key, copyIcon));
-    }
-
-    private String createCopyHeaderHtml(String label, String key, String copyIconDataUri) {
-        return "<div class='io-header'><span class='io-label'>" + label + "</span><a class='copy-btn' href='copy:" + key + "'><img src='" + copyIconDataUri + "' alt=''/></a></div>";
-    }
-
-    private String combineInputOutputMetric(String inputText, String outputText) {
-        if ((inputText == null || inputText.isBlank()) && (outputText == null || outputText.isBlank())) {
-            return "";
-        }
-        if (inputText == null || inputText.isBlank()) {
-            return outputText;
-        }
-        if (outputText == null || outputText.isBlank()) {
-            return inputText;
-        }
-        return inputText + " / " + outputText;
-    }
-
-    private String loadIconSource(String iconFile, int size) {
-        String cacheKey = iconFile + "@" + size;
-        if (iconSourceCache.containsKey(cacheKey)) {
-            return iconSourceCache.get(cacheKey);
-        }
-
-        try {
-            Path iconPath = Path.of("assets", iconFile);
-            if (!Files.exists(iconPath)) {
-                return "";
-            }
-
-            BufferedImage source = ImageIO.read(iconPath.toFile());
-            if (source == null) {
-                return "";
-            }
-
-            BufferedImage target = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
-            java.awt.Graphics2D g2 = target.createGraphics();
-            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-            g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-            g2.drawImage(source, 0, 0, size, size, null);
-            g2.dispose();
-
-            Path iconCacheDir = getSettingsFilePath().getParent().resolve("cache").resolve("icons");
-            Files.createDirectories(iconCacheDir);
-            String sanitized = iconFile.replace('.', '_');
-            Path scaledFile = iconCacheDir.resolve(sanitized + "_" + size + "px.png");
-            ImageIO.write(target, "png", scaledFile.toFile());
-
-            String src = scaledFile.toUri().toString();
-            iconSourceCache.put(cacheKey, src);
-            return src;
-        } catch (IOException e) {
-            return "";
-        }
-    }
-
-    private String metricValueOnly(String text, String... prefixes) {
-        if (text == null) {
-            return "";
-        }
-
-        String cleaned = text.trim();
-        String lowered = cleaned.toLowerCase();
-
-        for (String prefix : prefixes) {
-            String lowerPrefix = prefix.toLowerCase();
-            if (lowered.startsWith(lowerPrefix)) {
-                cleaned = cleaned.substring(prefix.length()).trim();
-                if (cleaned.startsWith(":")) {
-                    cleaned = cleaned.substring(1).trim();
-                }
-                return cleaned;
-            }
-        }
-
-        int colon = cleaned.indexOf(':');
-        if (colon >= 0 && colon + 1 < cleaned.length()) {
-            return cleaned.substring(colon + 1).trim();
-        }
-        return cleaned;
-    }
-
     private void copyToClipboard(String text) {
         Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(text), null);
-    }
-
-    private ConnectivityResult evaluateCodeforcesConnectivity() {
-        try {
-            InetAddress address = InetAddress.getByName("codeforces.com");
-            boolean pingReachable = address.isReachable(2500);
-            boolean httpReachable = isCodeforcesHttpResponsive();
-
-            if (pingReachable || httpReachable) {
-                return new ConnectivityResult("CodeForces online and responsive", new Color(97, 214, 110));
-            }
-            return new ConnectivityResult("CodeForces unresponsive", new Color(246, 86, 86));
-        } catch (UnknownHostException e) {
-            return new ConnectivityResult("CodeForces offline", new Color(246, 86, 86));
-        } catch (IOException e) {
-            return new ConnectivityResult("CodeForces unresponsive", new Color(246, 86, 86));
-        }
-    }
-
-    private boolean isCodeforcesHttpResponsive() {
-        try {
-            URL url = new URL("https://codeforces.com/");
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-            connection.setRequestMethod("HEAD");
-            connection.setConnectTimeout(3000);
-            connection.setReadTimeout(3000);
-            int code = connection.getResponseCode();
-            return code >= 200 && code < 500;
-        } catch (IOException e) {
-            return false;
-        }
-    }
-
-    private record ConnectivityResult(String message, Color color) {
-    }
-
-    private AppSettings loadSettings() {
-        Path settingsFile = getSettingsFilePath();
-        try {
-            Files.createDirectories(settingsFile.getParent());
-            if (!Files.exists(settingsFile)) {
-                AppSettings defaults = AppSettings.defaults();
-                saveSettings(defaults);
-                return defaults;
-            }
-
-            Properties properties = new Properties();
-            try (InputStream input = new BufferedInputStream(Files.newInputStream(settingsFile))) {
-                properties.load(input);
-            }
-
-            int x = parseInt(properties.getProperty("window.x"), -1);
-            int y = parseInt(properties.getProperty("window.y"), -1);
-            int width = parseInt(properties.getProperty("window.width"), 1200);
-            int height = parseInt(properties.getProperty("window.height"), 760);
-            int divider = parseInt(properties.getProperty("window.dividerLocation"), 420);
-            boolean maximized = Boolean.parseBoolean(properties.getProperty("window.maximized", "false"));
-            String language = properties.getProperty("language.last", DEFAULT_LANGUAGE);
-
-            return new AppSettings(x, y, width, height, divider, maximized, language);
-        } catch (IOException e) {
-            return AppSettings.defaults();
-        }
     }
 
     private void persistSettings(JFrame frame) {
         int state = frame.getExtendedState();
         boolean maximized = (state & JFrame.MAXIMIZED_BOTH) == JFrame.MAXIMIZED_BOTH;
+
         String language = DEFAULT_LANGUAGE;
         if (languageDropdown != null && languageDropdown.getSelectedItem() != null) {
             language = languageDropdown.getSelectedItem().toString();
         }
+
         int dividerLocation = contentSplitPane != null ? contentSplitPane.getDividerLocation() : 420;
 
         AppSettings settings = new AppSettings(
@@ -946,31 +640,11 @@ public class MainWindow {
                 frame.getY(),
                 frame.getWidth(),
                 frame.getHeight(),
-            dividerLocation,
+                dividerLocation,
                 maximized,
                 language);
-        saveSettings(settings);
-    }
 
-    private void saveSettings(AppSettings settings) {
-        Path settingsFile = getSettingsFilePath();
-        try {
-            Files.createDirectories(settingsFile.getParent());
-            Properties properties = new Properties();
-            properties.setProperty("window.x", Integer.toString(settings.x()));
-            properties.setProperty("window.y", Integer.toString(settings.y()));
-            properties.setProperty("window.width", Integer.toString(settings.width()));
-            properties.setProperty("window.height", Integer.toString(settings.height()));
-            properties.setProperty("window.dividerLocation", Integer.toString(settings.dividerLocation()));
-            properties.setProperty("window.maximized", Boolean.toString(settings.maximized()));
-            properties.setProperty("language.last", settings.lastLanguage());
-
-            try (OutputStream output = new BufferedOutputStream(Files.newOutputStream(settingsFile))) {
-                properties.store(output, "Competitive Programming Ally settings");
-            }
-        } catch (IOException ignored) {
-            // Ignore persistence failures silently to avoid disrupting app startup/shutdown.
-        }
+        settingsRepository.save(settings);
     }
 
     private void applyWindowSettings(JFrame frame, AppSettings settings) {
@@ -983,37 +657,6 @@ public class MainWindow {
         } else {
             frame.setLocationRelativeTo(null);
         }
-    }
-
-    private Path getSettingsFilePath() {
-        String appData = System.getenv("APPDATA");
-        Path basePath;
-        if (appData != null && !appData.isBlank()) {
-            basePath = Path.of(appData);
-        } else {
-            basePath = Path.of(System.getProperty("user.home"), "AppData", "Roaming");
-        }
-        return basePath.resolve(SETTINGS_DIR_NAME).resolve(SETTINGS_FILE_NAME);
-    }
-
-    private int parseInt(String value, int fallback) {
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-            return fallback;
-        }
-    }
-
-    private record AppSettings(int x, int y, int width, int height, int dividerLocation, boolean maximized, String lastLanguage) {
-        private static AppSettings defaults() {
-            return new AppSettings(-1, -1, 1200, 760, 420, false, DEFAULT_LANGUAGE);
-        }
-    }
-
-    private record ProblemDetails(
-            String code,
-            String title,
-            String problemHtml) {
     }
 
     private void disableFocus(Component component) {
