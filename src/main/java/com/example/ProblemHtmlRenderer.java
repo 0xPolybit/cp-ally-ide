@@ -44,8 +44,10 @@ class ProblemHtmlRenderer {
                 .header .title { font-size:18px; font-weight:700; color:#eceff4; margin-bottom:10px; }
                 .metrics-row { margin-top:4px; margin-bottom:12px; }
                 .metrics-table { border-collapse:collapse; }
-                .metric-item { color:#b8bec8; white-space:nowrap; vertical-align:middle; line-height:16px; }
+                .metric-item { color:#b8bec8; white-space:nowrap; vertical-align:middle; line-height:18px; }
                 .metric-icon { width:14px; height:14px; vertical-align:middle; }
+                .latex-inline { vertical-align:-0.18em; }
+                .latex-inline-fallback { vertical-align:-0.08em; }
                 .section-title { font-weight:700; margin-top:12px; margin-bottom:6px; color:#e8ebf0; }
                 .sample-tests .input, .sample-tests .output { margin-top:8px; }
                 .io-table { width:100%; border-collapse:collapse; margin-bottom:4px; }
@@ -98,6 +100,7 @@ class ProblemHtmlRenderer {
             if (src.isBlank()) {
                 Element fallback = new Element(Tag.valueOf("span"), "");
                 fallback.attr("style", "color:" + LATEX_FALLBACK_COLOR + ";");
+                fallback.addClass("latex-inline-fallback");
                 fallback.attr(LATEX_PROCESSED_ATTR, "1");
                 fallback.text(expression);
                 script.replaceWith(fallback);
@@ -107,9 +110,11 @@ class ProblemHtmlRenderer {
             Element img = new Element(Tag.valueOf("img"), "");
             img.attr("src", src);
             img.attr("alt", "");
-            img.attr("style", display
-                    ? "display:block; margin:8px 0;"
-                    : "vertical-align:middle;");
+            if (display) {
+                img.attr("style", "display:block; margin:8px 0;");
+            } else {
+                img.addClass("latex-inline");
+            }
             script.replaceWith(img);
         }
 
@@ -118,13 +123,14 @@ class ProblemHtmlRenderer {
             String src = renderLatexToImageSource(expression, false);
             if (src.isBlank()) {
                 texSpan.attr("style", appendStyle(texSpan.attr("style"), "color:" + LATEX_FALLBACK_COLOR + ";"));
+                texSpan.addClass("latex-inline-fallback");
                 texSpan.attr(LATEX_PROCESSED_ATTR, "1");
                 continue;
             }
             Element img = new Element(Tag.valueOf("img"), "");
             img.attr("src", src);
             img.attr("alt", "");
-            img.attr("style", "vertical-align:middle;");
+            img.addClass("latex-inline");
             texSpan.replaceWith(img);
         }
 
@@ -207,12 +213,17 @@ class ProblemHtmlRenderer {
             if (src.isBlank()) {
                 Element fallback = createProcessedTextSpan(text.substring(start, end + delimiterLength));
                 fallback.attr("style", "color:" + LATEX_FALLBACK_COLOR + ";");
+                fallback.addClass("latex-inline-fallback");
                 nodes.add(fallback);
             } else {
                 Element img = new Element(Tag.valueOf("img"), "");
                 img.attr("src", src);
                 img.attr("alt", "");
-                img.attr("style", display ? "display:block; margin:8px 0;" : "vertical-align:middle;");
+                if (display) {
+                    img.attr("style", "display:block; margin:8px 0;");
+                } else {
+                    img.addClass("latex-inline");
+                }
                 nodes.add(img);
             }
 

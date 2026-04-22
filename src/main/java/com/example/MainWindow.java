@@ -14,6 +14,7 @@ import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
+import javax.swing.JDialog;
 import javax.swing.JEditorPane;
 import javax.swing.JFrame;
 import javax.swing.ImageIcon;
@@ -23,11 +24,12 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
+import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.JToolBar;
+import javax.swing.UIManager;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
-import javax.swing.UIManager;
 import javax.swing.event.HyperlinkEvent;
 import java.awt.BorderLayout;
 import java.awt.Color;
@@ -48,6 +50,7 @@ import java.awt.event.WindowEvent;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -74,11 +77,14 @@ public class MainWindow {
             SETTINGS_FILE_NAME,
             DEFAULT_LANGUAGE);
     private final CodeforcesService codeforcesService = new CodeforcesService();
+    private final CodeExecutionService codeExecutionService = new CodeExecutionService();
 
     private ProblemHtmlRenderer problemHtmlRenderer;
     private JButton initialFocusButton;
     private JComboBox<String> languageDropdown;
+    private JLabel runtimeSupportLabel;
     private AppSettings appSettings;
+    private JFrame mainFrame;
     private JTextField problemCodeInput;
     private JButton fetchProblemButton;
     private JLabel fetchStatusLabel;
@@ -106,6 +112,7 @@ public class MainWindow {
         frame.getRootPane().putClientProperty("JRootPane.titleBarBackground", new Color(43, 45, 48));
         frame.getRootPane().putClientProperty("JRootPane.titleBarForeground", new Color(230, 233, 238));
         frame.setJMenuBar(createEmbeddedTitleBar());
+        mainFrame = frame;
 
         frame.add(createContentSplit(), BorderLayout.CENTER);
         frame.addWindowListener(new WindowAdapter() {
@@ -334,8 +341,15 @@ public class MainWindow {
         runButton = createToolbarButton("Run");
         runButton.setEnabled(false);
         applyRunButtonIcons();
+        runButton.addActionListener(e -> onRunButtonClicked());
         editorToolbar.add(runButton);
         editorToolbar.add(Box.createHorizontalGlue());
+
+        runtimeSupportLabel = new JLabel("Executable: checking...");
+        runtimeSupportLabel.setForeground(new Color(169, 176, 188));
+        runtimeSupportLabel.setFont(runtimeSupportLabel.getFont().deriveFont(Font.PLAIN, 12f));
+        editorToolbar.add(runtimeSupportLabel);
+        editorToolbar.add(Box.createHorizontalStrut(10));
 
         languageDropdown = new JComboBox<>(new String[] {
                 "Python 3",
@@ -370,11 +384,13 @@ public class MainWindow {
         languageDropdown.setFocusable(false);
         languageDropdown.setRequestFocusEnabled(false);
         languageDropdown.addActionListener(e -> {
+            updateExecutionAvailability();
             if (problemStatementLoaded) {
                 applyLanguageTemplate();
             }
         });
         editorToolbar.add(languageDropdown);
+        updateExecutionAvailability();
 
         codeEditor = new RSyntaxTextArea(24, 80);
         codeEditor.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
@@ -644,10 +660,6 @@ public class MainWindow {
     }
 
     private void enableEditorForProblem() {
-        if (runButton != null) {
-            runButton.setEnabled(true);
-        }
-
         if (codeEditor != null) {
             codeEditor.setEditable(true);
             codeEditor.setFocusable(true);
@@ -655,6 +667,7 @@ public class MainWindow {
         }
 
         applyLanguageTemplate();
+        updateExecutionAvailability();
     }
 
     private void applyLanguageTemplate() {
@@ -672,6 +685,166 @@ public class MainWindow {
             cursor = boilerplate.indexOf("# code goes here...");
         }
         codeEditor.setCaretPosition(Math.max(0, cursor));
+    }
+
+    private void updateExecutionAvailability() {
+        if (languageDropdown == null || runtimeSupportLabel == null || runButton == null) {
+            return;
+        }
+
+        String language = selectedLanguage();
+        CodeExecutionService.LanguageSupport support = codeExecutionService.detectSupport(language);
+        boolean ready = problemStatementLoaded && support.supported();
+
+        runtimeSupportLabel.setText("<html>Executable: <span style='color:"
+                + (support.supported() ? "#61d66e" : "#f65656")
+                + ";'>"
+                + (support.supported() ? "Yes" : "No")
+                + "</span></html>");
+        runtimeSupportLabel.setToolTipText(support.message());
+        runButton.setEnabled(ready);
+        runButton.setToolTipText(ready ? "Run the sample test cases locally" : support.message());
+    }
+
+    private String selectedLanguage() {
+        if (languageDropdown == null || languageDropdown.getSelectedItem() == null) {
+            return DEFAULT_LANGUAGE;
+        }
+        return languageDropdown.getSelectedItem().toString();
+    }
+
+    private void onRunButtonClicked() {
+        if (!problemStatementLoaded || codeEditor == null) {
+            return;
+        }
+
+        String language = selectedLanguage();
+        CodeExecutionService.LanguageSupport support = codeExecutionService.detectSupport(language);
+        if (!support.supported()) {
+            JOptionPane.showMessageDialog(
+                    mainFrame,
+                    support.message(),
+                    "Execution unavailable",
+                    JOptionPane.WARNING_MESSAGE);
+            updateExecutionAvailability();
+            return;
+        }
+
+        List<CodeExecutionService.TestCaseSpec> testCases = SampleTestCaseCollector.collect(copyPayloads);
+        if (testCases.isEmpty()) {
+            JOptionPane.showMessageDialog(
+                    mainFrame,
+                    "No sample test cases were found for this problem.",
+                    "Nothing to run",
+                    JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        String sourceCode = codeEditor.getText();
+        runButton.setEnabled(false);
+        runButton.setToolTipText("Running sample test cases...");
+
+        SwingWorker<CodeExecutionService.ExecutionReport, Void> worker = new SwingWorker<>() {
+            @Override
+            protected CodeExecutionService.ExecutionReport doInBackground() throws Exception {
+                return codeExecutionService.runSampleTests(language, sourceCode, testCases);
+            }
+
+            @Override
+            protected void done() {
+                updateExecutionAvailability();
+                try {
+                    showExecutionResultsDialog(language, get());
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(
+                            mainFrame,
+                            "Failed to run the selected language locally.\n\n" + ex.getMessage(),
+                            "Execution error",
+                            JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        };
+        worker.execute();
+    }
+
+    private void showExecutionResultsDialog(String language, CodeExecutionService.ExecutionReport report) {
+        if (!report.success()) {
+            showCompilationErrorDialog(language, report.failureMessage());
+            return;
+        }
+
+        JDialog dialog = new JDialog(mainFrame, "Execution Results", true);
+        dialog.setLayout(new BorderLayout());
+        dialog.getContentPane().setBackground(new Color(30, 31, 34));
+
+        JPanel header = new JPanel(new BorderLayout());
+        header.setBackground(new Color(43, 45, 48));
+        header.setBorder(BorderFactory.createEmptyBorder(12, 14, 12, 14));
+
+        JLabel title = new JLabel("Local execution for " + language);
+        title.setForeground(new Color(236, 239, 244));
+        title.setFont(title.getFont().deriveFont(Font.BOLD, 15f));
+        header.add(title, BorderLayout.NORTH);
+
+        JLabel summary = new JLabel(ExecutionResultFormatter.summary(report));
+        summary.setForeground(new Color(169, 176, 188));
+        header.add(summary, BorderLayout.SOUTH);
+        dialog.add(header, BorderLayout.NORTH);
+
+        JEditorPane pane = new JEditorPane();
+        pane.setEditable(false);
+        pane.setContentType("text/html");
+        pane.setText(ExecutionResultFormatter.buildResultsHtml(language, report));
+        pane.setCaretPosition(0);
+        pane.setBorder(BorderFactory.createEmptyBorder());
+
+        JScrollPane scrollPane = new JScrollPane(pane);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder());
+        scrollPane.getViewport().setBackground(new Color(30, 31, 34));
+        dialog.add(scrollPane, BorderLayout.CENTER);
+
+        dialog.setSize(860, 620);
+        dialog.setLocationRelativeTo(mainFrame);
+        dialog.setVisible(true);
+    }
+
+    private void showCompilationErrorDialog(String language, String failureMessage) {
+        JDialog dialog = new JDialog(mainFrame, "Execution Results", true);
+        dialog.setLayout(new BorderLayout());
+        dialog.getContentPane().setBackground(new Color(30, 31, 34));
+
+        JPanel header = new JPanel(new BorderLayout());
+        header.setBackground(new Color(43, 45, 48));
+        header.setBorder(BorderFactory.createEmptyBorder(12, 14, 12, 14));
+
+        JLabel title = new JLabel("Local execution for " + language);
+        title.setForeground(new Color(236, 239, 244));
+        title.setFont(title.getFont().deriveFont(Font.BOLD, 15f));
+        header.add(title, BorderLayout.NORTH);
+
+        JLabel summary = new JLabel("Compilation failed.");
+        summary.setForeground(new Color(246, 86, 86));
+        header.add(summary, BorderLayout.SOUTH);
+        dialog.add(header, BorderLayout.NORTH);
+
+        JTextArea area = new JTextArea();
+        area.setEditable(false);
+        area.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
+        area.setBackground(new Color(30, 31, 34));
+        area.setForeground(new Color(223, 225, 229));
+        area.setCaretColor(new Color(223, 225, 229));
+        area.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        area.setText(failureMessage == null ? "Compilation failed." : failureMessage);
+        area.setCaretPosition(0);
+
+        JScrollPane scrollPane = new JScrollPane(area);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder());
+        scrollPane.getViewport().setBackground(new Color(30, 31, 34));
+        dialog.add(scrollPane, BorderLayout.CENTER);
+
+        dialog.setSize(860, 620);
+        dialog.setLocationRelativeTo(mainFrame);
+        dialog.setVisible(true);
     }
 
     private void applyRunButtonIcons() {
