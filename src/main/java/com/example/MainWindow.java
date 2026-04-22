@@ -1034,23 +1034,16 @@ public class MainWindow {
             return "import sys\n"
                 + "\n"
                 + "def main():\n"
-                + "    data = sys.stdin.buffer.read().decode()\n"
-                + "\n"
                 + "    # code goes here...\n"
                 + "\n"
-                + "    sys.stdout.write(\"\")\n"
-                    + "\n"
-                    + "if __name__ == \"__main__\":\n"
-                    + "    main()\n";
+                + "if __name__ == \"__main__\":\n"
+                + "    main()\n";
         }
         if (language.startsWith("GNU G++") || language.startsWith("GNU C11") || language.startsWith("GNU G11")) {
             return "#include <bits/stdc++.h>\n"
                     + "using namespace std;\n"
                     + "\n"
                     + "int main() {\n"
-                + "    ios::sync_with_stdio(false);\n"
-                + "    cin.tie(nullptr);\n"
-                + "\n"
                     + "    // code goes here...\n"
                     + "    return 0;\n"
                     + "}\n";
@@ -1060,15 +1053,13 @@ public class MainWindow {
                     + "import java.util.*;\n"
                     + "\n"
                     + "public class Main {\n"
+                    + "\n"
                     + "    public static void main(String[] args) throws Exception {\n"
-                + "        Scanner sc = new Scanner(System.in);\n"
-                + "        StringBuilder out = new StringBuilder();\n"
-                + "\n"
+                    + "        Scanner sc = new Scanner(System.in);\n"
                     + "        // code goes here...\n"
-                + "\n"
-                + "        System.out.print(out);\n"
-                + "        sc.close();\n"
+                    + "        sc.close();\n"
                     + "    }\n"
+                    + "\n"
                     + "}\n";
         }
         if (language.startsWith("Kotlin")) {
