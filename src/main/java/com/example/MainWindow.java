@@ -35,6 +35,7 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.Desktop;
 import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.GridBagConstraints;
@@ -49,6 +50,13 @@ import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -65,6 +73,10 @@ public class MainWindow {
     private static final String DEFAULT_LANGUAGE = "Python 3";
     private static final String SETTINGS_DIR_NAME = "CompetitiveProgrammingAlly";
     private static final String SETTINGS_FILE_NAME = "settings.properties";
+    private static final String CURRENT_APP_VERSION = "0.1.0";
+    private static final String VERSION_SOURCE_URL = "https://pastebin.com/raw/uzU8MUWs";
+    private static final String RELEASES_URL = "https://github.com/0xPolybit/cp-ally-ide/releases";
+    private static final Pattern SEMVER_PATTERN = Pattern.compile("\\b(\\d+\\.\\d+\\.\\d+)\\b");
     private static final int LEFT_FIELD_WIDTH = 280;
     private static final int LEFT_FIELD_HEIGHT = 32;
     private static final Color ACCENT = new Color(55, 247, 19);
@@ -138,6 +150,102 @@ public class MainWindow {
 
         if (initialFocusButton != null) {
             SwingUtilities.invokeLater(() -> initialFocusButton.requestFocusInWindow());
+        }
+
+        checkForAppUpdatesAsync();
+    }
+
+    private void checkForAppUpdatesAsync() {
+        SwingWorker<String, Void> worker = new SwingWorker<>() {
+            @Override
+            protected String doInBackground() {
+                return fetchLatestVersion();
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    String latestVersion = get();
+                    if (latestVersion == null || latestVersion.isBlank()) {
+                        return;
+                    }
+                    if (!CURRENT_APP_VERSION.equals(latestVersion)) {
+                        showUpdateAvailableDialog(latestVersion);
+                    }
+                } catch (Exception ignored) {
+                    // Ignore update-check failures to avoid interrupting normal app usage.
+                }
+            }
+        };
+        worker.execute();
+    }
+
+    private String fetchLatestVersion() {
+        HttpURLConnection connection = null;
+        try {
+            URL url = new URL(VERSION_SOURCE_URL);
+            connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("GET");
+            connection.setConnectTimeout(5000);
+            connection.setReadTimeout(5000);
+            connection.setRequestProperty("User-Agent", "cp-ally-ide");
+
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
+                StringBuilder content = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    content.append(line).append('\n');
+                }
+                return extractVersion(content.toString());
+            }
+        } catch (IOException ignored) {
+            return "";
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    private String extractVersion(String rawText) {
+        if (rawText == null || rawText.isBlank()) {
+            return "";
+        }
+
+        Matcher matcher = SEMVER_PATTERN.matcher(rawText);
+        if (matcher.find()) {
+            return matcher.group(1).trim();
+        }
+        return "";
+    }
+
+    private void showUpdateAvailableDialog(String latestVersion) {
+        Object[] options = {"Open Releases", "Later"};
+        int selection = JOptionPane.showOptionDialog(
+                mainFrame,
+                "A new version of Competitive Programming Ally is available.\n\n"
+                        + "Current version: " + CURRENT_APP_VERSION + "\n"
+                        + "Latest version: " + latestVersion,
+                "Update Available",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.INFORMATION_MESSAGE,
+                null,
+                options,
+                options[0]);
+
+        if (selection == JOptionPane.YES_OPTION) {
+            openReleasesPage();
+        }
+    }
+
+    private void openReleasesPage() {
+        try {
+            if (!Desktop.isDesktopSupported()) {
+                return;
+            }
+            Desktop.getDesktop().browse(URI.create(RELEASES_URL));
+        } catch (Exception ignored) {
+            // Silently ignore browser launch issues.
         }
     }
 
@@ -546,14 +654,22 @@ public class MainWindow {
 
     private void onFetchProblemClicked() {
         String rawCode = problemCodeInput.getText() != null ? problemCodeInput.getText().trim() : "";
+        fetchProblemByCode(rawCode, true);
+    }
+
+    private void fetchProblemByCode(String rawCode, boolean showWarnings) {
         if (rawCode.isEmpty() || PROBLEM_PLACEHOLDER.equals(rawCode)) {
-            showFetchWarning("Enter a problem code, for example 2208A.");
+            if (showWarnings) {
+                showFetchWarning("Enter a problem code, for example 2208A.");
+            }
             return;
         }
 
         Matcher matcher = PROBLEM_CODE_PATTERN.matcher(rawCode);
         if (!matcher.matches()) {
-            showFetchWarning("Invalid problem code. Use format like 2208A.");
+            if (showWarnings) {
+                showFetchWarning("Invalid problem code. Use format like 2208A.");
+            }
             return;
         }
 
@@ -585,6 +701,35 @@ public class MainWindow {
             }
         };
         worker.execute();
+    }
+
+    private void promptForDifferentProblem() {
+        String initialValue = "";
+        if (problemCodeInput != null && problemCodeInput.getText() != null) {
+            String current = problemCodeInput.getText().trim();
+            if (!current.isEmpty() && !PROBLEM_PLACEHOLDER.equals(current)) {
+                initialValue = current;
+            }
+        }
+
+        String entered = (String) JOptionPane.showInputDialog(
+                mainFrame,
+                "Enter problem code (e.g. 2208A):",
+                "Choose Different Problem",
+                JOptionPane.PLAIN_MESSAGE,
+                null,
+                null,
+                initialValue);
+
+        if (entered == null) {
+            return;
+        }
+
+        String rawCode = entered.trim();
+        if (problemCodeInput != null) {
+            problemCodeInput.setText(rawCode.isEmpty() ? PROBLEM_PLACEHOLDER : rawCode);
+        }
+        fetchProblemByCode(rawCode, true);
     }
 
     private void showFetchWarning(String message) {
@@ -656,8 +801,23 @@ public class MainWindow {
         scrollPane.getViewport().setBackground(new Color(30, 31, 34));
         scrollPane.getVerticalScrollBar().setUnitIncrement(14);
 
+        JButton chooseDifferentProblemButton = new JButton("Choose Different Problem");
+        chooseDifferentProblemButton.setFocusable(false);
+        chooseDifferentProblemButton.setRequestFocusEnabled(false);
+        chooseDifferentProblemButton.addActionListener(e -> promptForDifferentProblem());
+
+        JPanel topBar = new JPanel(new BorderLayout());
+        topBar.setOpaque(false);
+        topBar.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
+        topBar.add(chooseDifferentProblemButton, BorderLayout.WEST);
+
+        JPanel statementPanel = new JPanel(new BorderLayout());
+        statementPanel.setOpaque(false);
+        statementPanel.add(topBar, BorderLayout.NORTH);
+        statementPanel.add(scrollPane, BorderLayout.CENTER);
+
         leftPanelContainer.removeAll();
-        leftPanelContainer.add(scrollPane, BorderLayout.CENTER);
+        leftPanelContainer.add(statementPanel, BorderLayout.CENTER);
         leftPanelContainer.revalidate();
         leftPanelContainer.repaint();
 
