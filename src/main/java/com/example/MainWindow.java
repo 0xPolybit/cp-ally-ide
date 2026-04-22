@@ -34,9 +34,11 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Font;
+import java.awt.Graphics2D;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
-import java.awt.Image;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.FocusAdapter;
@@ -65,6 +67,7 @@ public class MainWindow {
     private static final int MIN_WINDOW_HEIGHT = 680;
     private static final int MIN_LEFT_PANEL_WIDTH = 280;
     private static final int MIN_RIGHT_PANEL_WIDTH = 420;
+    private static final int RUN_ICON_SIZE = 22;
 
     private final SettingsRepository settingsRepository = new SettingsRepository(
             SETTINGS_DIR_NAME,
@@ -689,6 +692,7 @@ public class MainWindow {
         if (hover != null) {
             runButton.setRolloverIcon(hover);
         }
+        runButton.setPreferredSize(new Dimension(RUN_ICON_SIZE + 14, RUN_ICON_SIZE + 10));
     }
 
     private ImageIcon loadToolbarIcon(String fileName) {
@@ -703,11 +707,53 @@ public class MainWindow {
                 return null;
             }
 
-            Image scaled = raw.getImage().getScaledInstance(18, 18, Image.SCALE_SMOOTH);
-            return new ImageIcon(scaled);
+            BufferedImage source = new BufferedImage(raw.getIconWidth(), raw.getIconHeight(), BufferedImage.TYPE_INT_ARGB_PRE);
+            Graphics2D sourceGraphics = source.createGraphics();
+            sourceGraphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            sourceGraphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            sourceGraphics.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
+            sourceGraphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            sourceGraphics.drawImage(raw.getImage(), 0, 0, null);
+            sourceGraphics.dispose();
+
+            return new ImageIcon(scaleDownSmooth(source, RUN_ICON_SIZE, RUN_ICON_SIZE));
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private BufferedImage scaleDownSmooth(BufferedImage source, int targetWidth, int targetHeight) {
+        int w = source.getWidth();
+        int h = source.getHeight();
+        BufferedImage current = source;
+
+        while (w / 2 >= targetWidth && h / 2 >= targetHeight) {
+            w = Math.max(targetWidth, w / 2);
+            h = Math.max(targetHeight, h / 2);
+            BufferedImage intermediate = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB_PRE);
+            Graphics2D g2 = intermediate.createGraphics();
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
+            g2.drawImage(current, 0, 0, w, h, null);
+            g2.dispose();
+            current = intermediate;
+        }
+
+        if (w != targetWidth || h != targetHeight) {
+            BufferedImage finalImage = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_ARGB_PRE);
+            Graphics2D g2 = finalImage.createGraphics();
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
+            g2.drawImage(current, 0, 0, targetWidth, targetHeight, null);
+            g2.dispose();
+            return finalImage;
+        }
+
+        return current;
     }
 
     private String resolveSyntaxStyle(String language) {
