@@ -59,7 +59,7 @@ class ProblemHtmlRenderer {
                 pre { background:#24262a; color:#d9dde4; border:1px solid #43474c; border-radius:6px; padding:10px; white-space:pre-wrap; }
                 p { color:#d3d7de; line-height:1.45; }
                 .tex-font-style-bf { font-weight:bold; }
-                .latex-warning-box { background:#3d4949; border-left:4px solid #f7d71a; border-radius:4px; padding:12px; margin:12px 0; color:#e8ebf0; font-size:13px; line-height:1.5; }
+                .latex-warning-box { background:#3d4949; border-left:4px solid #f7d71a; border-radius:4px; padding:12px; margin:12px 0; color:#e8ebf0; font-size:inherit; line-height:1.5; }
                 </style>
                 """;
 

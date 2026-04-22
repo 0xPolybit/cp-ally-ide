@@ -45,6 +45,8 @@ import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.nio.file.Files;
@@ -83,6 +85,7 @@ public class MainWindow {
     private JButton initialFocusButton;
     private JComboBox<String> languageDropdown;
     private JLabel runtimeSupportLabel;
+    private JLabel executionStateLabel;
     private AppSettings appSettings;
     private JFrame mainFrame;
     private JTextField problemCodeInput;
@@ -351,6 +354,12 @@ public class MainWindow {
         editorToolbar.add(runtimeSupportLabel);
         editorToolbar.add(Box.createHorizontalStrut(10));
 
+        executionStateLabel = new JLabel("Status: Idle");
+        executionStateLabel.setForeground(new Color(169, 176, 188));
+        executionStateLabel.setFont(executionStateLabel.getFont().deriveFont(Font.PLAIN, 12f));
+        editorToolbar.add(executionStateLabel);
+        editorToolbar.add(Box.createHorizontalStrut(10));
+
         languageDropdown = new JComboBox<>(new String[] {
                 "Python 3",
                 "GNU G++17 7.3.0",
@@ -399,6 +408,7 @@ public class MainWindow {
         codeEditor.setFocusable(false);
         codeEditor.setRequestFocusEnabled(false);
         applyEclipseEditorTheme(codeEditor);
+        installEditorAutoPairs(codeEditor);
         codeEditor.setText("Select a problem to get started...");
         codeEditor.setCaretPosition(0);
 
@@ -743,6 +753,7 @@ public class MainWindow {
         String sourceCode = codeEditor.getText();
         runButton.setEnabled(false);
         runButton.setToolTipText("Running sample test cases...");
+        setExecutionRunningState(true);
 
         SwingWorker<CodeExecutionService.ExecutionReport, Void> worker = new SwingWorker<>() {
             @Override
@@ -752,6 +763,7 @@ public class MainWindow {
 
             @Override
             protected void done() {
+                setExecutionRunningState(false);
                 updateExecutionAvailability();
                 try {
                     showExecutionResultsDialog(language, get());
@@ -765,6 +777,54 @@ public class MainWindow {
             }
         };
         worker.execute();
+    }
+
+    private void setExecutionRunningState(boolean running) {
+        if (executionStateLabel == null) {
+            return;
+        }
+
+        if (running) {
+            executionStateLabel.setText("Status: Running");
+            executionStateLabel.setForeground(new Color(247, 215, 26));
+        } else {
+            executionStateLabel.setText("Status: Idle");
+            executionStateLabel.setForeground(new Color(169, 176, 188));
+        }
+    }
+
+    private void installEditorAutoPairs(RSyntaxTextArea editor) {
+        editor.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyTyped(KeyEvent e) {
+                if (!editor.isEditable()) {
+                    return;
+                }
+
+                Character closing = switch (e.getKeyChar()) {
+                    case '(' -> ')';
+                    case '[' -> ']';
+                    case '{' -> '}';
+                    default -> null;
+                };
+
+                if (closing == null) {
+                    return;
+                }
+
+                int caret = editor.getCaretPosition();
+                if (caret < 0 || caret > editor.getDocument().getLength()) {
+                    return;
+                }
+
+                try {
+                    editor.getDocument().insertString(caret, String.valueOf(closing), null);
+                    editor.setCaretPosition(caret);
+                } catch (Exception ignored) {
+                    // Keep default typing behavior if insertion fails.
+                }
+            }
+        });
     }
 
     private void showExecutionResultsDialog(String language, CodeExecutionService.ExecutionReport report) {
@@ -971,8 +1031,14 @@ public class MainWindow {
 
     private String boilerplateFor(String language) {
         if (language.startsWith("Python") || language.startsWith("PyPy")) {
-            return "def main():\n"
-                    + "    # code goes here...\n"
+            return "import sys\n"
+                + "\n"
+                + "def main():\n"
+                + "    data = sys.stdin.buffer.read().decode()\n"
+                + "\n"
+                + "    # code goes here...\n"
+                + "\n"
+                + "    sys.stdout.write(\"\")\n"
                     + "\n"
                     + "if __name__ == \"__main__\":\n"
                     + "    main()\n";
@@ -982,6 +1048,9 @@ public class MainWindow {
                     + "using namespace std;\n"
                     + "\n"
                     + "int main() {\n"
+                + "    ios::sync_with_stdio(false);\n"
+                + "    cin.tie(nullptr);\n"
+                + "\n"
                     + "    // code goes here...\n"
                     + "    return 0;\n"
                     + "}\n";
@@ -992,7 +1061,13 @@ public class MainWindow {
                     + "\n"
                     + "public class Main {\n"
                     + "    public static void main(String[] args) throws Exception {\n"
+                + "        Scanner sc = new Scanner(System.in);\n"
+                + "        StringBuilder out = new StringBuilder();\n"
+                + "\n"
                     + "        // code goes here...\n"
+                + "\n"
+                + "        System.out.print(out);\n"
+                + "        sc.close();\n"
                     + "    }\n"
                     + "}\n";
         }
