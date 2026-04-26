@@ -77,15 +77,19 @@ class CodeExecutionService {
             int index = 1;
             for (TestCaseSpec testCase : testCases) {
                 ProcessResult runResult = runProcess(plan.runCommand().create(sourceFile, workDir), workDir, testCase.input(), RUN_TIMEOUT_MILLIS);
-                String expected = normalizeOutput(testCase.expectedOutput());
                 String actual = normalizeOutput(runResult.stdout());
-                boolean passed = !runResult.timedOut() && runResult.exitCode() == 0 && expected.equals(actual);
+                boolean hasExpectedOutput = testCase.expectedOutputProvided() && testCase.expectedOutput() != null && !testCase.expectedOutput().isBlank();
+                String expected = normalizeOutput(testCase.expectedOutput());
+                boolean passed = !runResult.timedOut() && runResult.exitCode() == 0 && hasExpectedOutput && expected.equals(actual);
+                boolean unknown = !runResult.timedOut() && runResult.exitCode() == 0 && !hasExpectedOutput;
 
                 String details;
                 if (runResult.timedOut()) {
                     details = "Time limit exceeded.";
                 } else if (runResult.exitCode() != 0) {
                     details = joinNonBlank("Runtime error.", runResult.stderr());
+                } else if (unknown) {
+                    details = "Expected output not provided.";
                 } else if (passed) {
                     details = "Output matched expected result.";
                 } else {
@@ -98,6 +102,7 @@ class CodeExecutionService {
                         index++,
                         passed,
                         runResult.timedOut(),
+                        unknown,
                         runResult.durationMillis(),
                         runResult.peakMemoryKb(),
                     testCase.input(),
@@ -492,10 +497,10 @@ class CodeExecutionService {
     record LanguageSupport(boolean supported, String message) {
     }
 
-    record TestCaseSpec(String input, String expectedOutput) {
+    record TestCaseSpec(String input, String expectedOutput, boolean custom, boolean expectedOutputProvided) {
     }
 
-    record TestCaseResult(int index, boolean passed, boolean timedOut, long durationMillis, long peakMemoryKb,
+    record TestCaseResult(int index, boolean passed, boolean timedOut, boolean unknown, long durationMillis, long peakMemoryKb,
                           String input, String expectedOutput, String actualOutput, String stderrOutput, String details) {
     }
 

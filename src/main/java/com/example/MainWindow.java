@@ -45,6 +45,7 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
+import java.util.ArrayList;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
 import java.awt.event.KeyAdapter;
@@ -109,6 +110,8 @@ public class MainWindow {
     private JPanel leftPanelContainer;
     private JPanel problemEntryPanel;
     private final Map<String, String> copyPayloads = new HashMap<>();
+    private final List<CodeExecutionService.TestCaseSpec> customTestCases = new ArrayList<>();
+    private JTabbedPane testCasesTabs;
     private JSplitPane contentSplitPane;
     private boolean problemStatementLoaded;
 
@@ -779,6 +782,7 @@ public class MainWindow {
     private void showCodeforcesProblemView(RenderedProblemView statementOnly, RenderedProblemView full) {
         copyPayloads.clear();
         copyPayloads.putAll(full.copyPayloads());
+        customTestCases.clear();
 
         // Top panel: Statement without test cases
         JEditorPane pane = new JEditorPane();
@@ -830,11 +834,10 @@ public class MainWindow {
         statementPanel.add(scrollPane, BorderLayout.CENTER);
 
         // Bottom panel: Test cases in tabs
-        List<CodeExecutionService.TestCaseSpec> testCases = SampleTestCaseCollector.collect(copyPayloads);
-        JTabbedPane testCasesTabs = createTestCasesTabbedPane(testCases);
+        JPanel testCasesPanel = createTestCasesSection();
 
         // Split pane: statement on top, test cases on bottom
-        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, statementPanel, testCasesTabs);
+        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, statementPanel, testCasesPanel);
         splitPane.setResizeWeight(0.5);
         
         int minTestCaseHeight = MIN_WINDOW_HEIGHT / 3;
@@ -849,25 +852,99 @@ public class MainWindow {
         enableEditorForProblem();
     }
 
-    private JTabbedPane createTestCasesTabbedPane(List<CodeExecutionService.TestCaseSpec> testCases) {
-        JTabbedPane tabs = new JTabbedPane();
-        tabs.setBackground(new Color(43, 45, 48));
-        tabs.setForeground(new Color(223, 225, 229));
+    private JPanel createTestCasesSection() {
+        testCasesTabs = new JTabbedPane();
+        testCasesTabs.setBackground(new Color(43, 45, 48));
+        testCasesTabs.setForeground(new Color(223, 225, 229));
 
-        if (testCases.isEmpty()) {
+        JButton addTestCaseButton = new JButton("Add Test Case");
+        addTestCaseButton.setFocusable(false);
+        addTestCaseButton.setRequestFocusEnabled(false);
+        addTestCaseButton.setPreferredSize(new Dimension(160, LEFT_FIELD_HEIGHT));
+        addTestCaseButton.addActionListener(e -> showAddCustomTestCaseDialog());
+
+        JLabel sectionLabel = new JLabel("Test Cases");
+        sectionLabel.setForeground(new Color(223, 225, 229));
+        sectionLabel.setFont(sectionLabel.getFont().deriveFont(Font.BOLD));
+
+        JPanel topBar = new JPanel(new BorderLayout());
+        topBar.setOpaque(false);
+        topBar.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
+        topBar.add(sectionLabel, BorderLayout.WEST);
+        topBar.add(addTestCaseButton, BorderLayout.EAST);
+
+        JPanel sectionPanel = new JPanel(new BorderLayout());
+        sectionPanel.setOpaque(false);
+        sectionPanel.add(topBar, BorderLayout.NORTH);
+        sectionPanel.add(testCasesTabs, BorderLayout.CENTER);
+
+        refreshTestCasesTabs(-1);
+        return sectionPanel;
+    }
+
+    private void refreshTestCasesTabs(int selectedIndex) {
+        if (testCasesTabs == null) {
+            return;
+        }
+
+        List<CodeExecutionService.TestCaseSpec> sampleTestCases = SampleTestCaseCollector.collect(copyPayloads);
+        testCasesTabs.removeAll();
+
+        if (sampleTestCases.isEmpty() && customTestCases.isEmpty()) {
             JPanel emptyPanel = new JPanel();
             emptyPanel.setBackground(new Color(30, 31, 34));
-            tabs.addTab("No Test Cases", emptyPanel);
-            return tabs;
+            testCasesTabs.addTab("No Test Cases", emptyPanel);
+            if (testCasesTabs.getTabCount() > 0) {
+                testCasesTabs.setSelectedIndex(0);
+            }
+            return;
         }
 
-        for (int i = 0; i < testCases.size(); i++) {
-            CodeExecutionService.TestCaseSpec tc = testCases.get(i);
+        for (int i = 0; i < sampleTestCases.size(); i++) {
+            CodeExecutionService.TestCaseSpec tc = sampleTestCases.get(i);
             JPanel tabPanel = createTestCasePanel(tc);
-            tabs.addTab("Test " + (i + 1), tabPanel);
+            testCasesTabs.addTab("Test " + (i + 1), tabPanel);
         }
 
-        return tabs;
+        for (int i = 0; i < customTestCases.size(); i++) {
+            CodeExecutionService.TestCaseSpec tc = customTestCases.get(i);
+            int customIndex = i;
+            JPanel tabPanel = createTestCasePanel(tc);
+            testCasesTabs.addTab("Custom Test Case " + (i + 1), tabPanel);
+            testCasesTabs.setTabComponentAt(
+                    sampleTestCases.size() + i,
+                    createClosableTabHeader("Custom Test Case " + (i + 1), () -> {
+                        if (customIndex >= 0 && customIndex < customTestCases.size()) {
+                            customTestCases.remove(customIndex);
+                            refreshTestCasesTabs(Math.max(0, sampleTestCases.size() + customIndex - 1));
+                        }
+                    }));
+        }
+
+        if (selectedIndex >= 0 && selectedIndex < testCasesTabs.getTabCount()) {
+            testCasesTabs.setSelectedIndex(selectedIndex);
+        } else if (testCasesTabs.getTabCount() > 0) {
+            testCasesTabs.setSelectedIndex(0);
+        }
+    }
+
+    private JPanel createClosableTabHeader(String title, Runnable onClose) {
+        JPanel header = new JPanel(new BorderLayout(6, 0));
+        header.setOpaque(false);
+
+        JLabel label = new JLabel(title);
+        label.setForeground(new Color(223, 225, 229));
+
+        JButton closeButton = new JButton("x");
+        closeButton.setFocusable(false);
+        closeButton.setRequestFocusEnabled(false);
+        closeButton.setBorder(BorderFactory.createEmptyBorder(0, 4, 0, 4));
+        closeButton.setMargin(new java.awt.Insets(0, 4, 0, 4));
+        closeButton.addActionListener(e -> onClose.run());
+
+        header.add(label, BorderLayout.CENTER);
+        header.add(closeButton, BorderLayout.EAST);
+        return header;
     }
 
     private JPanel createTestCasePanel(CodeExecutionService.TestCaseSpec testCase) {
@@ -884,7 +961,8 @@ public class MainWindow {
         splitPane.setLeftComponent(inputPanel);
 
         // Expected output section
-        JPanel outputPanel = createTestDataPanel("Expected Output", testCase.expectedOutput());
+        String expectedOutput = testCase.expectedOutputProvided() ? testCase.expectedOutput() : "Not provided";
+        JPanel outputPanel = createTestDataPanel("Expected Output", expectedOutput);
         splitPane.setRightComponent(outputPanel);
 
         panel.add(splitPane, BorderLayout.CENTER);
@@ -919,6 +997,94 @@ public class MainWindow {
         panel.add(scrollPane, BorderLayout.CENTER);
 
         return panel;
+    }
+
+    private void showAddCustomTestCaseDialog() {
+        if (mainFrame == null) {
+            return;
+        }
+
+        JDialog dialog = new JDialog(mainFrame, "Add Test Case", true);
+        dialog.setLayout(new BorderLayout());
+        dialog.getContentPane().setBackground(new Color(30, 31, 34));
+
+        JPanel content = new JPanel();
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.setBackground(new Color(30, 31, 34));
+        content.setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
+
+        JLabel inputLabel = new JLabel("Input (required)");
+        inputLabel.setForeground(new Color(223, 225, 229));
+        content.add(inputLabel);
+        content.add(Box.createVerticalStrut(6));
+
+        JTextArea inputArea = new JTextArea(8, 40);
+        inputArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        inputArea.setBackground(new Color(24, 26, 29));
+        inputArea.setForeground(new Color(223, 225, 229));
+        inputArea.setCaretColor(new Color(223, 225, 229));
+        JScrollPane inputScroll = new JScrollPane(inputArea);
+        inputScroll.setBorder(BorderFactory.createLineBorder(new Color(67, 71, 76)));
+        inputScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
+        content.add(inputScroll);
+        content.add(Box.createVerticalStrut(12));
+
+        JLabel outputLabel = new JLabel("Expected Output (optional)");
+        outputLabel.setForeground(new Color(223, 225, 229));
+        content.add(outputLabel);
+        content.add(Box.createVerticalStrut(6));
+
+        JTextArea outputArea = new JTextArea(8, 40);
+        outputArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        outputArea.setBackground(new Color(24, 26, 29));
+        outputArea.setForeground(new Color(223, 225, 229));
+        outputArea.setCaretColor(new Color(223, 225, 229));
+        JScrollPane outputScroll = new JScrollPane(outputArea);
+        outputScroll.setBorder(BorderFactory.createLineBorder(new Color(67, 71, 76)));
+        outputScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
+        content.add(outputScroll);
+
+        JPanel actions = new JPanel(new BorderLayout());
+        actions.setOpaque(false);
+        JButton cancelButton = new JButton("Cancel");
+        cancelButton.setFocusable(false);
+        cancelButton.addActionListener(e -> dialog.dispose());
+        JButton saveButton = new JButton("Add");
+        saveButton.setFocusable(false);
+        saveButton.addActionListener(e -> {
+            String input = inputArea.getText();
+            if (input == null || input.isBlank()) {
+                JOptionPane.showMessageDialog(
+                        dialog,
+                        "Input is required.",
+                        "Missing Input",
+                        JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
+            String expectedOutput = outputArea.getText();
+            boolean expectedOutputProvided = expectedOutput != null && !expectedOutput.isBlank();
+            customTestCases.add(new CodeExecutionService.TestCaseSpec(
+                    input,
+                    expectedOutputProvided ? expectedOutput : "",
+                    true,
+                    expectedOutputProvided));
+            int selectedTab = SampleTestCaseCollector.collect(copyPayloads).size() + customTestCases.size() - 1;
+            refreshTestCasesTabs(selectedTab);
+            dialog.dispose();
+        });
+
+        JPanel buttonRow = new JPanel();
+        buttonRow.setOpaque(false);
+        buttonRow.add(cancelButton);
+        buttonRow.add(saveButton);
+        actions.add(buttonRow, BorderLayout.EAST);
+
+        dialog.add(content, BorderLayout.CENTER);
+        dialog.add(actions, BorderLayout.SOUTH);
+        dialog.setSize(640, 560);
+        dialog.setLocationRelativeTo(mainFrame);
+        dialog.setVisible(true);
     }
 
     private void copyToClipboard(String text) {
@@ -997,10 +1163,11 @@ public class MainWindow {
         }
 
         List<CodeExecutionService.TestCaseSpec> testCases = SampleTestCaseCollector.collect(copyPayloads);
+        testCases.addAll(customTestCases);
         if (testCases.isEmpty()) {
             JOptionPane.showMessageDialog(
                     mainFrame,
-                    "No sample test cases were found for this problem.",
+                    "No test cases were found for this problem.",
                     "Nothing to run",
                     JOptionPane.INFORMATION_MESSAGE);
             return;

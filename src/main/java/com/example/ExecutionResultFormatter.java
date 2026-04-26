@@ -8,8 +8,9 @@ final class ExecutionResultFormatter {
     static String summary(CodeExecutionService.ExecutionReport report) {
         long passed = report.results().stream().filter(CodeExecutionService.TestCaseResult::passed).count();
         long timedOut = report.results().stream().filter(CodeExecutionService.TestCaseResult::timedOut).count();
-        long failed = report.results().size() - passed - timedOut;
-        return passed + " passed, " + failed + " failed, " + timedOut + " timed out";
+        long unknown = report.results().stream().filter(CodeExecutionService.TestCaseResult::unknown).count();
+        long failed = report.results().size() - passed - timedOut - unknown;
+        return passed + " passed, " + failed + " failed, " + timedOut + " timed out, " + unknown + " unknown";
     }
 
     static String buildResultsHtml(String language, CodeExecutionService.ExecutionReport report) {
@@ -24,6 +25,7 @@ final class ExecutionResultFormatter {
                 .append(".status-pass { color:#61d66e; font-weight:700; }")
                 .append(".status-fail { color:#f65656; font-weight:700; }")
                 .append(".status-tle { color:#f7d71a; font-weight:700; }")
+                .append(".status-unknown { color:#f7d71a; font-weight:700; }")
                 .append(".section { color:#cfd4dd; margin-top:8px; margin-bottom:4px; font-weight:600; }")
                 .append("pre { margin:0; background:#24262a; color:#d9dde4; border:1px solid #43474c; border-radius:6px; padding:10px; white-space:pre-wrap; }")
                 .append("</style></head><body><div class='wrap'>");
@@ -32,8 +34,8 @@ final class ExecutionResultFormatter {
         html.append("<div class='summary'>").append(escape(summary(report))).append("</div>");
 
         for (CodeExecutionService.TestCaseResult result : report.results()) {
-            String statusClass = result.timedOut() ? "status-tle" : (result.passed() ? "status-pass" : "status-fail");
-            String statusText = result.timedOut() ? "TIME LIMIT EXCEEDED" : (result.passed() ? "PASSED" : "FAILED");
+            String statusClass = result.timedOut() ? "status-tle" : (result.unknown() ? "status-unknown" : (result.passed() ? "status-pass" : "status-fail"));
+            String statusText = result.timedOut() ? "TIME LIMIT EXCEEDED" : (result.unknown() ? "IDK BRUH" : (result.passed() ? "PASSED" : "FAILED"));
 
             html.append("<div class='case'>");
             html.append("<div><strong>Test Case ").append(result.index()).append("</strong></div>");
