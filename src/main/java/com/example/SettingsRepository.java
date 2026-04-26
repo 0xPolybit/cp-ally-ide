@@ -41,10 +41,11 @@ class SettingsRepository {
             int width = parseInt(properties.getProperty("window.width"), 1200);
             int height = parseInt(properties.getProperty("window.height"), 760);
             int divider = parseInt(properties.getProperty("window.dividerLocation"), 420);
+            int testCasesDivider = parseInt(properties.getProperty("window.testCasesDividerLocation"), 420);
             boolean maximized = Boolean.parseBoolean(properties.getProperty("window.maximized", "false"));
             String language = properties.getProperty("language.last", defaultLanguage);
 
-            return new AppSettings(x, y, width, height, divider, maximized, language);
+            return new AppSettings(x, y, width, height, divider, testCasesDivider, maximized, language);
         } catch (IOException e) {
             return AppSettings.defaults(defaultLanguage);
         }
@@ -60,6 +61,7 @@ class SettingsRepository {
             properties.setProperty("window.width", Integer.toString(settings.width()));
             properties.setProperty("window.height", Integer.toString(settings.height()));
             properties.setProperty("window.dividerLocation", Integer.toString(settings.dividerLocation()));
+            properties.setProperty("window.testCasesDividerLocation", Integer.toString(settings.testCasesDividerLocation()));
             properties.setProperty("window.maximized", Boolean.toString(settings.maximized()));
             properties.setProperty("language.last", settings.lastLanguage());
 
