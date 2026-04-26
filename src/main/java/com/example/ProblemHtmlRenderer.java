@@ -36,7 +36,7 @@ class ProblemHtmlRenderer {
 
     RenderedProblemView render(ProblemDetails details) {
         Map<String, String> copyPayloads = new HashMap<>();
-        String problemHtml = prepareProblemHtml(details.problemHtml(), copyPayloads);
+        String problemHtml = prepareProblemHtml(details.problemHtml(), copyPayloads, details.code());
         String css = """
                 <style>
                 body { background:#1e1f22; color:#dfe1e5; font-family:Segoe UI, Arial, sans-serif; margin:12px; }
@@ -45,7 +45,7 @@ class ProblemHtmlRenderer {
                 .metrics-row { margin-top:4px; margin-bottom:12px; }
                 .metrics-table { border-collapse:collapse; }
                 .metric-item { color:#b8bec8; white-space:nowrap; vertical-align:middle; line-height:18px; }
-                .metric-icon { width:14px; height:14px; vertical-align:middle; }
+                .metric-icon { width:16px; height:16px; vertical-align:middle; }
                 .latex-inline { vertical-align:-0.18em; }
                 .latex-inline-fallback { vertical-align:-0.08em; }
                 .section-title { font-weight:700; margin-top:12px; margin-bottom:6px; color:#e8ebf0; }
@@ -55,7 +55,7 @@ class ProblemHtmlRenderer {
                 .io-copy-cell { text-align:right; vertical-align:middle; width:20px; }
                 .io-label { line-height:18px; }
                 .copy-btn { text-decoration:none; border:none; outline:none; }
-                .copy-btn img { width:14px; height:14px; vertical-align:middle; opacity:0.92; border:none; }
+                .copy-btn img { width:16px; height:16px; vertical-align:middle; opacity:0.92; border:none; }
                 pre { background:#24262a; color:#d9dde4; border:1px solid #43474c; border-radius:6px; padding:10px; white-space:pre-wrap; }
                 p { color:#d3d7de; line-height:1.45; }
                 .tex-font-style-bf { font-weight:bold; }
@@ -68,29 +68,50 @@ class ProblemHtmlRenderer {
         return new RenderedProblemView(html, copyPayloads);
     }
 
-    private String prepareProblemHtml(String rawProblemHtml, Map<String, String> copyPayloads) {
+    private String prepareProblemHtml(String rawProblemHtml, Map<String, String> copyPayloads, String problemCode) {
         Document doc = Jsoup.parseBodyFragment(rawProblemHtml);
         Element root = doc.body().children().isEmpty() ? doc.body() : doc.body().child(0);
 
         renderLatexNodes(root);
         enhanceHeaderMetrics(root);
-        insertLatexWarningBox(root);
+        insertLatexWarningBox(root, problemCode);
         enhanceSampleTestsWithCopy(root, copyPayloads);
         normalizePreBlocks(root);
         return root.outerHtml();
     }
 
-    
-    private void insertLatexWarningBox(Element root) {
+    private void insertLatexWarningBox(Element root, String problemCode) {
         Element header = root.selectFirst("div.header");
         if (header == null) {
             return;
         }
+        String problemUrl = buildProblemUrl(problemCode);
         Element warningBox = new Element(Tag.valueOf("div"), "");
         warningBox.addClass("latex-warning-box");
-        warningBox.html("<strong>Note:</strong> LaTeX rendering is limited in this view. If mathematical formulas or complex content are not displaying correctly, please visit <a href='https://codeforces.com' style='color:#dfe1e5; text-decoration:underline;'>CodeForces.com</a> to view the problem statement with full support.");
+        warningBox.html("<strong>Note:</strong> LaTeX rendering is limited in this view. If mathematical formulas or complex content are not displaying correctly, please visit <a href='" + problemUrl + "' style='color:#dfe1e5; text-decoration:underline;'>CodeForces.com</a> to view the problem statement with full support.");
         header.after(warningBox);
     }
+
+    private String buildProblemUrl(String problemCode) {
+        if (problemCode == null || problemCode.isBlank()) {
+            return "https://codeforces.com";
+        }
+
+        String trimmed = problemCode.trim();
+        int split = 0;
+        while (split < trimmed.length() && Character.isDigit(trimmed.charAt(split))) {
+            split++;
+        }
+
+        if (split == 0 || split >= trimmed.length()) {
+            return "https://codeforces.com";
+        }
+
+        String contestId = trimmed.substring(0, split);
+        String index = trimmed.substring(split).toUpperCase();
+        return "https://codeforces.com/problemset/problem/" + contestId + "/" + index;
+    }
+
     private void renderLatexNodes(Element root) {
         for (Element script : root.select("script[type^=math/tex]")) {
             String type = script.attr("type");
@@ -321,7 +342,7 @@ class ProblemHtmlRenderer {
             tr.appendChild(spacer);
         }
 
-        String iconSrc = loadIconSource(iconFile, 14);
+        String iconSrc = loadIconSource(iconFile);
         Element cell = new Element(Tag.valueOf("td"), "");
         cell.attr("style", "vertical-align:middle;");
         Element item = new Element(Tag.valueOf("span"), "").addClass("metric-item");
@@ -339,7 +360,7 @@ class ProblemHtmlRenderer {
     }
 
     private void enhanceSampleTestsWithCopy(Element root, Map<String, String> copyPayloads) {
-        String copyIcon = loadIconSource("copy.png", 14);
+        String copyIcon = loadIconSource("copy.png");
         if (copyIcon.isBlank()) {
             return;
         }
@@ -493,42 +514,19 @@ class ProblemHtmlRenderer {
         return inputText + " / " + outputText;
     }
 
-    private String loadIconSource(String iconFile, int size) {
-        String cacheKey = iconFile + "@" + size;
-        if (iconSourceCache.containsKey(cacheKey)) {
-            return iconSourceCache.get(cacheKey);
+    private String loadIconSource(String iconFile) {
+        if (iconSourceCache.containsKey(iconFile)) {
+            return iconSourceCache.get(iconFile);
         }
 
-        try {
-            Path iconPath = Path.of("assets", iconFile);
-            if (!Files.exists(iconPath)) {
-                return "";
-            }
-
-            BufferedImage source = ImageIO.read(iconPath.toFile());
-            if (source == null) {
-                return "";
-            }
-
-            BufferedImage target = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
-            java.awt.Graphics2D g2 = target.createGraphics();
-            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-            g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-            g2.drawImage(source, 0, 0, size, size, null);
-            g2.dispose();
-
-            Path iconCacheDir = appDataDirectory.resolve("cache").resolve("icons");
-            Files.createDirectories(iconCacheDir);
-            String sanitized = iconFile.replace('.', '_');
-            Path scaledFile = iconCacheDir.resolve(sanitized + "_" + size + "px.png");
-            ImageIO.write(target, "png", scaledFile.toFile());
-
-            String src = scaledFile.toUri().toString();
-            iconSourceCache.put(cacheKey, src);
-            return src;
-        } catch (IOException e) {
+        Path iconPath = Path.of("assets", iconFile);
+        if (!Files.exists(iconPath)) {
             return "";
         }
+
+        String src = iconPath.toAbsolutePath().toUri().toString();
+        iconSourceCache.put(iconFile, src);
+        return src;
     }
 
     private String renderLatexToImageSource(String expression, boolean display) {

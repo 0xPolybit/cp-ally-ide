@@ -37,11 +37,8 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Desktop;
 import java.awt.Font;
-import java.awt.Graphics2D;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
-import java.awt.RenderingHints;
-import java.awt.image.BufferedImage;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.FocusAdapter;
@@ -84,7 +81,7 @@ public class MainWindow {
     private static final int MIN_WINDOW_HEIGHT = 680;
     private static final int MIN_LEFT_PANEL_WIDTH = 280;
     private static final int MIN_RIGHT_PANEL_WIDTH = 420;
-    private static final int RUN_ICON_SIZE = 22;
+    private static final int RUN_ICON_SIZE = 24;
 
     private final SettingsRepository settingsRepository = new SettingsRepository(
             SETTINGS_DIR_NAME,
@@ -234,16 +231,16 @@ public class MainWindow {
                 options[0]);
 
         if (selection == JOptionPane.YES_OPTION) {
-            openReleasesPage();
+            openExternalUrl(RELEASES_URL);
         }
     }
 
-    private void openReleasesPage() {
+    private void openExternalUrl(String url) {
         try {
-            if (!Desktop.isDesktopSupported()) {
+            if (!Desktop.isDesktopSupported() || url == null || url.isBlank()) {
                 return;
             }
-            Desktop.getDesktop().browse(URI.create(RELEASES_URL));
+            Desktop.getDesktop().browse(URI.create(url));
         } catch (Exception ignored) {
             // Silently ignore browser launch issues.
         }
@@ -787,12 +784,18 @@ public class MainWindow {
             if (event.getEventType() != HyperlinkEvent.EventType.ACTIVATED || event.getDescription() == null) {
                 return;
             }
-            if (event.getDescription().startsWith("copy:")) {
-                String key = event.getDescription().substring("copy:".length());
+            String description = event.getDescription();
+            if (description.startsWith("copy:")) {
+                String key = description.substring("copy:".length());
                 String payload = copyPayloads.get(key);
                 if (payload != null) {
                     copyToClipboard(payload);
                 }
+                return;
+            }
+
+            if (description.startsWith("http://") || description.startsWith("https://")) {
+                openExternalUrl(description);
             }
         });
 
@@ -1099,54 +1102,10 @@ public class MainWindow {
             if (raw.getIconWidth() <= 0 || raw.getIconHeight() <= 0) {
                 return null;
             }
-
-            BufferedImage source = new BufferedImage(raw.getIconWidth(), raw.getIconHeight(), BufferedImage.TYPE_INT_ARGB_PRE);
-            Graphics2D sourceGraphics = source.createGraphics();
-            sourceGraphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-            sourceGraphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            sourceGraphics.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
-            sourceGraphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-            sourceGraphics.drawImage(raw.getImage(), 0, 0, null);
-            sourceGraphics.dispose();
-
-            return new ImageIcon(scaleDownSmooth(source, RUN_ICON_SIZE, RUN_ICON_SIZE));
+            return raw;
         } catch (Exception ignored) {
             return null;
         }
-    }
-
-    private BufferedImage scaleDownSmooth(BufferedImage source, int targetWidth, int targetHeight) {
-        int w = source.getWidth();
-        int h = source.getHeight();
-        BufferedImage current = source;
-
-        while (w / 2 >= targetWidth && h / 2 >= targetHeight) {
-            w = Math.max(targetWidth, w / 2);
-            h = Math.max(targetHeight, h / 2);
-            BufferedImage intermediate = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB_PRE);
-            Graphics2D g2 = intermediate.createGraphics();
-            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-            g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
-            g2.drawImage(current, 0, 0, w, h, null);
-            g2.dispose();
-            current = intermediate;
-        }
-
-        if (w != targetWidth || h != targetHeight) {
-            BufferedImage finalImage = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_ARGB_PRE);
-            Graphics2D g2 = finalImage.createGraphics();
-            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-            g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
-            g2.drawImage(current, 0, 0, targetWidth, targetHeight, null);
-            g2.dispose();
-            return finalImage;
-        }
-
-        return current;
     }
 
     private String resolveSyntaxStyle(String language) {

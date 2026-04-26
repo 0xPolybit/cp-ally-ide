@@ -13,16 +13,43 @@ import java.net.UnknownHostException;
 
 class CodeforcesService {
 
+    private static final String[] PROBLEM_HOSTS = {
+            "https://codeforces.com",
+            "https://m1.codeforces.com",
+            "https://mirror.codeforces.com"
+    };
+
     ProblemDetails fetchProblemDetails(String contestId, String index) throws IOException {
-        String url = "https://codeforces.com/problemset/problem/" + contestId + "/" + index;
+        IOException lastError = null;
+        for (String host : PROBLEM_HOSTS) {
+            try {
+                return fetchProblemDetailsFromHost(host, contestId, index);
+            } catch (IOException ex) {
+                lastError = ex;
+            }
+        }
+
+        if (lastError != null) {
+            throw lastError;
+        }
+        throw new IOException("Could not fetch problem statement from available hosts");
+    }
+
+    private ProblemDetails fetchProblemDetailsFromHost(String host, String contestId, String index) throws IOException {
+        String url = host + "/problemset/problem/" + contestId + "/" + index;
         Document document = Jsoup.connect(url)
-                .userAgent("Mozilla/5.0")
+                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+                .referrer("https://codeforces.com/")
+                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                .header("Accept-Language", "en-US,en;q=0.9")
+                .followRedirects(true)
+                .maxBodySize(0)
                 .timeout(15000)
                 .get();
 
         Element statementRoot = document.selectFirst("div.problem-statement");
         if (statementRoot == null) {
-            throw new IOException("Missing problem statement");
+            throw new IOException("Missing problem statement from " + host);
         }
 
         Element titleElement = statementRoot.selectFirst("div.header div.title");
