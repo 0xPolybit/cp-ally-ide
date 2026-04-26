@@ -248,11 +248,14 @@ final class TestCasesPanel {
 
             String expectedOutput = outputArea.getText();
             boolean hasExpectedOutput = expectedOutput != null && !expectedOutput.isBlank();
+                String normalizedInput = ensureTrailingNewline(input);
+                String normalizedExpectedOutput = hasExpectedOutput ? ensureTrailingNewline(expectedOutput) : "";
             customTestCases.add(new CodeExecutionService.TestCaseSpec(
-                    input,
-                    hasExpectedOutput ? expectedOutput : "",
+                    normalizedInput,
+                    normalizedExpectedOutput,
                     true,
-                    hasExpectedOutput));
+                    hasExpectedOutput,
+                    "Custom Test Case " + (customTestCases.size() + 1)));
             refreshTabs(sampleTestCases.size() + customTestCases.size() - 1);
             dialog.dispose();
         });
@@ -268,5 +271,12 @@ final class TestCasesPanel {
         dialog.setSize(640, 560);
         dialog.setLocationRelativeTo(owner);
         dialog.setVisible(true);
+    }
+
+    private String ensureTrailingNewline(String value) {
+        if (value == null || value.isEmpty()) {
+            return "\n";
+        }
+        return value.endsWith("\n") ? value : value + "\n";
     }
 }

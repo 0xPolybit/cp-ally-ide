@@ -100,6 +100,7 @@ class CodeExecutionService {
 
                 results.add(new TestCaseResult(
                         index++,
+                    testCase.displayName(),
                         passed,
                         runResult.timedOut(),
                         unknown,
@@ -497,10 +498,10 @@ class CodeExecutionService {
     record LanguageSupport(boolean supported, String message) {
     }
 
-    record TestCaseSpec(String input, String expectedOutput, boolean custom, boolean expectedOutputProvided) {
+    record TestCaseSpec(String input, String expectedOutput, boolean custom, boolean expectedOutputProvided, String displayName) {
     }
 
-    record TestCaseResult(int index, boolean passed, boolean timedOut, boolean unknown, long durationMillis, long peakMemoryKb,
+    record TestCaseResult(int index, String displayName, boolean passed, boolean timedOut, boolean unknown, long durationMillis, long peakMemoryKb,
                           String input, String expectedOutput, String actualOutput, String stderrOutput, String details) {
     }
 

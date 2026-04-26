@@ -36,7 +36,7 @@ final class SampleTestCaseCollector {
         for (Map.Entry<Integer, String> inputEntry : inputs.entrySet()) {
             String expectedOutput = outputs.get(inputEntry.getKey());
             if (expectedOutput != null) {
-                testCases.add(new CodeExecutionService.TestCaseSpec(inputEntry.getValue(), expectedOutput, false, true));
+                testCases.add(new CodeExecutionService.TestCaseSpec(inputEntry.getValue(), expectedOutput, false, true, "Test Case " + inputEntry.getKey()));
             }
         }
 

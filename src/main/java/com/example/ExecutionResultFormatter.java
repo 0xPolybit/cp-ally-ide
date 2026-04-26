@@ -38,7 +38,7 @@ final class ExecutionResultFormatter {
             String statusText = result.timedOut() ? "TIME LIMIT EXCEEDED" : (result.unknown() ? "IDK BRUH" : (result.passed() ? "PASSED" : "FAILED"));
 
             html.append("<div class='case'>");
-            html.append("<div><strong>Test Case ").append(result.index()).append("</strong></div>");
+            html.append("<div><strong>").append(escape(result.displayName())).append("</strong></div>");
             html.append("<div class='meta'>Status: <span class='").append(statusClass).append("'>").append(statusText)
                     .append("</span> | Time: ").append(result.durationMillis()).append(" ms")
                     .append(" | Memory: ")
