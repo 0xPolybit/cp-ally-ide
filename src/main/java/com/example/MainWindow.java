@@ -24,6 +24,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
+import javax.swing.JTabbedPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.JToolBar;
@@ -37,8 +38,11 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Desktop;
 import java.awt.Font;
+import java.awt.Graphics2D;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.FocusAdapter;
@@ -495,6 +499,8 @@ public class MainWindow {
         }
         languageDropdown.setPreferredSize(new Dimension(190, LEFT_FIELD_HEIGHT));
         languageDropdown.setMaximumSize(new Dimension(220, LEFT_FIELD_HEIGHT));
+        languageDropdown.setBackground(new Color(50, 53, 58));
+        languageDropdown.setForeground(new Color(223, 225, 229));
         languageDropdown.setFocusable(false);
         languageDropdown.setRequestFocusEnabled(false);
         languageDropdown.addActionListener(e -> {
@@ -675,18 +681,20 @@ public class MainWindow {
 
         showLeftPanelLoading(contestId + index);
 
-        SwingWorker<RenderedProblemView, Void> worker = new SwingWorker<>() {
+        SwingWorker<RenderedProblemView[], Void> worker = new SwingWorker<>() {
             @Override
-            protected RenderedProblemView doInBackground() throws Exception {
+            protected RenderedProblemView[] doInBackground() throws Exception {
                 ProblemDetails details = codeforcesService.fetchProblemDetails(contestId, index);
-                return problemHtmlRenderer.render(details);
+                RenderedProblemView full = problemHtmlRenderer.render(details);
+                RenderedProblemView statementOnly = problemHtmlRenderer.renderStatementOnly(details);
+                return new RenderedProblemView[]{statementOnly, full};
             }
 
             @Override
             protected void done() {
                 try {
-                    RenderedProblemView rendered = get();
-                    showCodeforcesProblemView(rendered);
+                    RenderedProblemView[] renders = get();
+                    showCodeforcesProblemView(renders[0], renders[1]);
                 } catch (Exception ex) {
                     restoreProblemEntryPanelWithError("Could not fetch that problem.");
                     JOptionPane.showMessageDialog(
@@ -768,16 +776,17 @@ public class MainWindow {
         leftPanelContainer.repaint();
     }
 
-    private void showCodeforcesProblemView(RenderedProblemView rendered) {
+    private void showCodeforcesProblemView(RenderedProblemView statementOnly, RenderedProblemView full) {
         copyPayloads.clear();
-        copyPayloads.putAll(rendered.copyPayloads());
+        copyPayloads.putAll(full.copyPayloads());
 
+        // Top panel: Statement without test cases
         JEditorPane pane = new JEditorPane();
         pane.setContentType("text/html");
         pane.setEditable(false);
         pane.setFocusable(false);
         pane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
-        pane.setText(rendered.html());
+        pane.setText(statementOnly.html());
         pane.setCaretPosition(0);
         pane.setBackground(new Color(30, 31, 34));
         pane.addHyperlinkListener(event -> {
@@ -807,6 +816,7 @@ public class MainWindow {
         JButton chooseDifferentProblemButton = new JButton("Choose Different Problem");
         chooseDifferentProblemButton.setFocusable(false);
         chooseDifferentProblemButton.setRequestFocusEnabled(false);
+        chooseDifferentProblemButton.setPreferredSize(new Dimension(280, LEFT_FIELD_HEIGHT));
         chooseDifferentProblemButton.addActionListener(e -> promptForDifferentProblem());
 
         JPanel topBar = new JPanel(new BorderLayout());
@@ -819,13 +829,96 @@ public class MainWindow {
         statementPanel.add(topBar, BorderLayout.NORTH);
         statementPanel.add(scrollPane, BorderLayout.CENTER);
 
+        // Bottom panel: Test cases in tabs
+        List<CodeExecutionService.TestCaseSpec> testCases = SampleTestCaseCollector.collect(copyPayloads);
+        JTabbedPane testCasesTabs = createTestCasesTabbedPane(testCases);
+
+        // Split pane: statement on top, test cases on bottom
+        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, statementPanel, testCasesTabs);
+        splitPane.setResizeWeight(0.5);
+        
+        int minTestCaseHeight = MIN_WINDOW_HEIGHT / 3;
+        splitPane.setDividerLocation(mainFrame.getHeight() - minTestCaseHeight - 10);
+        
         leftPanelContainer.removeAll();
-        leftPanelContainer.add(statementPanel, BorderLayout.CENTER);
+        leftPanelContainer.add(splitPane, BorderLayout.CENTER);
         leftPanelContainer.revalidate();
         leftPanelContainer.repaint();
 
         problemStatementLoaded = true;
         enableEditorForProblem();
+    }
+
+    private JTabbedPane createTestCasesTabbedPane(List<CodeExecutionService.TestCaseSpec> testCases) {
+        JTabbedPane tabs = new JTabbedPane();
+        tabs.setBackground(new Color(43, 45, 48));
+        tabs.setForeground(new Color(223, 225, 229));
+
+        if (testCases.isEmpty()) {
+            JPanel emptyPanel = new JPanel();
+            emptyPanel.setBackground(new Color(30, 31, 34));
+            tabs.addTab("No Test Cases", emptyPanel);
+            return tabs;
+        }
+
+        for (int i = 0; i < testCases.size(); i++) {
+            CodeExecutionService.TestCaseSpec tc = testCases.get(i);
+            JPanel tabPanel = createTestCasePanel(tc);
+            tabs.addTab("Test " + (i + 1), tabPanel);
+        }
+
+        return tabs;
+    }
+
+    private JPanel createTestCasePanel(CodeExecutionService.TestCaseSpec testCase) {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBackground(new Color(30, 31, 34));
+        panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        splitPane.setBackground(new Color(30, 31, 34));
+        splitPane.setResizeWeight(0.5);
+
+        // Input section
+        JPanel inputPanel = createTestDataPanel("Input", testCase.input());
+        splitPane.setLeftComponent(inputPanel);
+
+        // Expected output section
+        JPanel outputPanel = createTestDataPanel("Expected Output", testCase.expectedOutput());
+        splitPane.setRightComponent(outputPanel);
+
+        panel.add(splitPane, BorderLayout.CENTER);
+        return panel;
+    }
+
+    private JPanel createTestDataPanel(String title, String data) {
+        JPanel panel = new JPanel(new BorderLayout(0, 8));
+        panel.setBackground(new Color(30, 31, 34));
+        panel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+
+        JLabel titleLabel = new JLabel(title);
+        titleLabel.setForeground(new Color(223, 225, 229));
+        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD));
+
+        JTextArea textArea = new JTextArea(data);
+        textArea.setEditable(false);
+        textArea.setFocusable(false);
+        textArea.setBackground(new Color(24, 26, 29));
+        textArea.setForeground(new Color(217, 221, 228));
+        textArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        textArea.setLineWrap(true);
+        textArea.setWrapStyleWord(false);
+        textArea.setMargin(new java.awt.Insets(6, 6, 6, 6));
+
+        JScrollPane scrollPane = new JScrollPane(textArea);
+        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(67, 71, 76)));
+        scrollPane.setBackground(new Color(30, 31, 34));
+        scrollPane.getVerticalScrollBar().setUnitIncrement(10);
+
+        panel.add(titleLabel, BorderLayout.NORTH);
+        panel.add(scrollPane, BorderLayout.CENTER);
+
+        return panel;
     }
 
     private void copyToClipboard(String text) {
@@ -1093,7 +1186,7 @@ public class MainWindow {
 
     private ImageIcon loadToolbarIcon(String fileName) {
         try {
-            Path iconPath = Path.of("assets", fileName);
+            Path iconPath = resolveToolbarIconPath(fileName);
             if (!Files.exists(iconPath)) {
                 return null;
             }
@@ -1102,10 +1195,35 @@ public class MainWindow {
             if (raw.getIconWidth() <= 0 || raw.getIconHeight() <= 0) {
                 return null;
             }
-            return raw;
+
+            if (raw.getIconWidth() == RUN_ICON_SIZE && raw.getIconHeight() == RUN_ICON_SIZE) {
+                return raw;
+            }
+
+            BufferedImage scaled = new BufferedImage(RUN_ICON_SIZE, RUN_ICON_SIZE, BufferedImage.TYPE_INT_ARGB_PRE);
+            Graphics2D g2 = scaled.createGraphics();
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
+            g2.drawImage(raw.getImage(), 0, 0, RUN_ICON_SIZE, RUN_ICON_SIZE, null);
+            g2.dispose();
+            return new ImageIcon(scaled);
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private Path resolveToolbarIconPath(String fileName) {
+        int dot = fileName.lastIndexOf('.');
+        String base = dot >= 0 ? fileName.substring(0, dot) : fileName;
+        String ext = dot >= 0 ? fileName.substring(dot) : "";
+
+        Path hiDpiPath = Path.of("assets", base + "@2x" + ext);
+        if (Files.exists(hiDpiPath)) {
+            return hiDpiPath;
+        }
+        return Path.of("assets", fileName);
     }
 
     private String resolveSyntaxStyle(String language) {

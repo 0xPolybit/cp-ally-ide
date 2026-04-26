@@ -25,6 +25,7 @@ class ProblemHtmlRenderer {
 
     private static final String LATEX_PROCESSED_ATTR = "data-cpa-latex-processed";
     private static final String LATEX_FALLBACK_COLOR = "#dfe1e5";
+    private static final int INLINE_ICON_SIZE = 16;
 
     private final Path appDataDirectory;
     private final Map<String, String> iconSourceCache = new HashMap<>();
@@ -45,7 +46,7 @@ class ProblemHtmlRenderer {
                 .metrics-row { margin-top:4px; margin-bottom:12px; }
                 .metrics-table { border-collapse:collapse; }
                 .metric-item { color:#b8bec8; white-space:nowrap; vertical-align:middle; line-height:18px; }
-                .metric-icon { width:16px; height:16px; vertical-align:middle; }
+                .metric-icon { width:16px; height:16px; vertical-align:middle; image-rendering:auto; }
                 .latex-inline { vertical-align:-0.18em; }
                 .latex-inline-fallback { vertical-align:-0.08em; }
                 .section-title { font-weight:700; margin-top:12px; margin-bottom:6px; color:#e8ebf0; }
@@ -55,7 +56,7 @@ class ProblemHtmlRenderer {
                 .io-copy-cell { text-align:right; vertical-align:middle; width:20px; }
                 .io-label { line-height:18px; }
                 .copy-btn { text-decoration:none; border:none; outline:none; }
-                .copy-btn img { width:16px; height:16px; vertical-align:middle; opacity:0.92; border:none; }
+                .copy-btn img { width:16px; height:16px; vertical-align:middle; opacity:0.92; border:none; image-rendering:auto; }
                 pre { background:#24262a; color:#d9dde4; border:1px solid #43474c; border-radius:6px; padding:10px; white-space:pre-wrap; }
                 p { color:#d3d7de; line-height:1.45; }
                 .tex-font-style-bf { font-weight:bold; }
@@ -64,6 +65,48 @@ class ProblemHtmlRenderer {
                 """;
 
         String body = "<div class='problem-statement'>" + problemHtml + "</div>";
+        String html = "<html><head>" + css + "</head><body>" + body + "</body></html>";
+        return new RenderedProblemView(html, copyPayloads);
+    }
+
+    RenderedProblemView renderStatementOnly(ProblemDetails details) {
+        Map<String, String> copyPayloads = new HashMap<>();
+        String problemHtml = prepareProblemHtml(details.problemHtml(), copyPayloads, details.code());
+        
+        Document doc = Jsoup.parseBodyFragment(problemHtml);
+        Element root = doc.body();
+        
+        for (Element sampleTests : root.select("div.sample-tests")) {
+            sampleTests.remove();
+        }
+        
+        String problemHtmlWithoutTests = root.outerHtml();
+        String css = """
+                <style>
+                body { background:#1e1f22; color:#dfe1e5; font-family:Segoe UI, Arial, sans-serif; margin:12px; }
+                .problem-statement { background:#2b2d30; border-radius:8px; padding:14px; }
+                .header .title { font-size:18px; font-weight:700; color:#eceff4; margin-bottom:10px; }
+                .metrics-row { margin-top:4px; margin-bottom:12px; }
+                .metrics-table { border-collapse:collapse; }
+                .metric-item { color:#b8bec8; white-space:nowrap; vertical-align:middle; line-height:18px; }
+                .metric-icon { width:16px; height:16px; vertical-align:middle; image-rendering:auto; }
+                .latex-inline { vertical-align:-0.18em; }
+                .latex-inline-fallback { vertical-align:-0.08em; }
+                .section-title { font-weight:700; margin-top:12px; margin-bottom:6px; color:#e8ebf0; }
+                .io-table { width:100%; border-collapse:collapse; margin-bottom:4px; }
+                .io-label-cell { text-align:left; vertical-align:middle; }
+                .io-copy-cell { text-align:right; vertical-align:middle; width:20px; }
+                .io-label { line-height:18px; }
+                .copy-btn { text-decoration:none; border:none; outline:none; }
+                .copy-btn img { width:16px; height:16px; vertical-align:middle; opacity:0.92; border:none; image-rendering:auto; }
+                pre { background:#24262a; color:#d9dde4; border:1px solid #43474c; border-radius:6px; padding:10px; white-space:pre-wrap; }
+                p { color:#d3d7de; line-height:1.45; }
+                .tex-font-style-bf { font-weight:bold; }
+                .latex-warning-box { background:#3d4949; border-left:4px solid #f7d71a; border-radius:4px; padding:12px; margin:12px 0; color:#e8ebf0; font-size:inherit; line-height:1.5; }
+                </style>
+                """;
+        
+        String body = "<div class='problem-statement'>" + problemHtmlWithoutTests + "</div>";
         String html = "<html><head>" + css + "</head><body>" + body + "</body></html>";
         return new RenderedProblemView(html, copyPayloads);
     }
@@ -519,14 +562,56 @@ class ProblemHtmlRenderer {
             return iconSourceCache.get(iconFile);
         }
 
-        Path iconPath = Path.of("assets", iconFile);
+        Path iconPath = resolveInlineIconPath(iconFile);
         if (!Files.exists(iconPath)) {
             return "";
         }
 
-        String src = iconPath.toAbsolutePath().toUri().toString();
-        iconSourceCache.put(iconFile, src);
-        return src;
+        try {
+            BufferedImage source = ImageIO.read(iconPath.toFile());
+            if (source == null || source.getWidth() <= 0 || source.getHeight() <= 0) {
+                return "";
+            }
+
+            if (source.getWidth() == INLINE_ICON_SIZE && source.getHeight() == INLINE_ICON_SIZE) {
+                String src = iconPath.toAbsolutePath().toUri().toString();
+                iconSourceCache.put(iconFile, src);
+                return src;
+            }
+
+            BufferedImage target = new BufferedImage(INLINE_ICON_SIZE, INLINE_ICON_SIZE, BufferedImage.TYPE_INT_ARGB_PRE);
+            java.awt.Graphics2D g2 = target.createGraphics();
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
+            g2.drawImage(source, 0, 0, INLINE_ICON_SIZE, INLINE_ICON_SIZE, null);
+            g2.dispose();
+
+            Path iconCacheDir = appDataDirectory.resolve("cache").resolve("icons");
+            Files.createDirectories(iconCacheDir);
+            String sanitized = iconFile.replace('.', '_');
+            Path scaledFile = iconCacheDir.resolve(sanitized + "_" + INLINE_ICON_SIZE + "px.png");
+            ImageIO.write(target, "png", scaledFile.toFile());
+
+            String src = scaledFile.toUri().toString();
+            iconSourceCache.put(iconFile, src);
+            return src;
+        } catch (IOException e) {
+            return "";
+        }
+    }
+
+    private Path resolveInlineIconPath(String iconFile) {
+        int dot = iconFile.lastIndexOf('.');
+        String base = dot >= 0 ? iconFile.substring(0, dot) : iconFile;
+        String ext = dot >= 0 ? iconFile.substring(dot) : "";
+
+        Path hiDpiPath = Path.of("assets", base + "@2x" + ext);
+        if (Files.exists(hiDpiPath)) {
+            return hiDpiPath;
+        }
+        return Path.of("assets", iconFile);
     }
 
     private String renderLatexToImageSource(String expression, boolean display) {
