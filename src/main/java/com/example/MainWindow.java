@@ -123,6 +123,7 @@ public class MainWindow {
         problemHtmlRenderer = new ProblemHtmlRenderer(settingsRepository.getAppDataDirectory());
 
         JFrame frame = new JFrame(APP_NAME);
+        applyWindowIcon(frame);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setLayout(new BorderLayout());
         frame.setMinimumSize(new Dimension(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT));
@@ -161,6 +162,27 @@ public class MainWindow {
         }
 
         checkForAppUpdatesAsync();
+    }
+
+    private void applyWindowIcon(JFrame frame) {
+        if (frame == null) {
+            return;
+        }
+
+        try {
+            Path logoPath = Path.of("assets", "logo.png");
+            if (!Files.exists(logoPath)) {
+                return;
+            }
+
+            ImageIcon logo = new ImageIcon(logoPath.toAbsolutePath().toString());
+            if (logo.getIconWidth() <= 0 || logo.getIconHeight() <= 0) {
+                return;
+            }
+            frame.setIconImage(logo.getImage());
+        } catch (Exception ignored) {
+            // Ignore icon-loading failures to keep startup robust.
+        }
     }
 
     private void checkForAppUpdatesAsync() {
