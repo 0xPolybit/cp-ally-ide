@@ -20,6 +20,8 @@ import javax.swing.JFrame;
 import javax.swing.ImageIcon;
 import javax.swing.JLabel;
 import javax.swing.JMenuBar;
+import javax.swing.JMenu;
+import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -326,34 +328,97 @@ public class MainWindow {
 
     private JMenuBar createEmbeddedTitleBar() {
         JMenuBar titleBar = new JMenuBar();
-        titleBar.setLayout(new BorderLayout());
         titleBar.setOpaque(true);
         titleBar.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
         titleBar.setBackground(new Color(43, 45, 48));
 
-        JToolBar leftToolbar = new JToolBar();
-        leftToolbar.setFloatable(false);
-        leftToolbar.setOpaque(false);
-        leftToolbar.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
-        disableFocus(leftToolbar);
-        leftToolbar.add(createToolbarButton("File"));
-        leftToolbar.add(Box.createHorizontalStrut(6));
-        leftToolbar.add(createToolbarButton("Edit"));
-        leftToolbar.add(Box.createHorizontalStrut(6));
-        leftToolbar.add(createToolbarButton("View"));
+        JMenu helpMenu = new JMenu("Help");
 
-        JToolBar rightToolbar = new JToolBar();
-        rightToolbar.setFloatable(false);
-        rightToolbar.setOpaque(false);
-        rightToolbar.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
-        disableFocus(rightToolbar);
-        rightToolbar.add(createToolbarButton("Settings"));
-        rightToolbar.add(Box.createHorizontalStrut(6));
-        rightToolbar.add(createToolbarButton("Help"));
+        JMenuItem fetchLatestVersionItem = new JMenuItem("Fetch Latest Version");
+        fetchLatestVersionItem.addActionListener(e -> onFetchLatestVersionClicked());
 
-        titleBar.add(leftToolbar, BorderLayout.WEST);
-        titleBar.add(rightToolbar, BorderLayout.EAST);
+        JMenuItem githubReleasesItem = new JMenuItem("GitHub Releases");
+        githubReleasesItem.addActionListener(e -> openExternalUrl(RELEASES_URL));
+
+        JMenuItem creditsItem = new JMenuItem("Credits");
+        creditsItem.addActionListener(e -> showCreditsDialog());
+
+        helpMenu.add(fetchLatestVersionItem);
+        helpMenu.add(githubReleasesItem);
+        helpMenu.add(creditsItem);
+        titleBar.add(helpMenu);
         return titleBar;
+    }
+
+    private void onFetchLatestVersionClicked() {
+        SwingWorker<String, Void> worker = new SwingWorker<>() {
+            @Override
+            protected String doInBackground() {
+                return fetchLatestVersion();
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    String latestVersion = get();
+                    String message = (latestVersion == null || latestVersion.isBlank())
+                            ? "Unable to fetch latest version right now."
+                            : "Latest version: " + latestVersion;
+                    JOptionPane.showMessageDialog(
+                            mainFrame,
+                            message,
+                            "Latest Version",
+                            JOptionPane.INFORMATION_MESSAGE);
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(
+                            mainFrame,
+                            "Unable to fetch latest version right now.",
+                            "Latest Version",
+                            JOptionPane.WARNING_MESSAGE);
+                }
+            }
+        };
+        worker.execute();
+    }
+
+    private void showCreditsDialog() {
+        JDialog dialog = new JDialog(mainFrame, "Credits", true);
+        dialog.setLayout(new BorderLayout());
+        dialog.getContentPane().setBackground(new Color(30, 31, 34));
+
+        JEditorPane pane = new JEditorPane();
+        pane.setEditable(false);
+        pane.setContentType("text/html");
+        pane.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        pane.setText("""
+                <html><body style='background:#1e1f22;color:#dfe1e5;font-family:Segoe UI, Arial, sans-serif;'>
+                <h2 style='margin-top:0;'>Credits</h2>
+                <p><b>Name:</b> Swastik Biswas</p>
+                <p><b>College:</b> Kalinga Institute for Industrial Technology</p>
+                <p><b>Nationality:</b> United States of America</p>
+                <p><b>GitHub:</b> <a href='https://github.com/0xPolybit'>https://github.com/0xPolybit</a></p>
+                <p><b>Instagram:</b> <a href='https://www.instagram.com/swastikbiswas1776/'>https://www.instagram.com/swastikbiswas1776/</a></p>
+                <p><b>X:</b> <a href='https://x.com/0xSwastikBiswas'>https://x.com/0xSwastikBiswas</a></p>
+                <p><b>LinkedIn:</b> <a href='https://www.linkedin.com/in/polybit/'>https://www.linkedin.com/in/polybit/</a></p>
+                <p><b>CodeForces:</b> <a href='https://codeforces.com/profile/swastikpolybitbiswas'>https://codeforces.com/profile/swastikpolybitbiswas</a></p>
+                <p><b>LeetCode:</b> <a href='https://leetcode.com/u/swastikbiswas/'>https://leetcode.com/u/swastikbiswas/</a></p>
+                </body></html>
+                """);
+        pane.setCaretPosition(0);
+        pane.addHyperlinkListener(event -> {
+            if (event.getEventType() == HyperlinkEvent.EventType.ACTIVATED && event.getDescription() != null) {
+                openExternalUrl(event.getDescription());
+            }
+        });
+
+        JScrollPane scrollPane = new JScrollPane(pane);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder());
+        scrollPane.getViewport().setBackground(new Color(30, 31, 34));
+
+        dialog.add(scrollPane, BorderLayout.CENTER);
+        dialog.setSize(700, 520);
+        dialog.setLocationRelativeTo(mainFrame);
+        dialog.setVisible(true);
     }
 
     private JSplitPane createContentSplit() {
@@ -1017,6 +1082,46 @@ public class MainWindow {
 
     private void installEditorAutoPairs(RSyntaxTextArea editor) {
         editor.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent e) {
+                if (!editor.isEditable() || e.getKeyCode() != KeyEvent.VK_BACK_SPACE) {
+                    return;
+                }
+
+                if (editor.getSelectionStart() != editor.getSelectionEnd()) {
+                    return;
+                }
+
+                int caret = editor.getCaretPosition();
+                int length = editor.getDocument().getLength();
+                if (caret <= 0 || caret >= length) {
+                    return;
+                }
+
+                try {
+                    String left = editor.getDocument().getText(caret - 1, 1);
+                    String right = editor.getDocument().getText(caret, 1);
+                    if (left.length() == 1 && right.length() == 1) {
+                        char opening = left.charAt(0);
+                        char closing = right.charAt(0);
+                        char expected = switch (opening) {
+                            case '(' -> ')';
+                            case '[' -> ']';
+                            case '{' -> '}';
+                            default -> '\0';
+                        };
+
+                        if (expected != '\0' && closing == expected) {
+                            editor.getDocument().remove(caret - 1, 2);
+                            editor.setCaretPosition(caret - 1);
+                            e.consume();
+                        }
+                    }
+                } catch (Exception ignored) {
+                    // Keep default backspace behavior if paired deletion fails.
+                }
+            }
+
             @Override
             public void keyTyped(KeyEvent e) {
                 if (!editor.isEditable()) {
