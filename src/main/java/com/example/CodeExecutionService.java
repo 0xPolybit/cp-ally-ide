@@ -267,10 +267,6 @@ class CodeExecutionService {
                 (sourceFile, workDir) -> List.of(workDir.resolve(executableName()).toAbsolutePath().toString()));
     }
 
-    private String sourceFileNameArg(String value) {
-        return value;
-    }
-
     private String executableName() {
         return isWindows() ? "main.exe" : "main";
     }

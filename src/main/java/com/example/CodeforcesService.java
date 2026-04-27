@@ -8,6 +8,7 @@ import java.awt.Color;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.InetAddress;
+import java.net.URI;
 import java.net.URL;
 import java.net.UnknownHostException;
 
@@ -80,7 +81,7 @@ class CodeforcesService {
 
     private boolean isHttpResponsive() {
         try {
-            URL url = new URL("https://codeforces.com/");
+            URL url = URI.create("https://codeforces.com/").toURL();
             HttpURLConnection connection = (HttpURLConnection) url.openConnection();
             connection.setRequestMethod("HEAD");
             connection.setConnectTimeout(3000);

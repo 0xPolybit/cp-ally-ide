@@ -26,7 +26,6 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
-import javax.swing.JTabbedPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.JToolBar;
@@ -215,7 +214,7 @@ public class MainWindow {
     private String fetchLatestVersion() {
         HttpURLConnection connection = null;
         try {
-            URL url = new URL(VERSION_SOURCE_URL);
+            URL url = URI.create(VERSION_SOURCE_URL).toURL();
             connection = (HttpURLConnection) url.openConnection();
             connection.setRequestMethod("GET");
             connection.setConnectTimeout(5000);
