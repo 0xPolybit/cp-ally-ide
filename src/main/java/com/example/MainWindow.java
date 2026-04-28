@@ -607,6 +607,7 @@ public class MainWindow {
 
         codeEditor = new RSyntaxTextArea(24, 80);
         codeEditor.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
+        codeEditor.setTabSize(4);
         codeEditor.setCodeFoldingEnabled(false);
         codeEditor.setEditable(false);
         codeEditor.setFocusable(false);
@@ -1341,18 +1342,18 @@ public class MainWindow {
             return "import sys\n"
                 + "\n"
                 + "def main():\n"
-                + "    # code goes here...\n"
+                + "\t# code goes here...\n"
                 + "\n"
                 + "if __name__ == \"__main__\":\n"
-                + "    main()\n";
+                + "\tmain()\n";
         }
         if (language.startsWith("GNU G++") || language.startsWith("GNU C11") || language.startsWith("GNU G11")) {
             return "#include <bits/stdc++.h>\n"
                     + "using namespace std;\n"
                     + "\n"
                     + "int main() {\n"
-                    + "    // code goes here...\n"
-                    + "    return 0;\n"
+                    + "\t// code goes here...\n"
+                    + "\treturn 0;\n"
                     + "}\n";
         }
         if (language.startsWith("Java ")) {
@@ -1361,43 +1362,43 @@ public class MainWindow {
                     + "\n"
                     + "public class Main {\n"
                     + "\n"
-                    + "    public static void main(String[] args) throws Exception {\n"
-                    + "        Scanner sc = new Scanner(System.in);\n"
-                    + "        // code goes here...\n"
-                    + "        sc.close();\n"
-                    + "    }\n"
+                    + "\tpublic static void main(String[] args) throws Exception {\n"
+                    + "\t\tScanner sc = new Scanner(System.in);\n"
+                    + "\t\t// code goes here...\n"
+                    + "\t\tsc.close();\n"
+                    + "\t}\n"
                     + "\n"
                     + "}\n";
         }
         if (language.startsWith("Kotlin")) {
             return "fun main() {\n"
-                    + "    // code goes here...\n"
+                    + "\t// code goes here...\n"
                     + "}\n";
         }
         if (language.startsWith("C#")) {
             return "using System;\n"
                     + "\n"
                     + "public class Program {\n"
-                    + "    public static void Main() {\n"
-                    + "        // code goes here...\n"
-                    + "    }\n"
+                    + "\tpublic static void Main() {\n"
+                    + "\t\t// code goes here...\n"
+                    + "\t}\n"
                     + "}\n";
         }
         if (language.startsWith("Go")) {
             return "package main\n"
                     + "\n"
                     + "func main() {\n"
-                    + "    // code goes here...\n"
+                    + "\t// code goes here...\n"
                     + "}\n";
         }
         if (language.startsWith("Rust")) {
             return "fn main() {\n"
-                    + "    // code goes here...\n"
+                    + "\t// code goes here...\n"
                     + "}\n";
         }
         if (language.startsWith("Node.js") || language.startsWith("JavaScript")) {
             return "function main() {\n"
-                    + "    // code goes here...\n"
+                    + "\t// code goes here...\n"
                     + "}\n"
                     + "\n"
                     + "main();\n";
@@ -1408,7 +1409,7 @@ public class MainWindow {
         }
         if (language.startsWith("Ruby")) {
             return "def main\n"
-                    + "  # code goes here...\n"
+                    + "\t# code goes here...\n"
                     + "end\n"
                     + "\n"
                     + "main\n";
@@ -1422,24 +1423,24 @@ public class MainWindow {
         if (language.startsWith("Haskell")) {
             return "main :: IO ()\n"
                     + "main = do\n"
-                    + "    -- code goes here...\n";
+                    + "\t-- code goes here...\n";
         }
         if (language.startsWith("OCaml")) {
             return "let () =\n"
-                    + "  (* code goes here... *)\n"
-                    + "  ()\n";
+                    + "\t(* code goes here... *)\n"
+                    + "\t()\n";
         }
         if (language.startsWith("Scala")) {
             return "object Main {\n"
-                    + "  def main(args: Array[String]): Unit = {\n"
-                    + "    // code goes here...\n"
-                    + "  }\n"
+                    + "\tdef main(args: Array[String]): Unit = {\n"
+                    + "\t\t// code goes here...\n"
+                    + "\t}\n"
                     + "}\n";
         }
         if (language.startsWith("Pascal")) {
             return "program Main;\n"
                     + "begin\n"
-                    + "  // code goes here...\n"
+                    + "\t// code goes here...\n"
                     + "end.\n";
         }
         return "// code goes here...\n";
@@ -1463,7 +1464,7 @@ public class MainWindow {
                 frame.getWidth(),
                 frame.getHeight(),
                 dividerLocation,
-            testCasesDividerLocation,
+                testCasesDividerLocation,
                 maximized,
                 language);
 
