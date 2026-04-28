@@ -424,21 +424,30 @@ class CodeExecutionService {
 
         String normalized = text.replace("\r\n", "\n").replace('\r', '\n');
         String[] lines = normalized.split("\n", -1);
+        int lastSignificantLine = lines.length - 1;
+        while (lastSignificantLine >= 0 && rtrim(lines[lastSignificantLine]).isEmpty()) {
+            lastSignificantLine--;
+        }
+
+        if (lastSignificantLine < 0) {
+            return "";
+        }
+
         StringBuilder builder = new StringBuilder();
-        for (int i = 0; i < lines.length; i++) {
+        for (int i = 0; i <= lastSignificantLine; i++) {
             builder.append(rtrim(lines[i]));
-            if (i < lines.length - 1) {
+            if (i < lastSignificantLine) {
                 builder.append('\n');
             }
         }
-        return rtrim(builder.toString());
+        return builder.toString();
     }
 
     private String rtrim(String text) {
         int end = text.length();
         while (end > 0) {
             char ch = text.charAt(end - 1);
-            if (ch == ' ' || ch == '\t') {
+            if (Character.isWhitespace(ch) || Character.isSpaceChar(ch)) {
                 end--;
                 continue;
             }
