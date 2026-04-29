@@ -75,7 +75,7 @@ public class MainWindow {
     private static final String DEFAULT_LANGUAGE = "Python 3";
     private static final String SETTINGS_DIR_NAME = "CompetitiveProgrammingAlly";
     private static final String SETTINGS_FILE_NAME = "settings.properties";
-    private static final String CURRENT_APP_VERSION = "0.1.0";
+    private static final String CURRENT_APP_VERSION = "0.1.1";
     private static final String VERSION_SOURCE_URL = "https://pastebin.com/raw/uzU8MUWs";
     private static final String RELEASES_URL = "https://github.com/0xPolybit/cp-ally-ide/releases";
     private static final Pattern SEMVER_PATTERN = Pattern.compile("\\b(\\d+\\.\\d+\\.\\d+)\\b");
