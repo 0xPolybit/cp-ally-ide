@@ -47,7 +47,10 @@ final class SplashScreenWindow {
     }
 
     void showSplash() {
+        window.setAlwaysOnTop(true);
         window.setVisible(true);
+        window.toFront();
+        window.requestFocus();
     }
 
     void closeSplash() {
