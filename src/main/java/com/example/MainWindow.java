@@ -66,6 +66,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.awt.event.ItemEvent;
 
 public class MainWindow {
 
@@ -92,6 +93,7 @@ public class MainWindow {
             SETTINGS_DIR_NAME,
             SETTINGS_FILE_NAME,
             DEFAULT_LANGUAGE);
+        private final ProgramCacheRepository programCacheRepository = new ProgramCacheRepository(settingsRepository.getAppDataDirectory());
     private final CodeforcesService codeforcesService = new CodeforcesService();
     private final CodeExecutionService codeExecutionService = new CodeExecutionService();
 
@@ -114,6 +116,7 @@ public class MainWindow {
     private JSplitPane statementTestCasesSplitPane;
     private TestCasesPanel testCasesPanel;
     private boolean problemStatementLoaded;
+    private String currentProblemCode;
 
     public void showWindow() {
         JFrame.setDefaultLookAndFeelDecorated(true);
@@ -139,6 +142,7 @@ public class MainWindow {
         frame.addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
+                saveCurrentProgramToCache();
                 persistSettings(frame);
             }
         });
@@ -596,10 +600,15 @@ public class MainWindow {
         languageDropdown.setForeground(new Color(223, 225, 229));
         languageDropdown.setFocusable(false);
         languageDropdown.setRequestFocusEnabled(false);
-        languageDropdown.addActionListener(e -> {
+        languageDropdown.addItemListener(e -> {
+            if (e.getStateChange() == ItemEvent.DESELECTED) {
+                saveCurrentProgramToCache(e.getItem() != null ? e.getItem().toString() : null);
+                return;
+            }
+
             updateExecutionAvailability();
             if (problemStatementLoaded) {
-                applyLanguageTemplate();
+                applyLanguageTemplateOrCachedProgram();
             }
         });
         editorToolbar.add(languageDropdown);
@@ -762,6 +771,8 @@ public class MainWindow {
             return;
         }
 
+        saveCurrentProgramToCache();
+
         Matcher matcher = PROBLEM_CODE_PATTERN.matcher(rawCode);
         if (!matcher.matches()) {
             if (showWarnings) {
@@ -788,7 +799,7 @@ public class MainWindow {
             protected void done() {
                 try {
                     RenderedProblemView[] renders = get();
-                    showCodeforcesProblemView(renders[0], renders[1]);
+                    showCodeforcesProblemView(contestId + index, renders[0], renders[1]);
                 } catch (Exception ex) {
                     restoreProblemEntryPanelWithError("Could not fetch that problem.");
                     JOptionPane.showMessageDialog(
@@ -870,7 +881,7 @@ public class MainWindow {
         leftPanelContainer.repaint();
     }
 
-    private void showCodeforcesProblemView(RenderedProblemView statementOnly, RenderedProblemView full) {
+    private void showCodeforcesProblemView(String problemCode, RenderedProblemView statementOnly, RenderedProblemView full) {
         copyPayloads.clear();
         copyPayloads.putAll(full.copyPayloads());
         if (testCasesPanel != null) {
@@ -946,6 +957,7 @@ public class MainWindow {
         leftPanelContainer.revalidate();
         leftPanelContainer.repaint();
 
+        currentProblemCode = problemCode;
         problemStatementLoaded = true;
         enableEditorForProblem();
     }
@@ -961,8 +973,28 @@ public class MainWindow {
             codeEditor.setRequestFocusEnabled(true);
         }
 
-        applyLanguageTemplate();
+        applyLanguageTemplateOrCachedProgram();
         updateExecutionAvailability();
+    }
+
+    private void applyLanguageTemplateOrCachedProgram() {
+        if (codeEditor == null || languageDropdown == null || languageDropdown.getSelectedItem() == null) {
+            return;
+        }
+
+        String language = languageDropdown.getSelectedItem().toString();
+        String cachedProgram = currentProblemCode != null
+                ? programCacheRepository.loadLatestSource(currentProblemCode, language)
+                : null;
+
+        if (cachedProgram != null) {
+            codeEditor.setSyntaxEditingStyle(resolveSyntaxStyle(language));
+            codeEditor.setText(cachedProgram);
+            codeEditor.setCaretPosition(Math.min(codeEditor.getText().length(), cachedProgram.length()));
+            return;
+        }
+
+        applyLanguageTemplate();
     }
 
     private void applyLanguageTemplate() {
@@ -980,6 +1012,27 @@ public class MainWindow {
             cursor = boilerplate.indexOf("# code goes here...");
         }
         codeEditor.setCaretPosition(Math.max(0, cursor));
+    }
+
+    private void saveCurrentProgramToCache() {
+        if (languageDropdown == null || languageDropdown.getSelectedItem() == null) {
+            return;
+        }
+
+        saveCurrentProgramToCache(languageDropdown.getSelectedItem().toString());
+    }
+
+    private void saveCurrentProgramToCache(String language) {
+        if (!problemStatementLoaded || currentProblemCode == null || codeEditor == null || language == null || language.isBlank()) {
+            return;
+        }
+
+        String sourceCode = codeEditor.getText();
+        if (sourceCode == null) {
+            return;
+        }
+
+        programCacheRepository.save(currentProblemCode, language, sourceCode);
     }
 
     private void updateExecutionAvailability() {
