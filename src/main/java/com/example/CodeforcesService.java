@@ -11,8 +11,15 @@ import java.net.InetAddress;
 import java.net.URI;
 import java.net.URL;
 import java.net.UnknownHostException;
+import java.nio.file.Path;
 
 class CodeforcesService {
+
+    private final ProblemCacheRepository problemCache;
+
+    CodeforcesService(Path appDataDirectory) {
+        this.problemCache = new ProblemCacheRepository(appDataDirectory);
+    }
 
     private static final String[] PROBLEM_HOSTS = {
             "https://codeforces.com",
@@ -21,10 +28,18 @@ class CodeforcesService {
     };
 
     ProblemDetails fetchProblemDetails(String contestId, String index) throws IOException {
+        String problemCode = contestId + index;
+        ProblemDetails cached = problemCache.load(problemCode);
+        if (cached != null) {
+            return cached;
+        }
+
         IOException lastError = null;
         for (String host : PROBLEM_HOSTS) {
             try {
-                return fetchProblemDetailsFromHost(host, contestId, index);
+                ProblemDetails fetched = fetchProblemDetailsFromHost(host, contestId, index);
+                problemCache.save(fetched);
+                return fetched;
             } catch (IOException ex) {
                 lastError = ex;
             }

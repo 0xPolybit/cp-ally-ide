@@ -94,7 +94,7 @@ public class MainWindow {
             SETTINGS_FILE_NAME,
             DEFAULT_LANGUAGE);
         private final ProgramCacheRepository programCacheRepository = new ProgramCacheRepository(settingsRepository.getAppDataDirectory());
-    private final CodeforcesService codeforcesService = new CodeforcesService();
+    private CodeforcesService codeforcesService;
     private final CodeExecutionService codeExecutionService = new CodeExecutionService();
 
     private ProblemHtmlRenderer problemHtmlRenderer;
@@ -124,7 +124,9 @@ public class MainWindow {
         applyGlobalDarkPalette();
 
         appSettings = settingsRepository.load();
-        problemHtmlRenderer = new ProblemHtmlRenderer(settingsRepository.getAppDataDirectory());
+        Path appDataDir = settingsRepository.getAppDataDirectory();
+        problemHtmlRenderer = new ProblemHtmlRenderer(appDataDir);
+        codeforcesService = new CodeforcesService(appDataDir);
 
         JFrame frame = new JFrame(APP_NAME);
         applyWindowIcon(frame);
