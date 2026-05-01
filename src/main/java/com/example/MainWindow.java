@@ -337,6 +337,15 @@ public class MainWindow {
         titleBar.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
         titleBar.setBackground(new Color(43, 45, 48));
 
+        JMenu fileMenu = new JMenu("File");
+        JMenuItem clearProgramCacheItem = new JMenuItem("Clear Programming Cache");
+        clearProgramCacheItem.addActionListener(e -> onClearProgrammingCacheClicked());
+        JMenuItem clearProblemCacheItem = new JMenuItem("Clear Problem Cache");
+        clearProblemCacheItem.addActionListener(e -> onClearProblemCacheClicked());
+        fileMenu.add(clearProgramCacheItem);
+        fileMenu.add(clearProblemCacheItem);
+        titleBar.add(fileMenu);
+
         JMenu helpMenu = new JMenu("Help");
 
         JMenuItem fetchLatestVersionItem = new JMenuItem("Fetch Latest Version");
@@ -353,6 +362,40 @@ public class MainWindow {
         helpMenu.add(creditsItem);
         titleBar.add(helpMenu);
         return titleBar;
+    }
+
+    private void onClearProgrammingCacheClicked() {
+        int response = JOptionPane.showConfirmDialog(
+                mainFrame,
+                "Are you sure you want to delete all programming cache? This action cannot be undone.",
+                "Confirm Clear Programming Cache",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE);
+        if (response == JOptionPane.YES_OPTION) {
+            programCacheRepository.clearAll();
+            JOptionPane.showMessageDialog(
+                    mainFrame,
+                    "Programming cache cleared successfully.",
+                    "Cache Cleared",
+                    JOptionPane.INFORMATION_MESSAGE);
+        }
+    }
+
+    private void onClearProblemCacheClicked() {
+        int response = JOptionPane.showConfirmDialog(
+                mainFrame,
+                "Are you sure you want to delete all problem cache? This action cannot be undone.",
+                "Confirm Clear Problem Cache",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE);
+        if (response == JOptionPane.YES_OPTION) {
+            codeforcesService.clearProblemCache();
+            JOptionPane.showMessageDialog(
+                    mainFrame,
+                    "Problem cache cleared successfully.",
+                    "Cache Cleared",
+                    JOptionPane.INFORMATION_MESSAGE);
+        }
     }
 
     private void onFetchLatestVersionClicked() {

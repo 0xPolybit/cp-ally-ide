@@ -67,6 +67,26 @@ final class ProgramCacheRepository {
         return cacheEntry.map(CacheEntry::sourceCode).orElse(null);
     }
 
+    void clearAll() {
+        if (!Files.isDirectory(cacheDirectory)) {
+            return;
+        }
+
+        try {
+            Files.walk(cacheDirectory)
+                    .sorted(Comparator.reverseOrder())
+                    .forEach(current -> {
+                        try {
+                            Files.deleteIfExists(current);
+                        } catch (IOException ignored) {
+                            // Best-effort cleanup.
+                        }
+                    });
+        } catch (IOException ignored) {
+            // Best-effort cleanup.
+        }
+    }
+
     private Optional<CacheEntry> findLatestCacheEntry(String problemCode, String language) {
         if (isBlank(problemCode) || isBlank(language)) {
             return Optional.empty();

@@ -77,6 +77,10 @@ class CodeforcesService {
         return new ProblemDetails(contestId + index, title, statementClone.outerHtml());
     }
 
+    void clearProblemCache() {
+        problemCache.clearAll();
+    }
+
     ConnectivityResult evaluateConnectivity() {
         try {
             InetAddress address = InetAddress.getByName("codeforces.com");

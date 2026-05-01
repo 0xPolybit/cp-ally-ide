@@ -84,6 +84,26 @@ final class ProblemCacheRepository {
         }
     }
 
+    void clearAll() {
+        if (!Files.isDirectory(problemsDirectory)) {
+            return;
+        }
+
+        try {
+            Files.walk(problemsDirectory)
+                    .sorted(java.util.Comparator.reverseOrder())
+                    .forEach(current -> {
+                        try {
+                            Files.deleteIfExists(current);
+                        } catch (IOException ignored) {
+                            // Best-effort cleanup.
+                        }
+                    });
+        } catch (IOException ignored) {
+            // Best-effort cleanup.
+        }
+    }
+
     private String sanitize(String value) {
         return value.replaceAll("[^a-zA-Z0-9._-]+", "_");
     }
