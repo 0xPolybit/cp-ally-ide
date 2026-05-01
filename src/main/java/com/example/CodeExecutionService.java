@@ -80,8 +80,13 @@ class CodeExecutionService {
                 String actual = normalizeOutput(runResult.stdout());
                 boolean hasExpectedOutput = testCase.expectedOutputProvided() && testCase.expectedOutput() != null && !testCase.expectedOutput().isBlank();
                 String expected = normalizeOutput(testCase.expectedOutput());
-                boolean passed = !runResult.timedOut() && runResult.exitCode() == 0 && hasExpectedOutput && expected.equals(actual);
+                boolean yesNoExpected = hasExpectedOutput && isYesNoOnlyOutput(expected);
+                boolean passed = !runResult.timedOut()
+                        && runResult.exitCode() == 0
+                        && hasExpectedOutput
+                        && (yesNoExpected ? expected.equalsIgnoreCase(actual) : expected.equals(actual));
                 boolean unknown = !runResult.timedOut() && runResult.exitCode() == 0 && !hasExpectedOutput;
+                boolean yesNoCaseInsensitive = yesNoExpected && !actual.equals(actual.toUpperCase(Locale.ROOT));
 
                 String details;
                 if (runResult.timedOut()) {
@@ -91,7 +96,9 @@ class CodeExecutionService {
                 } else if (unknown) {
                     details = "Expected output not provided.";
                 } else if (passed) {
-                    details = "Output matched expected result.";
+                    details = yesNoExpected
+                            ? "Output matched expected result using case-insensitive YES/NO comparison."
+                            : "Output matched expected result.";
                 } else {
                     details = joinNonBlank(
                             "Output differed from expected result.",
@@ -110,7 +117,8 @@ class CodeExecutionService {
                         testCase.expectedOutput(),
                         runResult.stdout(),
                         runResult.stderr(),
-                        details));
+                        details,
+                        yesNoCaseInsensitive ? "All caps is recommended for YES/NO outputs." : ""));
             }
 
             return ExecutionReport.success(results, compileLog);
@@ -470,6 +478,29 @@ class CodeExecutionService {
         return "Expected:\n" + expected + "\n\nActual:\n" + actual;
     }
 
+    private boolean isYesNoOnlyOutput(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+
+        String normalized = text.trim();
+        String[] tokens = normalized.split("\\s+");
+        boolean sawToken = false;
+        for (String token : tokens) {
+            if (token.isBlank()) {
+                continue;
+            }
+
+            sawToken = true;
+            String upper = token.toUpperCase(Locale.ROOT);
+            if (!"YES".equals(upper) && !"NO".equals(upper)) {
+                return false;
+            }
+        }
+
+        return sawToken;
+    }
+
     private void deleteRecursively(Path path) {
         try {
             if (path == null || !Files.exists(path)) {
@@ -507,7 +538,7 @@ class CodeExecutionService {
     }
 
     record TestCaseResult(int index, String displayName, boolean passed, boolean timedOut, boolean unknown, long durationMillis, long peakMemoryKb,
-                          String input, String expectedOutput, String actualOutput, String stderrOutput, String details) {
+                          String input, String expectedOutput, String actualOutput, String stderrOutput, String details, String note) {
     }
 
     record ExecutionReport(boolean success, String compileLog, List<TestCaseResult> results, String failureMessage) {

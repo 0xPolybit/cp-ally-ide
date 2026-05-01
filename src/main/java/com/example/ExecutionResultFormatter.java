@@ -27,6 +27,7 @@ final class ExecutionResultFormatter {
                 .append(".status-tle { color:#f7d71a; font-weight:700; }")
                 .append(".status-unknown { color:#f7d71a; font-weight:700; }")
                 .append(".section { color:#cfd4dd; margin-top:8px; margin-bottom:4px; font-weight:600; }")
+                .append(".note { color:#f7d71a; margin-top:8px; font-size:12px; font-style:italic; }")
                 .append("pre { margin:0; background:#24262a; color:#d9dde4; border:1px solid #43474c; border-radius:6px; padding:10px; white-space:pre-wrap; }")
                 .append("</style></head><body><div class='wrap'>");
 
@@ -59,6 +60,10 @@ final class ExecutionResultFormatter {
             if (result.stderrOutput() != null && !result.stderrOutput().isBlank()) {
                 html.append("<div class='section'>Error Output</div>");
                 html.append(codeBlock(result.stderrOutput()));
+            }
+
+            if (result.note() != null && !result.note().isBlank()) {
+                html.append("<div class='note'>").append(escape(result.note())).append("</div>");
             }
             html.append("</div>");
         }
