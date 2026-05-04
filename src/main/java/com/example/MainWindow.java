@@ -671,6 +671,38 @@ public class MainWindow {
         installEditorAutoPairs(codeEditor);
         codeEditor.setText("Select a problem to get started...");
         codeEditor.setCaretPosition(0);
+     
+        javax.swing.Action zoomInAction = new javax.swing.AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+               java.awt.Font f = codeEditor.getFont();
+               int newSize = Math.min(40, Math.max(8, f.getSize() + 2));
+               codeEditor.setFont(f.deriveFont((float) newSize));
+               codeEditor.revalidate();
+               codeEditor.repaint();
+            }
+        };
+            javax.swing.Action zoomOutAction = new javax.swing.AbstractAction() {
+                @Override
+                public void actionPerformed(java.awt.event.ActionEvent e) {
+                    java.awt.Font f = codeEditor.getFont();
+                    int newSize = Math.min(40, Math.max(8, f.getSize() - 2));
+                    codeEditor.setFont(f.deriveFont((float) newSize));
+                    codeEditor.revalidate();
+                    codeEditor.repaint();
+                }
+            };
+
+            javax.swing.InputMap im = codeEditor.getInputMap(JComponent.WHEN_FOCUSED);
+            javax.swing.ActionMap am = codeEditor.getActionMap();
+            im.put(javax.swing.Keystroke.getKeyStroke(KeyEvent.VK_PLUS, java.awt.event.InputEvent.CTRL_DOWN_MASK), "zoomIn");
+            im.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_EQUALS, java.awt.event.InputEvent.CTRL_DOWN_MASK), "zoomIn");
+            im.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_ADD, java.awt.event.InputEvent.CTRL_DOWN_MASK), "zoomIn");
+            im.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_MINUS, java.awt.event.InputEvent.CTRL_DOWN_MASK), "zoomOut");
+            im.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_SUBTRACT, java.awt.event.InputEvent.CTRL_DOWN_MASK), "zoomOut");
+            am.put("zoomIn", zoomInAction);
+            am.put("zoomOut", zoomOutAction);
+
 
         RTextScrollPane scrollPane = new RTextScrollPane(codeEditor);
         scrollPane.setFoldIndicatorEnabled(true);
