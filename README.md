@@ -1,2 +1,2 @@
 # cp-ally-ide
-Unofficial partner code editor for competitive programming
+Unofficial partner code editor for competitive programming on codeforces
