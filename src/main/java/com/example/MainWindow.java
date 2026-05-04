@@ -544,6 +544,7 @@ public class MainWindow {
         problemCodeInput.setPreferredSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
         problemCodeInput.setHorizontalAlignment(JTextField.CENTER);
         problemCodeInput.setAlignmentX(Component.CENTER_ALIGNMENT);
+        problemCodeInput.addActionListener(e -> fetchProblemButton.doClick());
 
         fetchProblemButton = new JButton("Fetch from CodeForces");
         fetchProblemButton.setAlignmentX(Component.CENTER_ALIGNMENT);
