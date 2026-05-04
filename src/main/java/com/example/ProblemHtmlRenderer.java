@@ -47,8 +47,8 @@ class ProblemHtmlRenderer {
                 .metrics-table { border-collapse:collapse; }
                 .metric-item { color:#b8bec8; white-space:nowrap; vertical-align:middle; line-height:18px; }
                 .metric-icon { width:16px; height:16px; vertical-align:middle; image-rendering:auto; }
-                .latex-inline { vertical-align:-0.18em; }
-                .latex-inline-fallback { vertical-align:-0.08em; }
+                .latex-inline { vertical-align:middle; }
+                .latex-inline-fallback { vertical-align:middle; }
                 .section-title { font-weight:700; margin-top:12px; margin-bottom:6px; color:#e8ebf0; }
                 .sample-tests .input, .sample-tests .output { margin-top:8px; }
                 .io-table { width:100%; border-collapse:collapse; margin-bottom:4px; }
@@ -90,8 +90,8 @@ class ProblemHtmlRenderer {
                 .metrics-table { border-collapse:collapse; }
                 .metric-item { color:#b8bec8; white-space:nowrap; vertical-align:middle; line-height:18px; }
                 .metric-icon { width:16px; height:16px; vertical-align:middle; image-rendering:auto; }
-                .latex-inline { vertical-align:-0.18em; }
-                .latex-inline-fallback { vertical-align:-0.08em; }
+                .latex-inline { vertical-align:middle; }
+                .latex-inline-fallback { vertical-align:middle; }
                 .section-title { font-weight:700; margin-top:12px; margin-bottom:6px; color:#e8ebf0; }
                 .io-table { width:100%; border-collapse:collapse; margin-bottom:4px; }
                 .io-label-cell { text-align:left; vertical-align:middle; }
@@ -632,11 +632,19 @@ class ProblemHtmlRenderer {
             TeXIcon icon = formula.createTeXIcon(style, size);
             icon.setForeground(new java.awt.Color(223, 225, 229));
 
-            BufferedImage image = new BufferedImage(icon.getIconWidth(), icon.getIconHeight(), BufferedImage.TYPE_INT_ARGB);
+            int fullWidth = icon.getIconWidth();
+            int fullHeight = icon.getIconHeight();
+            
+            // Reduce height to crop out excess descender space (keep about 75% of height)
+            int croppedHeight = Math.max((int)(fullHeight * 0.75f), fullHeight - 6);
+            
+            BufferedImage image = new BufferedImage(fullWidth, croppedHeight, BufferedImage.TYPE_INT_ARGB);
             java.awt.Graphics2D g2 = image.createGraphics();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-            icon.paintIcon(null, g2, 0, 0);
+            
+            // Paint icon with slight upward offset to compensate for crop
+            icon.paintIcon(null, g2, 0, -2);
             g2.dispose();
 
             Path latexCacheDir = appDataDirectory.resolve("cache").resolve("latex");
