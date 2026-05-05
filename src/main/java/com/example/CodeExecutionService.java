@@ -40,6 +40,61 @@ class CodeExecutionService {
         return new LanguageSupport(true, "Ready to execute locally.");
     }
 
+    String getDetailedSupportInfo(String language) {
+        LanguagePlan plan = resolvePlan(language);
+        if (plan == null) {
+            return "Language: " + language + "\n\nStatus: No local runner is configured for this language.";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("Language: ").append(language).append("\n\n");
+        sb.append("Required Tools:\n");
+
+        boolean allFound = true;
+        for (String command : plan.requiredCommands()) {
+            String path = getCommandPath(command);
+            if (path != null && !path.isBlank()) {
+                sb.append("  ✓ ").append(command).append(": ").append(path).append("\n");
+            } else {
+                sb.append("  ✗ ").append(command).append(": NOT FOUND\n");
+                allFound = false;
+            }
+        }
+
+        sb.append("\nStatus: ");
+        if (allFound) {
+            sb.append("Ready to execute locally.");
+        } else {
+            sb.append("Missing required tools.");
+        }
+
+        return sb.toString();
+    }
+
+    private String getCommandPath(String command) {
+        try {
+            ProcessBuilder builder;
+            if (isWindows()) {
+                builder = new ProcessBuilder("cmd", "/c", "where " + command);
+            } else {
+                builder = new ProcessBuilder("sh", "-lc", "command -v " + command);
+            }
+            Process process = builder.start();
+            boolean finished = process.waitFor(3, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                return null;
+            }
+            if (process.exitValue() == 0) {
+                String output = readStream(process.getInputStream()).trim();
+                return output.isEmpty() ? null : output;
+            }
+            return null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     ExecutionReport runSampleTests(String language, String sourceCode, List<TestCaseSpec> testCases) throws IOException, InterruptedException {
         LanguagePlan plan = resolvePlan(language);
         if (plan == null) {

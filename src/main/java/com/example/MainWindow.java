@@ -67,6 +67,8 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.awt.event.ItemEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 
 public class MainWindow {
 
@@ -604,6 +606,13 @@ public class MainWindow {
         runtimeSupportLabel = new JLabel("Executable: checking...");
         runtimeSupportLabel.setForeground(new Color(169, 176, 188));
         runtimeSupportLabel.setFont(runtimeSupportLabel.getFont().deriveFont(Font.PLAIN, 12f));
+        runtimeSupportLabel.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        runtimeSupportLabel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                onRuntimeSupportLabelClicked();
+            }
+        });
         editorToolbar.add(runtimeSupportLabel);
         editorToolbar.add(Box.createHorizontalStrut(10));
 
@@ -1254,6 +1263,39 @@ public class MainWindow {
             executionStateLabel.setText("Status: Idle");
             executionStateLabel.setForeground(new Color(169, 176, 188));
         }
+    }
+
+    private void onRuntimeSupportLabelClicked() {
+        String language = selectedLanguage();
+        String info = codeExecutionService.getDetailedSupportInfo(language);
+
+        JDialog dialog = new JDialog(mainFrame, "Language Support Details", true);
+        dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+        dialog.setLayout(new BorderLayout());
+        dialog.setSize(new Dimension(500, 300));
+        dialog.setLocationRelativeTo(mainFrame);
+
+        JTextArea textArea = new JTextArea(info);
+        textArea.setEditable(false);
+        textArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        textArea.setBackground(new Color(43, 45, 48));
+        textArea.setForeground(new Color(223, 225, 229));
+        textArea.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        textArea.setLineWrap(true);
+        textArea.setWrapStyleWord(true);
+
+        JScrollPane scrollPane = new JScrollPane(textArea);
+        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(67, 71, 76)));
+
+        JButton closeButton = new JButton("Close");
+        closeButton.addActionListener(e -> dialog.dispose());
+        JPanel buttonPanel = new JPanel();
+        buttonPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        buttonPanel.add(closeButton);
+
+        dialog.add(scrollPane, BorderLayout.CENTER);
+        dialog.add(buttonPanel, BorderLayout.SOUTH);
+        dialog.setVisible(true);
     }
 
     private void installEditorAutoPairs(RSyntaxTextArea editor) {
