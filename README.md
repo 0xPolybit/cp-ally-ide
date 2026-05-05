@@ -10,6 +10,7 @@
 > This application is currently in beta. It is prone to bugs and crashes.
 
 
+
 ## Table of Contents
 - [Why CP Ally IDE?](#why-cp-ally-ide)
 - [List of Features](#list-of-features)
@@ -20,7 +21,9 @@
 ## Why CP Ally IDE?
 CP Ally IDE is built for competitive programming workflows where speed matters more than general-purpose IDE features. It combines problem fetching, local execution, cached problem content, and a code editor in one window so you can move from a problem code to a working solution without switching tools.
 
-![Reddit Video Creator Screenshot](screenshot.png)
+[![Reddit Video Creator Screenshot](screenshot.png)](https://www.youtube.com/watch?v=-CCY-HImmHk)
+
+<p align="center" style="text-align: center;">Click the image above to view the v0.1.3 beta demo video.</p>
 
 Use it when you want to:
 - open a Codeforces problem directly from its contest code, such as `2208A`
