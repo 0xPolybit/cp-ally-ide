@@ -567,6 +567,21 @@ public class MainWindow {
         fetchStatusLabel.setForeground(new Color(246, 86, 86));
         fetchStatusLabel.setFont(fetchStatusLabel.getFont().deriveFont(Font.PLAIN, 12f));
 
+        // Add small branded logo above the input when no problem is open
+        JLabel logoLabel = new JLabel();
+        try {
+            Path logoPath = Path.of("assets", "logo.png");
+            if (Files.exists(logoPath)) {
+                ImageIcon logoIcon = new ImageIcon(logoPath.toAbsolutePath().toString());
+                java.awt.Image scaled = logoIcon.getImage().getScaledInstance(64, 64, java.awt.Image.SCALE_SMOOTH);
+                logoLabel.setIcon(new ImageIcon(scaled));
+            }
+        } catch (Exception ignored) {
+        }
+        logoLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        logoLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 12, 0));
+        form.add(logoLabel);
+
         form.add(problemCodeInput);
         form.add(Box.createRigidArea(new Dimension(0, 12)));
         form.add(fetchProblemButton);
@@ -602,10 +617,12 @@ public class MainWindow {
         runButton.addActionListener(e -> onRunButtonClicked());
         editorToolbar.add(runButton);
         editorToolbar.add(Box.createHorizontalGlue());
+        editorToolbar.add(Box.createHorizontalStrut(20));
 
-        runtimeSupportLabel = new JLabel("Executable: checking...");
+        runtimeSupportLabel = new JLabel("checking...");
         runtimeSupportLabel.setForeground(new Color(169, 176, 188));
         runtimeSupportLabel.setFont(runtimeSupportLabel.getFont().deriveFont(Font.PLAIN, 12f));
+        runtimeSupportLabel.setMaximumSize(new Dimension(40, 20));
         runtimeSupportLabel.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         runtimeSupportLabel.addMouseListener(new MouseAdapter() {
             @Override
@@ -614,6 +631,10 @@ public class MainWindow {
             }
         });
         editorToolbar.add(runtimeSupportLabel);
+        editorToolbar.add(Box.createHorizontalStrut(2));
+
+        JLabel hintIconLabel = createHintIconLabel();
+        editorToolbar.add(hintIconLabel);
         editorToolbar.add(Box.createHorizontalStrut(10));
 
         executionStateLabel = new JLabel("Status: Idle");
@@ -1176,7 +1197,7 @@ public class MainWindow {
         CodeExecutionService.LanguageSupport support = codeExecutionService.detectSupport(language);
         boolean ready = problemStatementLoaded && support.supported();
 
-        runtimeSupportLabel.setText("<html>Executable: <span style='color:"
+        runtimeSupportLabel.setText("<html><span style='color:"
                 + (support.supported() ? "#61d66e" : "#f65656")
                 + ";'>"
                 + (support.supported() ? "Yes" : "No")
@@ -1296,6 +1317,30 @@ public class MainWindow {
         dialog.add(scrollPane, BorderLayout.CENTER);
         dialog.add(buttonPanel, BorderLayout.SOUTH);
         dialog.setVisible(true);
+    }
+
+    private JLabel createHintIconLabel() {
+        JLabel hintLabel = new JLabel();
+        try {
+            Path hintPath = Path.of("assets", "hint.png");
+            if (Files.exists(hintPath)) {
+                ImageIcon hintIcon = new ImageIcon(hintPath.toAbsolutePath().toString());
+                if (hintIcon.getIconWidth() > 0 && hintIcon.getIconHeight() > 0) {
+                    hintLabel.setIcon(hintIcon);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        
+        hintLabel.setMaximumSize(new Dimension(20, 20));
+        hintLabel.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        hintLabel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                onRuntimeSupportLabelClicked();
+            }
+        });
+        return hintLabel;
     }
 
     private void installEditorAutoPairs(RSyntaxTextArea editor) {
