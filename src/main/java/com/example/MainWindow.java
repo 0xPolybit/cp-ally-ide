@@ -437,39 +437,131 @@ public class MainWindow {
         dialog.setLayout(new BorderLayout());
         dialog.getContentPane().setBackground(new Color(30, 31, 34));
 
-        JEditorPane pane = new JEditorPane();
-        pane.setEditable(false);
-        pane.setContentType("text/html");
-        pane.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
-        pane.setText("""
-                <html><body style='background:#1e1f22;color:#dfe1e5;font-family:Segoe UI, Arial, sans-serif;'>
-                <h2 style='margin-top:0;'>Credits</h2>
-                <p><b>Name:</b> Swastik Biswas</p>
-                <p><b>College:</b> Kalinga Institute for Industrial Technology</p>
-                <p><b>Nationality:</b> United States of America</p>
-                <p><b>GitHub:</b> <a href='https://github.com/0xPolybit'>https://github.com/0xPolybit</a></p>
-                <p><b>Instagram:</b> <a href='https://www.instagram.com/swastikbiswas1776/'>https://www.instagram.com/swastikbiswas1776/</a></p>
-                <p><b>X:</b> <a href='https://x.com/0xSwastikBiswas'>https://x.com/0xSwastikBiswas</a></p>
-                <p><b>LinkedIn:</b> <a href='https://www.linkedin.com/in/polybit/'>https://www.linkedin.com/in/polybit/</a></p>
-                <p><b>CodeForces:</b> <a href='https://codeforces.com/profile/swastikpolybitbiswas'>https://codeforces.com/profile/swastikpolybitbiswas</a></p>
-                <p><b>LeetCode:</b> <a href='https://leetcode.com/u/swastikbiswas/'>https://leetcode.com/u/swastikbiswas/</a></p>
-                </body></html>
-                """);
-        pane.setCaretPosition(0);
-        pane.addHyperlinkListener(event -> {
-            if (event.getEventType() == HyperlinkEvent.EventType.ACTIVATED && event.getDescription() != null) {
-                openExternalUrl(event.getDescription());
-            }
-        });
-
-        JScrollPane scrollPane = new JScrollPane(pane);
-        scrollPane.setBorder(BorderFactory.createEmptyBorder());
+        JPanel content = createCreditsContentPanel();
+        JScrollPane scrollPane = new JScrollPane(content);
+        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(67, 71, 76)));
         scrollPane.getViewport().setBackground(new Color(30, 31, 34));
+        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
 
         dialog.add(scrollPane, BorderLayout.CENTER);
-        dialog.setSize(700, 520);
+        dialog.setSize(760, 560);
         dialog.setLocationRelativeTo(mainFrame);
         dialog.setVisible(true);
+    }
+
+    private JPanel createCreditsContentPanel() {
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBackground(new Color(43, 45, 48));
+        panel.setBorder(BorderFactory.createEmptyBorder(18, 18, 18, 18));
+
+        JLabel title = new JLabel("Credits");
+        title.setFont(title.getFont().deriveFont(Font.BOLD, 22f));
+        title.setForeground(new Color(223, 225, 229));
+        title.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JLabel subtitle = new JLabel("Project author and public profiles");
+        subtitle.setFont(subtitle.getFont().deriveFont(Font.PLAIN, 12f));
+        subtitle.setForeground(new Color(169, 176, 188));
+        subtitle.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JPanel header = new JPanel();
+        header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
+        header.setOpaque(false);
+        header.setAlignmentX(Component.LEFT_ALIGNMENT);
+        header.add(title);
+        header.add(Box.createRigidArea(new Dimension(0, 4)));
+        header.add(subtitle);
+
+        panel.add(header);
+        panel.add(Box.createRigidArea(new Dimension(0, 14)));
+        panel.add(createCreditsCard(
+                "Personal",
+                new String[][] {
+                        {"Name", "Swastik Biswas"},
+                        {"College", "Kalinga Institute for Industrial Technology"},
+                        {"Nationality", "United States of America"}
+                }
+        ));
+        panel.add(Box.createRigidArea(new Dimension(0, 14)));
+        panel.add(createCreditsCard(
+                "Links",
+                new String[][] {
+                        {"GitHub", "https://github.com/0xPolybit"},
+                        {"Instagram", "https://www.instagram.com/swastikbiswas1776/"},
+                        {"X", "https://x.com/0xSwastikBiswas"},
+                        {"LinkedIn", "https://www.linkedin.com/in/polybit/"},
+                        {"CodeForces", "https://codeforces.com/profile/swastikpolybitbiswas"},
+                        {"LeetCode", "https://leetcode.com/u/swastikbiswas/"}
+                }
+        ));
+
+        panel.add(Box.createVerticalGlue());
+        return panel;
+    }
+
+    private JPanel createCreditsCard(String heading, String[][] rows) {
+        JPanel card = new JPanel();
+        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+        card.setBackground(new Color(30, 31, 34));
+        card.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(67, 71, 76)),
+                BorderFactory.createEmptyBorder(14, 14, 14, 14)));
+        card.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JLabel headingLabel = new JLabel(heading);
+        headingLabel.setFont(headingLabel.getFont().deriveFont(Font.BOLD, 14f));
+        headingLabel.setForeground(new Color(97, 214, 110));
+        headingLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        card.add(headingLabel);
+        card.add(Box.createRigidArea(new Dimension(0, 10)));
+
+        for (String[] row : rows) {
+            card.add(createCreditsRow(row[0], row[1]));
+            card.add(Box.createRigidArea(new Dimension(0, 8)));
+        }
+
+        return card;
+    }
+
+    private JPanel createCreditsRow(String labelText, String valueText) {
+        JPanel row = new JPanel(new BorderLayout(10, 0));
+        row.setOpaque(false);
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JLabel label = new JLabel(labelText + ":");
+        label.setFont(label.getFont().deriveFont(Font.BOLD, 12f));
+        label.setForeground(new Color(169, 176, 188));
+
+        JLabel value = createCreditsValueLabel(labelText, valueText);
+        value.setFont(value.getFont().deriveFont(Font.PLAIN, 12f));
+        value.setForeground(new Color(223, 225, 229));
+
+        row.add(label, BorderLayout.WEST);
+        row.add(value, BorderLayout.CENTER);
+        return row;
+    }
+
+    private JLabel createCreditsValueLabel(String labelText, String valueText) {
+        if (valueText != null && valueText.startsWith("http")) {
+            JLabel link = new JLabel("<html><span style='color:#61d66e;text-decoration:underline;'>" + valueText + "</span></html>");
+            link.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+            link.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    openExternalUrl(valueText);
+                }
+            });
+            return link;
+        }
+
+        JLabel value = new JLabel(valueText);
+        if ("Swastik Biswas".equals(valueText)) {
+            value.setForeground(new Color(97, 214, 110));
+        } else if ("United States of America".equals(valueText)) {
+            value.setForeground(new Color(246, 198, 67));
+        }
+        return value;
     }
 
     private JSplitPane createContentSplit() {
