@@ -19,6 +19,7 @@ import javax.swing.JEditorPane;
 import javax.swing.JFrame;
 import javax.swing.ImageIcon;
 import javax.swing.JLabel;
+import javax.swing.KeyStroke;
 import javax.swing.JMenuBar;
 import javax.swing.JMenu;
 import javax.swing.JMenuItem;
@@ -180,18 +181,18 @@ public class MainWindow {
         }
 
         try {
-            Path logoPath = Path.of("assets", "logo.png");
-            if (!Files.exists(logoPath)) {
+            java.net.URL logoUrl = getClass().getResource("/assets/logo.png");
+            if (logoUrl == null) {
                 return;
             }
 
-            ImageIcon logo = new ImageIcon(logoPath.toAbsolutePath().toString());
+            ImageIcon logo = new ImageIcon(logoUrl);
             if (logo.getIconWidth() <= 0 || logo.getIconHeight() <= 0) {
                 return;
             }
             frame.setIconImage(logo.getImage());
         } catch (Exception ignored) {
-            // Ignore icon-loading failures to keep startup robust.
+            System.err.println("[MainWindow] Failed to load window icon (/assets/logo.png): " + ignored.getMessage());
         }
     }
 
@@ -433,20 +434,38 @@ public class MainWindow {
     }
 
     private void showCreditsDialog() {
-        JDialog dialog = new JDialog(mainFrame, "Credits", true);
-        dialog.setLayout(new BorderLayout());
-        dialog.getContentPane().setBackground(new Color(30, 31, 34));
+        try {
+            JDialog dialog = new JDialog(mainFrame, "Credits", true);
+            dialog.setLayout(new BorderLayout());
+            dialog.getContentPane().setBackground(new Color(30, 31, 34));
 
-        JPanel content = createCreditsContentPanel();
-        JScrollPane scrollPane = new JScrollPane(content);
-        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(67, 71, 76)));
-        scrollPane.getViewport().setBackground(new Color(30, 31, 34));
-        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
+            JPanel content = createCreditsContentPanel();
+            JScrollPane scrollPane = new JScrollPane(content);
+            scrollPane.setBorder(BorderFactory.createLineBorder(new Color(67, 71, 76)));
+            scrollPane.getViewport().setBackground(new Color(30, 31, 34));
+            scrollPane.getVerticalScrollBar().setUnitIncrement(16);
 
-        dialog.add(scrollPane, BorderLayout.CENTER);
-        dialog.setSize(760, 560);
-        dialog.setLocationRelativeTo(mainFrame);
-        dialog.setVisible(true);
+            JButton closeButton = new JButton("Close");
+            closeButton.addActionListener(e -> dialog.dispose());
+
+            JPanel footerPanel = new JPanel();
+            footerPanel.setBackground(new Color(30, 31, 34));
+            footerPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+            footerPanel.add(closeButton);
+
+            dialog.getRootPane().registerKeyboardAction(
+                e -> dialog.dispose(),
+                KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
+                JComponent.WHEN_IN_FOCUSED_WINDOW);
+
+            dialog.add(scrollPane, BorderLayout.CENTER);
+            dialog.add(footerPanel, BorderLayout.SOUTH);
+            dialog.setSize(760, 560);
+            dialog.setLocationRelativeTo(mainFrame);
+            dialog.setVisible(true);
+        } catch (Exception ex) {
+            System.err.println("[MainWindow] Failed to construct/show Credits dialog: " + ex.getMessage());
+        }
     }
 
     private JPanel createCreditsContentPanel() {
@@ -533,7 +552,7 @@ public class MainWindow {
         label.setFont(label.getFont().deriveFont(Font.BOLD, 12f));
         label.setForeground(new Color(169, 176, 188));
 
-        JLabel value = createCreditsValueLabel(labelText, valueText);
+        JLabel value = createCreditsValueLabel(valueText);
         value.setFont(value.getFont().deriveFont(Font.PLAIN, 12f));
         Color defaultLabelColor = UIManager.getColor("Label.foreground");
         if (value.getForeground() == null || value.getForeground().equals(defaultLabelColor)) {
@@ -545,7 +564,7 @@ public class MainWindow {
         return row;
     }
 
-    private JLabel createCreditsValueLabel(String labelText, String valueText) {
+    private JLabel createCreditsValueLabel(String valueText) {
         if (valueText != null && valueText.startsWith("http")) {
             JLabel link = new JLabel("<html><span style='color:#61d66e;text-decoration:underline;'>" + valueText + "</span></html>");
             link.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
@@ -665,13 +684,14 @@ public class MainWindow {
         // Add small branded logo above the input when no problem is open
         JLabel logoLabel = new JLabel();
         try {
-            Path logoPath = Path.of("assets", "logo.png");
-            if (Files.exists(logoPath)) {
-                ImageIcon logoIcon = new ImageIcon(logoPath.toAbsolutePath().toString());
+            java.net.URL logoUrl = getClass().getResource("/assets/logo.png");
+            if (logoUrl != null) {
+                ImageIcon logoIcon = new ImageIcon(logoUrl);
                 java.awt.Image scaled = logoIcon.getImage().getScaledInstance(64, 64, java.awt.Image.SCALE_SMOOTH);
                 logoLabel.setIcon(new ImageIcon(scaled));
             }
         } catch (Exception ignored) {
+            System.err.println("[MainWindow] Failed to load entry logo (/assets/logo.png): " + ignored.getMessage());
         }
         logoLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         logoLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 12, 0));
@@ -1382,32 +1402,36 @@ public class MainWindow {
     }
 
     private void onRuntimeSupportLabelClicked() {
-        String language = selectedLanguage();
-        String info = codeExecutionService.getDetailedSupportInfo(language);
+        try {
+            String language = selectedLanguage();
+            String info = codeExecutionService.getDetailedSupportInfo(language);
 
-        JDialog dialog = new JDialog(mainFrame, "Language Support Details", true);
-        dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
-        dialog.setLayout(new BorderLayout());
-        dialog.setSize(new Dimension(500, 350));
-        dialog.setLocationRelativeTo(mainFrame);
+            JDialog dialog = new JDialog(mainFrame, "Language Support Details", true);
+            dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+            dialog.setLayout(new BorderLayout());
+            dialog.setSize(new Dimension(500, 350));
+            dialog.setLocationRelativeTo(mainFrame);
 
-        // Parse and format the support info into a panel with colored labels
-        JPanel contentPanel = createFormattedSupportPanel(info);
+            // Parse and format the support info into a panel with colored labels
+            JPanel contentPanel = createFormattedSupportPanel(info);
 
-        JScrollPane scrollPane = new JScrollPane(contentPanel);
-        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(67, 71, 76)));
-        scrollPane.getViewport().setBackground(new Color(43, 45, 48));
-        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
+            JScrollPane scrollPane = new JScrollPane(contentPanel);
+            scrollPane.setBorder(BorderFactory.createLineBorder(new Color(67, 71, 76)));
+            scrollPane.getViewport().setBackground(new Color(43, 45, 48));
+            scrollPane.getVerticalScrollBar().setUnitIncrement(16);
 
-        JButton closeButton = new JButton("Close");
-        closeButton.addActionListener(e -> dialog.dispose());
-        JPanel buttonPanel = new JPanel();
-        buttonPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        buttonPanel.add(closeButton);
+            JButton closeButton = new JButton("Close");
+            closeButton.addActionListener(e -> dialog.dispose());
+            JPanel buttonPanel = new JPanel();
+            buttonPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+            buttonPanel.add(closeButton);
 
-        dialog.add(scrollPane, BorderLayout.CENTER);
-        dialog.add(buttonPanel, BorderLayout.SOUTH);
-        dialog.setVisible(true);
+            dialog.add(scrollPane, BorderLayout.CENTER);
+            dialog.add(buttonPanel, BorderLayout.SOUTH);
+            dialog.setVisible(true);
+        } catch (Exception ex) {
+            System.err.println("[MainWindow] Failed to construct/show runtime support dialog: " + ex.getMessage());
+        }
     }
 
     private JPanel createFormattedSupportPanel(String rawInfo) {
@@ -1478,14 +1502,15 @@ public class MainWindow {
     private JLabel createHintIconLabel() {
         JLabel hintLabel = new JLabel();
         try {
-            Path hintPath = Path.of("assets", "hint.png");
-            if (Files.exists(hintPath)) {
-                ImageIcon hintIcon = new ImageIcon(hintPath.toAbsolutePath().toString());
+            java.net.URL hintUrl = getClass().getResource("/assets/hint.png");
+            if (hintUrl != null) {
+                ImageIcon hintIcon = new ImageIcon(hintUrl);
                 if (hintIcon.getIconWidth() > 0 && hintIcon.getIconHeight() > 0) {
                     hintLabel.setIcon(hintIcon);
                 }
             }
         } catch (Exception ignored) {
+            System.err.println("[MainWindow] Failed to load hint icon (/assets/hint.png): " + ignored.getMessage());
         }
         
         hintLabel.setMaximumSize(new Dimension(20, 20));

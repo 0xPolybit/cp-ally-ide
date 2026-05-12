@@ -86,8 +86,18 @@ class CodeExecutionService {
                 return null;
             }
             if (process.exitValue() == 0) {
-                String output = readStream(process.getInputStream()).trim();
-                return output.isEmpty() ? null : output;
+                String output = readStream(process.getInputStream());
+                if (output == null || output.isBlank()) {
+                    return null;
+                }
+
+                for (String line : output.split("\\R")) {
+                    String candidate = line.trim();
+                    if (!candidate.isEmpty()) {
+                        return candidate;
+                    }
+                }
+                return null;
             }
             return null;
         } catch (Exception e) {
