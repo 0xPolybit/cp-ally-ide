@@ -1293,20 +1293,16 @@ public class MainWindow {
         JDialog dialog = new JDialog(mainFrame, "Language Support Details", true);
         dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
         dialog.setLayout(new BorderLayout());
-        dialog.setSize(new Dimension(500, 300));
+        dialog.setSize(new Dimension(500, 350));
         dialog.setLocationRelativeTo(mainFrame);
 
-        JTextArea textArea = new JTextArea(info);
-        textArea.setEditable(false);
-        textArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        textArea.setBackground(new Color(43, 45, 48));
-        textArea.setForeground(new Color(223, 225, 229));
-        textArea.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
-        textArea.setLineWrap(true);
-        textArea.setWrapStyleWord(true);
+        // Parse and format the support info into a panel with colored labels
+        JPanel contentPanel = createFormattedSupportPanel(info);
 
-        JScrollPane scrollPane = new JScrollPane(textArea);
+        JScrollPane scrollPane = new JScrollPane(contentPanel);
         scrollPane.setBorder(BorderFactory.createLineBorder(new Color(67, 71, 76)));
+        scrollPane.getViewport().setBackground(new Color(43, 45, 48));
+        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
 
         JButton closeButton = new JButton("Close");
         closeButton.addActionListener(e -> dialog.dispose());
@@ -1317,6 +1313,71 @@ public class MainWindow {
         dialog.add(scrollPane, BorderLayout.CENTER);
         dialog.add(buttonPanel, BorderLayout.SOUTH);
         dialog.setVisible(true);
+    }
+
+    private JPanel createFormattedSupportPanel(String rawInfo) {
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBackground(new Color(43, 45, 48));
+        panel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+
+        String[] lines = rawInfo.split("\n");
+        boolean inToolsSection = false;
+
+        for (String line : lines) {
+            if (line.isEmpty()) {
+                panel.add(Box.createRigidArea(new Dimension(0, 6)));
+                continue;
+            }
+
+            if (line.startsWith("Language:")) {
+                JLabel label = new JLabel(line);
+                label.setFont(label.getFont().deriveFont(Font.BOLD, 13f));
+                label.setForeground(new Color(223, 225, 229));
+                label.setAlignmentX(Component.LEFT_ALIGNMENT);
+                panel.add(label);
+                inToolsSection = false;
+            } else if (line.equals("Required Tools:")) {
+                JLabel label = new JLabel(line);
+                label.setFont(label.getFont().deriveFont(Font.BOLD, 12f));
+                label.setForeground(new Color(223, 225, 229));
+                label.setAlignmentX(Component.LEFT_ALIGNMENT);
+                panel.add(label);
+                inToolsSection = true;
+            } else if (line.startsWith("Status:")) {
+                JLabel label = new JLabel(line);
+                label.setFont(label.getFont().deriveFont(Font.BOLD, 12f));
+                if (line.contains("Ready")) {
+                    label.setForeground(new Color(97, 214, 110)); // Green
+                } else if (line.contains("Missing")) {
+                    label.setForeground(new Color(246, 86, 86)); // Red
+                } else {
+                    label.setForeground(new Color(223, 225, 229));
+                }
+                label.setAlignmentX(Component.LEFT_ALIGNMENT);
+                panel.add(label);
+                inToolsSection = false;
+            } else if (inToolsSection && (line.startsWith("  ✓") || line.startsWith("  ✗"))) {
+                JLabel label = new JLabel(line);
+                label.setFont(label.getFont().deriveFont(Font.PLAIN, 11f));
+                if (line.startsWith("  ✓")) {
+                    label.setForeground(new Color(97, 214, 110)); // Green
+                } else {
+                    label.setForeground(new Color(246, 86, 86)); // Red
+                }
+                label.setAlignmentX(Component.LEFT_ALIGNMENT);
+                panel.add(label);
+            } else {
+                JLabel label = new JLabel(line);
+                label.setFont(label.getFont().deriveFont(Font.PLAIN, 11f));
+                label.setForeground(new Color(169, 176, 188));
+                label.setAlignmentX(Component.LEFT_ALIGNMENT);
+                panel.add(label);
+            }
+        }
+
+        panel.add(Box.createVerticalGlue());
+        return panel;
     }
 
     private JLabel createHintIconLabel() {
