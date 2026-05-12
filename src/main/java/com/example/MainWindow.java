@@ -535,7 +535,10 @@ public class MainWindow {
 
         JLabel value = createCreditsValueLabel(labelText, valueText);
         value.setFont(value.getFont().deriveFont(Font.PLAIN, 12f));
-        value.setForeground(new Color(223, 225, 229));
+        Color defaultLabelColor = UIManager.getColor("Label.foreground");
+        if (value.getForeground() == null || value.getForeground().equals(defaultLabelColor)) {
+            value.setForeground(new Color(223, 225, 229));
+        }
 
         row.add(label, BorderLayout.WEST);
         row.add(value, BorderLayout.CENTER);
