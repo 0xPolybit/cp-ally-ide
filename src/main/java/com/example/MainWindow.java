@@ -668,6 +668,19 @@ public class MainWindow {
         fetchProblemButton.setMaximumSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
         fetchProblemButton.setMinimumSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
         fetchProblemButton.setPreferredSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
+        // Try to load a small CodeForces icon (16x16) from classpath assets and attach to the button
+        try {
+            java.net.URL cfIconUrl = getClass().getResource("/assets/codeforces.png");
+            if (cfIconUrl != null) {
+                ImageIcon cfIcon = new ImageIcon(cfIconUrl);
+                java.awt.Image scaled = cfIcon.getImage().getScaledInstance(16, 16, java.awt.Image.SCALE_SMOOTH);
+                fetchProblemButton.setIcon(new ImageIcon(scaled));
+                fetchProblemButton.setHorizontalTextPosition(javax.swing.SwingConstants.RIGHT);
+                fetchProblemButton.setIconTextGap(8);
+            }
+        } catch (Exception ex) {
+            System.err.println("[MainWindow] Failed to load codeforces icon: " + ex.getMessage());
+        }
         fetchProblemButton.addActionListener(e -> onFetchProblemClicked());
         initialFocusButton = fetchProblemButton;
 
@@ -1193,6 +1206,19 @@ public class MainWindow {
         chooseDifferentProblemButton.setFocusable(false);
         chooseDifferentProblemButton.setRequestFocusEnabled(false);
         chooseDifferentProblemButton.setPreferredSize(new Dimension(280, LEFT_FIELD_HEIGHT));
+        // Try to attach the same CodeForces icon used on the fetch button
+        try {
+            java.net.URL cfIconUrl2 = getClass().getResource("/assets/codeforces.png");
+            if (cfIconUrl2 != null) {
+                ImageIcon cfIcon2 = new ImageIcon(cfIconUrl2);
+                java.awt.Image scaled2 = cfIcon2.getImage().getScaledInstance(16, 16, java.awt.Image.SCALE_SMOOTH);
+                chooseDifferentProblemButton.setIcon(new ImageIcon(scaled2));
+                chooseDifferentProblemButton.setHorizontalTextPosition(javax.swing.SwingConstants.RIGHT);
+                chooseDifferentProblemButton.setIconTextGap(8);
+            }
+        } catch (Exception ex) {
+            System.err.println("[MainWindow] Failed to load codeforces icon for choose button: " + ex.getMessage());
+        }
         chooseDifferentProblemButton.addActionListener(e -> promptForDifferentProblem());
 
         JPanel topBar = new JPanel(new BorderLayout());
