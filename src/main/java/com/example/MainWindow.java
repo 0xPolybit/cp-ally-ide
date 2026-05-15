@@ -19,7 +19,6 @@ import javax.swing.JEditorPane;
 import javax.swing.JFrame;
 import javax.swing.ImageIcon;
 import javax.swing.JLabel;
-import javax.swing.KeyStroke;
 import javax.swing.JMenuBar;
 import javax.swing.JMenu;
 import javax.swing.JMenuItem;
@@ -40,11 +39,8 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Desktop;
 import java.awt.Font;
-import java.awt.Graphics2D;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
-import java.awt.RenderingHints;
-import java.awt.image.BufferedImage;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.FocusAdapter;
@@ -60,7 +56,6 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
@@ -133,7 +128,7 @@ public class MainWindow {
         codeforcesService = new CodeforcesService(appDataDir);
 
         JFrame frame = new JFrame(APP_NAME + " v" + CURRENT_APP_VERSION);
-        applyWindowIcon(frame);
+        UiIconLoader.applyWindowIcon(frame, "/assets/logo.png");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setLayout(new BorderLayout());
         frame.setMinimumSize(new Dimension(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT));
@@ -173,27 +168,6 @@ public class MainWindow {
         }
 
         checkForAppUpdatesAsync();
-    }
-
-    private void applyWindowIcon(JFrame frame) {
-        if (frame == null) {
-            return;
-        }
-
-        try {
-            java.net.URL logoUrl = getClass().getResource("/assets/logo.png");
-            if (logoUrl == null) {
-                return;
-            }
-
-            ImageIcon logo = new ImageIcon(logoUrl);
-            if (logo.getIconWidth() <= 0 || logo.getIconHeight() <= 0) {
-                return;
-            }
-            frame.setIconImage(logo.getImage());
-        } catch (Exception ignored) {
-            System.err.println("[MainWindow] Failed to load window icon (/assets/logo.png): " + ignored.getMessage());
-        }
     }
 
     private void checkForAppUpdatesAsync() {
@@ -435,155 +409,10 @@ public class MainWindow {
 
     private void showCreditsDialog() {
         try {
-            JDialog dialog = new JDialog(mainFrame, "Credits", true);
-            dialog.setLayout(new BorderLayout());
-            dialog.getContentPane().setBackground(new Color(30, 31, 34));
-
-            JPanel content = createCreditsContentPanel();
-            JScrollPane scrollPane = new JScrollPane(content);
-            scrollPane.setBorder(BorderFactory.createLineBorder(new Color(67, 71, 76)));
-            scrollPane.getViewport().setBackground(new Color(30, 31, 34));
-            scrollPane.getVerticalScrollBar().setUnitIncrement(16);
-
-            JButton closeButton = new JButton("Close");
-            closeButton.addActionListener(e -> dialog.dispose());
-
-            JPanel footerPanel = new JPanel();
-            footerPanel.setBackground(new Color(30, 31, 34));
-            footerPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-            footerPanel.add(closeButton);
-
-            dialog.getRootPane().registerKeyboardAction(
-                e -> dialog.dispose(),
-                KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
-                JComponent.WHEN_IN_FOCUSED_WINDOW);
-
-            dialog.add(scrollPane, BorderLayout.CENTER);
-            dialog.add(footerPanel, BorderLayout.SOUTH);
-            dialog.setSize(760, 560);
-            dialog.setLocationRelativeTo(mainFrame);
-            dialog.setVisible(true);
+            SupportDialogs.showCreditsDialog(mainFrame);
         } catch (Exception ex) {
             System.err.println("[MainWindow] Failed to construct/show Credits dialog: " + ex.getMessage());
         }
-    }
-
-    private JPanel createCreditsContentPanel() {
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setBackground(new Color(43, 45, 48));
-        panel.setBorder(BorderFactory.createEmptyBorder(18, 18, 18, 18));
-
-        JLabel title = new JLabel("Credits");
-        title.setFont(title.getFont().deriveFont(Font.BOLD, 22f));
-        title.setForeground(new Color(223, 225, 229));
-        title.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        JLabel subtitle = new JLabel("Project author and public profiles");
-        subtitle.setFont(subtitle.getFont().deriveFont(Font.PLAIN, 12f));
-        subtitle.setForeground(new Color(169, 176, 188));
-        subtitle.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        JPanel header = new JPanel();
-        header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
-        header.setOpaque(false);
-        header.setAlignmentX(Component.LEFT_ALIGNMENT);
-        header.add(title);
-        header.add(Box.createRigidArea(new Dimension(0, 4)));
-        header.add(subtitle);
-
-        panel.add(header);
-        panel.add(Box.createRigidArea(new Dimension(0, 14)));
-        panel.add(createCreditsCard(
-                "Personal",
-                new String[][] {
-                        {"Name", "Swastik Biswas"},
-                        {"College", "Kalinga Institute for Industrial Technology"},
-                        {"Nationality", "United States of America"}
-                }
-        ));
-        panel.add(Box.createRigidArea(new Dimension(0, 14)));
-        panel.add(createCreditsCard(
-                "Links",
-                new String[][] {
-                        {"GitHub", "https://github.com/0xPolybit"},
-                        {"Instagram", "https://www.instagram.com/swastikbiswas1776/"},
-                        {"X", "https://x.com/0xSwastikBiswas"},
-                        {"LinkedIn", "https://www.linkedin.com/in/polybit/"},
-                        {"CodeForces", "https://codeforces.com/profile/swastikpolybitbiswas"},
-                        {"LeetCode", "https://leetcode.com/u/swastikbiswas/"}
-                }
-        ));
-
-        panel.add(Box.createVerticalGlue());
-        return panel;
-    }
-
-    private JPanel createCreditsCard(String heading, String[][] rows) {
-        JPanel card = new JPanel();
-        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
-        card.setBackground(new Color(30, 31, 34));
-        card.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(67, 71, 76)),
-                BorderFactory.createEmptyBorder(14, 14, 14, 14)));
-        card.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        JLabel headingLabel = new JLabel(heading);
-        headingLabel.setFont(headingLabel.getFont().deriveFont(Font.BOLD, 14f));
-        headingLabel.setForeground(new Color(97, 214, 110));
-        headingLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        card.add(headingLabel);
-        card.add(Box.createRigidArea(new Dimension(0, 10)));
-
-        for (String[] row : rows) {
-            card.add(createCreditsRow(row[0], row[1]));
-            card.add(Box.createRigidArea(new Dimension(0, 8)));
-        }
-
-        return card;
-    }
-
-    private JPanel createCreditsRow(String labelText, String valueText) {
-        JPanel row = new JPanel(new BorderLayout(10, 0));
-        row.setOpaque(false);
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        JLabel label = new JLabel(labelText + ":");
-        label.setFont(label.getFont().deriveFont(Font.BOLD, 12f));
-        label.setForeground(new Color(169, 176, 188));
-
-        JLabel value = createCreditsValueLabel(valueText);
-        value.setFont(value.getFont().deriveFont(Font.PLAIN, 12f));
-        Color defaultLabelColor = UIManager.getColor("Label.foreground");
-        if (value.getForeground() == null || value.getForeground().equals(defaultLabelColor)) {
-            value.setForeground(new Color(223, 225, 229));
-        }
-
-        row.add(label, BorderLayout.WEST);
-        row.add(value, BorderLayout.CENTER);
-        return row;
-    }
-
-    private JLabel createCreditsValueLabel(String valueText) {
-        if (valueText != null && valueText.startsWith("http")) {
-            JLabel link = new JLabel("<html><span style='color:#61d66e;text-decoration:underline;'>" + valueText + "</span></html>");
-            link.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
-            link.addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseClicked(MouseEvent e) {
-                    openExternalUrl(valueText);
-                }
-            });
-            return link;
-        }
-
-        JLabel value = new JLabel(valueText);
-        if ("Swastik Biswas".equals(valueText)) {
-            value.setForeground(new Color(97, 214, 110));
-        } else if ("United States of America".equals(valueText)) {
-            value.setForeground(new Color(246, 198, 67));
-        }
-        return value;
     }
 
     private JSplitPane createContentSplit() {
@@ -668,18 +497,11 @@ public class MainWindow {
         fetchProblemButton.setMaximumSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
         fetchProblemButton.setMinimumSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
         fetchProblemButton.setPreferredSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
-        // Try to load a small CodeForces icon (16x16) from classpath assets and attach to the button
-        try {
-            java.net.URL cfIconUrl = getClass().getResource("/assets/codeforces.png");
-            if (cfIconUrl != null) {
-                ImageIcon cfIcon = new ImageIcon(cfIconUrl);
-                java.awt.Image scaled = cfIcon.getImage().getScaledInstance(16, 16, java.awt.Image.SCALE_SMOOTH);
-                fetchProblemButton.setIcon(new ImageIcon(scaled));
-                fetchProblemButton.setHorizontalTextPosition(javax.swing.SwingConstants.RIGHT);
-                fetchProblemButton.setIconTextGap(8);
-            }
-        } catch (Exception ex) {
-            System.err.println("[MainWindow] Failed to load codeforces icon: " + ex.getMessage());
+        ImageIcon codeforcesIcon = UiIconLoader.loadScaledClasspathIcon("/assets/codeforces.png", 16, 16);
+        if (codeforcesIcon != null) {
+            fetchProblemButton.setIcon(codeforcesIcon);
+            fetchProblemButton.setHorizontalTextPosition(javax.swing.SwingConstants.RIGHT);
+            fetchProblemButton.setIconTextGap(8);
         }
         fetchProblemButton.addActionListener(e -> onFetchProblemClicked());
         initialFocusButton = fetchProblemButton;
@@ -694,17 +516,10 @@ public class MainWindow {
         fetchStatusLabel.setForeground(new Color(246, 86, 86));
         fetchStatusLabel.setFont(fetchStatusLabel.getFont().deriveFont(Font.PLAIN, 12f));
 
-        // Add small branded logo above the input when no problem is open
         JLabel logoLabel = new JLabel();
-        try {
-            java.net.URL logoUrl = getClass().getResource("/assets/logo.png");
-            if (logoUrl != null) {
-                ImageIcon logoIcon = new ImageIcon(logoUrl);
-                java.awt.Image scaled = logoIcon.getImage().getScaledInstance(64, 64, java.awt.Image.SCALE_SMOOTH);
-                logoLabel.setIcon(new ImageIcon(scaled));
-            }
-        } catch (Exception ignored) {
-            System.err.println("[MainWindow] Failed to load entry logo (/assets/logo.png): " + ignored.getMessage());
+        ImageIcon logoIcon = UiIconLoader.loadScaledClasspathIcon("/assets/logo.png", 64, 64);
+        if (logoIcon != null) {
+            logoLabel.setIcon(logoIcon);
         }
         logoLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         logoLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 12, 0));
@@ -1206,18 +1021,10 @@ public class MainWindow {
         chooseDifferentProblemButton.setFocusable(false);
         chooseDifferentProblemButton.setRequestFocusEnabled(false);
         chooseDifferentProblemButton.setPreferredSize(new Dimension(280, LEFT_FIELD_HEIGHT));
-        // Try to attach the same CodeForces icon used on the fetch button
-        try {
-            java.net.URL cfIconUrl2 = getClass().getResource("/assets/codeforces.png");
-            if (cfIconUrl2 != null) {
-                ImageIcon cfIcon2 = new ImageIcon(cfIconUrl2);
-                java.awt.Image scaled2 = cfIcon2.getImage().getScaledInstance(16, 16, java.awt.Image.SCALE_SMOOTH);
-                chooseDifferentProblemButton.setIcon(new ImageIcon(scaled2));
-                chooseDifferentProblemButton.setHorizontalTextPosition(javax.swing.SwingConstants.RIGHT);
-                chooseDifferentProblemButton.setIconTextGap(8);
-            }
-        } catch (Exception ex) {
-            System.err.println("[MainWindow] Failed to load codeforces icon for choose button: " + ex.getMessage());
+        chooseDifferentProblemButton.setIcon(UiIconLoader.loadScaledClasspathIcon("/assets/codeforces.png", 16, 16));
+        if (chooseDifferentProblemButton.getIcon() != null) {
+            chooseDifferentProblemButton.setHorizontalTextPosition(javax.swing.SwingConstants.RIGHT);
+            chooseDifferentProblemButton.setIconTextGap(8);
         }
         chooseDifferentProblemButton.addActionListener(e -> promptForDifferentProblem());
 
@@ -1431,109 +1238,18 @@ public class MainWindow {
         try {
             String language = selectedLanguage();
             String info = codeExecutionService.getDetailedSupportInfo(language);
-
-            JDialog dialog = new JDialog(mainFrame, "Language Support Details", true);
-            dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
-            dialog.setLayout(new BorderLayout());
-            dialog.setSize(new Dimension(500, 350));
-            dialog.setLocationRelativeTo(mainFrame);
-
-            // Parse and format the support info into a panel with colored labels
-            JPanel contentPanel = createFormattedSupportPanel(info);
-
-            JScrollPane scrollPane = new JScrollPane(contentPanel);
-            scrollPane.setBorder(BorderFactory.createLineBorder(new Color(67, 71, 76)));
-            scrollPane.getViewport().setBackground(new Color(43, 45, 48));
-            scrollPane.getVerticalScrollBar().setUnitIncrement(16);
-
-            JButton closeButton = new JButton("Close");
-            closeButton.addActionListener(e -> dialog.dispose());
-            JPanel buttonPanel = new JPanel();
-            buttonPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-            buttonPanel.add(closeButton);
-
-            dialog.add(scrollPane, BorderLayout.CENTER);
-            dialog.add(buttonPanel, BorderLayout.SOUTH);
-            dialog.setVisible(true);
+            SupportDialogs.showRuntimeSupportDialog(mainFrame, language, info);
         } catch (Exception ex) {
             System.err.println("[MainWindow] Failed to construct/show runtime support dialog: " + ex.getMessage());
         }
     }
 
-    private JPanel createFormattedSupportPanel(String rawInfo) {
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setBackground(new Color(43, 45, 48));
-        panel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
-
-        String[] lines = rawInfo.split("\n");
-        boolean inToolsSection = false;
-
-        for (String line : lines) {
-            if (line.isEmpty()) {
-                panel.add(Box.createRigidArea(new Dimension(0, 6)));
-                continue;
-            }
-
-            if (line.startsWith("Language:")) {
-                JLabel label = new JLabel(line);
-                label.setFont(label.getFont().deriveFont(Font.BOLD, 13f));
-                label.setForeground(new Color(223, 225, 229));
-                label.setAlignmentX(Component.LEFT_ALIGNMENT);
-                panel.add(label);
-                inToolsSection = false;
-            } else if (line.equals("Required Tools:")) {
-                JLabel label = new JLabel(line);
-                label.setFont(label.getFont().deriveFont(Font.BOLD, 12f));
-                label.setForeground(new Color(223, 225, 229));
-                label.setAlignmentX(Component.LEFT_ALIGNMENT);
-                panel.add(label);
-                inToolsSection = true;
-            } else if (line.startsWith("Status:")) {
-                JLabel label = new JLabel(line);
-                label.setFont(label.getFont().deriveFont(Font.BOLD, 12f));
-                if (line.contains("Ready")) {
-                    label.setForeground(new Color(97, 214, 110)); // Green
-                } else if (line.contains("Missing")) {
-                    label.setForeground(new Color(246, 86, 86)); // Red
-                } else {
-                    label.setForeground(new Color(223, 225, 229));
-                }
-                label.setAlignmentX(Component.LEFT_ALIGNMENT);
-                panel.add(label);
-                inToolsSection = false;
-            } else if (inToolsSection && (line.startsWith("  ✓") || line.startsWith("  ✗"))) {
-                JLabel label = new JLabel(line);
-                label.setFont(label.getFont().deriveFont(Font.PLAIN, 11f));
-                if (line.startsWith("  ✓")) {
-                    label.setForeground(new Color(97, 214, 110)); // Green
-                } else {
-                    label.setForeground(new Color(246, 86, 86)); // Red
-                }
-                label.setAlignmentX(Component.LEFT_ALIGNMENT);
-                panel.add(label);
-            } else {
-                JLabel label = new JLabel(line);
-                label.setFont(label.getFont().deriveFont(Font.PLAIN, 11f));
-                label.setForeground(new Color(169, 176, 188));
-                label.setAlignmentX(Component.LEFT_ALIGNMENT);
-                panel.add(label);
-            }
-        }
-
-        panel.add(Box.createVerticalGlue());
-        return panel;
-    }
-
     private JLabel createHintIconLabel() {
         JLabel hintLabel = new JLabel();
         try {
-            java.net.URL hintUrl = getClass().getResource("/assets/hint.png");
-            if (hintUrl != null) {
-                ImageIcon hintIcon = new ImageIcon(hintUrl);
-                if (hintIcon.getIconWidth() > 0 && hintIcon.getIconHeight() > 0) {
-                    hintLabel.setIcon(hintIcon);
-                }
+            ImageIcon hintIcon = UiIconLoader.loadClasspathIcon("/assets/hint.png");
+            if (hintIcon != null) {
+                hintLabel.setIcon(hintIcon);
             }
         } catch (Exception ignored) {
             System.err.println("[MainWindow] Failed to load hint icon (/assets/hint.png): " + ignored.getMessage());
@@ -1709,8 +1425,8 @@ public class MainWindow {
             return;
         }
 
-        ImageIcon normal = loadToolbarIcon("run.png");
-        ImageIcon hover = loadToolbarIcon("run-hover.png");
+        ImageIcon normal = UiIconLoader.loadScaledClasspathIcon("/assets/run.png", RUN_ICON_SIZE, RUN_ICON_SIZE);
+        ImageIcon hover = UiIconLoader.loadScaledClasspathIcon("/assets/run-hover.png", RUN_ICON_SIZE, RUN_ICON_SIZE);
         if (normal == null) {
             return;
         }
@@ -1723,48 +1439,6 @@ public class MainWindow {
             runButton.setRolloverIcon(hover);
         }
         runButton.setPreferredSize(new Dimension(RUN_ICON_SIZE + 14, RUN_ICON_SIZE + 10));
-    }
-
-    private ImageIcon loadToolbarIcon(String fileName) {
-        try {
-            Path iconPath = resolveToolbarIconPath(fileName);
-            if (!Files.exists(iconPath)) {
-                return null;
-            }
-
-            ImageIcon raw = new ImageIcon(iconPath.toAbsolutePath().toString());
-            if (raw.getIconWidth() <= 0 || raw.getIconHeight() <= 0) {
-                return null;
-            }
-
-            if (raw.getIconWidth() == RUN_ICON_SIZE && raw.getIconHeight() == RUN_ICON_SIZE) {
-                return raw;
-            }
-
-            BufferedImage scaled = new BufferedImage(RUN_ICON_SIZE, RUN_ICON_SIZE, BufferedImage.TYPE_INT_ARGB_PRE);
-            Graphics2D g2 = scaled.createGraphics();
-            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-            g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
-            g2.drawImage(raw.getImage(), 0, 0, RUN_ICON_SIZE, RUN_ICON_SIZE, null);
-            g2.dispose();
-            return new ImageIcon(scaled);
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    private Path resolveToolbarIconPath(String fileName) {
-        int dot = fileName.lastIndexOf('.');
-        String base = dot >= 0 ? fileName.substring(0, dot) : fileName;
-        String ext = dot >= 0 ? fileName.substring(dot) : "";
-
-        Path hiDpiPath = Path.of("assets", base + "@2x" + ext);
-        if (Files.exists(hiDpiPath)) {
-            return hiDpiPath;
-        }
-        return Path.of("assets", fileName);
     }
 
     private String resolveSyntaxStyle(String language) {
