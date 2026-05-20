@@ -44,8 +44,12 @@ class SettingsRepository {
             int testCasesDivider = parseInt(properties.getProperty("window.testCasesDividerLocation"), 420);
             boolean maximized = Boolean.parseBoolean(properties.getProperty("window.maximized", "false"));
             String language = properties.getProperty("language.last", defaultLanguage);
+            int editorFontSize = parseInt(properties.getProperty("editor.fontSize"), 14);
+            String editorColorScheme = properties.getProperty("editor.colorScheme", "Eclipse Dark");
+            boolean useTabsAsSpaces = Boolean.parseBoolean(properties.getProperty("editor.useTabsAsSpaces", "false"));
+            int tabSpacing = parseInt(properties.getProperty("editor.tabSpacing"), 4);
 
-            return new AppSettings(x, y, width, height, divider, testCasesDivider, maximized, language);
+            return new AppSettings(x, y, width, height, divider, testCasesDivider, maximized, language, editorFontSize, editorColorScheme, useTabsAsSpaces, tabSpacing);
         } catch (IOException e) {
             return AppSettings.defaults(defaultLanguage);
         }
@@ -64,6 +68,10 @@ class SettingsRepository {
             properties.setProperty("window.testCasesDividerLocation", Integer.toString(settings.testCasesDividerLocation()));
             properties.setProperty("window.maximized", Boolean.toString(settings.maximized()));
             properties.setProperty("language.last", settings.lastLanguage());
+            properties.setProperty("editor.fontSize", Integer.toString(settings.editorFontSize()));
+            properties.setProperty("editor.colorScheme", settings.editorColorScheme());
+            properties.setProperty("editor.useTabsAsSpaces", Boolean.toString(settings.useTabsAsSpaces()));
+            properties.setProperty("editor.tabSpacing", Integer.toString(settings.tabSpacing()));
 
             try (OutputStream output = new BufferedOutputStream(Files.newOutputStream(settingsFile))) {
                 properties.store(output, "Competitive Programming Ally settings");

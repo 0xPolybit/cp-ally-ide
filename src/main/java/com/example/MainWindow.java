@@ -72,6 +72,7 @@ public class MainWindow {
     private static final String PROBLEM_PLACEHOLDER = "Enter problem code (eg: 2208A)";
     private static final Pattern PROBLEM_CODE_PATTERN = Pattern.compile("^(\\d{1,6})([A-Za-z][A-Za-z0-9]{0,2})$");
     private static final String DEFAULT_LANGUAGE = "Python 3";
+    private static final String DEFAULT_EDITOR_THEME = "Eclipse Dark";
     private static final String SETTINGS_DIR_NAME = "CompetitiveProgrammingAlly";
     private static final String SETTINGS_FILE_NAME = "settings.properties";
     private static final String CURRENT_APP_VERSION = "0.1.4";
@@ -315,62 +316,67 @@ public class MainWindow {
         titleBar.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
         titleBar.setBackground(new Color(43, 45, 48));
 
+        // File Menu
         JMenu fileMenu = new JMenu("File");
-        JMenuItem clearProgramCacheItem = new JMenuItem("Clear Programming Cache");
-        clearProgramCacheItem.addActionListener(e -> onClearProgrammingCacheClicked());
-        JMenuItem clearProblemCacheItem = new JMenuItem("Clear Problem Cache");
-        clearProblemCacheItem.addActionListener(e -> onClearProblemCacheClicked());
-        fileMenu.add(clearProgramCacheItem);
-        fileMenu.add(clearProblemCacheItem);
+        JMenuItem preferencesItem = new JMenuItem("Preferences");
+        preferencesItem.addActionListener(e -> onPreferencesClicked());
+        JMenuItem clearCacheItem = new JMenuItem("Clear All Cache");
+        clearCacheItem.addActionListener(e -> onClearAllCacheClicked());
+        JMenuItem exitItem = new JMenuItem("Exit");
+        exitItem.addActionListener(e -> System.exit(0));
+        fileMenu.add(preferencesItem);
+        fileMenu.addSeparator();
+        fileMenu.add(clearCacheItem);
+        fileMenu.add(exitItem);
         titleBar.add(fileMenu);
 
+        // Edit Menu
+        JMenu editMenu = new JMenu("Edit");
+        JMenuItem selectAllItem = new JMenuItem("Select All");
+        selectAllItem.addActionListener(e -> {
+            if (codeEditor != null && codeEditor.hasFocus()) {
+                codeEditor.selectAll();
+            }
+        });
+        editMenu.add(selectAllItem);
+        titleBar.add(editMenu);
+
+        // Run Menu
+        JMenu runMenu = new JMenu("Run");
+        JMenuItem runCodeItem = new JMenuItem("Run Code");
+        runCodeItem.addActionListener(e -> onRunButtonClicked());
+        runMenu.add(runCodeItem);
+        titleBar.add(runMenu);
+
+        // Help Menu
         JMenu helpMenu = new JMenu("Help");
-
-        JMenuItem fetchLatestVersionItem = new JMenuItem("Fetch Latest Version");
-        fetchLatestVersionItem.addActionListener(e -> onFetchLatestVersionClicked());
-
-        JMenuItem githubReleasesItem = new JMenuItem("GitHub Releases");
-        githubReleasesItem.addActionListener(e -> openExternalUrl(RELEASES_URL));
-
-        JMenuItem creditsItem = new JMenuItem("Credits");
-        creditsItem.addActionListener(e -> showCreditsDialog());
-
-        helpMenu.add(fetchLatestVersionItem);
-        helpMenu.add(githubReleasesItem);
-        helpMenu.add(creditsItem);
+        JMenuItem documentationItem = new JMenuItem("Documentation");
+        documentationItem.addActionListener(e -> openExternalUrl("https://github.com/0xPolybit/cp-ally-ide#readme"));
+        JMenuItem checkUpdatesItem = new JMenuItem("Check for Updates");
+        checkUpdatesItem.addActionListener(e -> onFetchLatestVersionClicked());
+        JMenuItem aboutItem = new JMenuItem("About");
+        aboutItem.addActionListener(e -> showAboutDialog());
+        helpMenu.add(documentationItem);
+        helpMenu.add(checkUpdatesItem);
+        helpMenu.addSeparator();
+        helpMenu.add(aboutItem);
         titleBar.add(helpMenu);
         return titleBar;
     }
 
-    private void onClearProgrammingCacheClicked() {
+    private void onClearAllCacheClicked() {
         int response = JOptionPane.showConfirmDialog(
                 mainFrame,
-                "Are you sure you want to delete all programming cache? This action cannot be undone.",
-                "Confirm Clear Programming Cache",
+                "Clear all cached data? This includes programming solutions and problem statements.\nThis action cannot be undone.",
+                "Confirm Clear All Cache",
                 JOptionPane.YES_NO_OPTION,
                 JOptionPane.WARNING_MESSAGE);
         if (response == JOptionPane.YES_OPTION) {
             programCacheRepository.clearAll();
-            JOptionPane.showMessageDialog(
-                    mainFrame,
-                    "Programming cache cleared successfully.",
-                    "Cache Cleared",
-                    JOptionPane.INFORMATION_MESSAGE);
-        }
-    }
-
-    private void onClearProblemCacheClicked() {
-        int response = JOptionPane.showConfirmDialog(
-                mainFrame,
-                "Are you sure you want to delete all problem cache? This action cannot be undone.",
-                "Confirm Clear Problem Cache",
-                JOptionPane.YES_NO_OPTION,
-                JOptionPane.WARNING_MESSAGE);
-        if (response == JOptionPane.YES_OPTION) {
             codeforcesService.clearProblemCache();
             JOptionPane.showMessageDialog(
                     mainFrame,
-                    "Problem cache cleared successfully.",
+                    "All cache cleared successfully.",
                     "Cache Cleared",
                     JOptionPane.INFORMATION_MESSAGE);
         }
@@ -407,12 +413,43 @@ public class MainWindow {
         worker.execute();
     }
 
-    private void showCreditsDialog() {
+    private void onPreferencesClicked() {
         try {
-            SupportDialogs.showCreditsDialog(mainFrame);
+            PreferencesDialog.PreferencesSelection initialSelection = new PreferencesDialog.PreferencesSelection(
+                    appSettings != null ? appSettings.editorFontSize() : 14,
+                    appSettings != null ? appSettings.editorColorScheme() : DEFAULT_EDITOR_THEME,
+                    appSettings != null && appSettings.useTabsAsSpaces(),
+                    appSettings != null ? appSettings.tabSpacing() : 4);
+            PreferencesDialog.PreferencesSelection selection = PreferencesDialog.showDialog(mainFrame, initialSelection);
+            if (selection != null) {
+                appSettings = replaceEditorPreferences(appSettings, selection.editorFontSize(), selection.editorColorScheme(), selection.useTabsAsSpaces(), selection.tabSpacing());
+                settingsRepository.save(appSettings);
+                if (codeEditor != null) {
+                    applyEditorPreferences(codeEditor, selection.editorFontSize(), selection.editorColorScheme(), selection.useTabsAsSpaces(), selection.tabSpacing());
+                }
+            }
         } catch (Exception ex) {
-            System.err.println("[MainWindow] Failed to construct/show Credits dialog: " + ex.getMessage());
+            System.err.println("[MainWindow] Failed to construct/show Preferences dialog: " + ex.getMessage());
         }
+    }
+
+    private void showAboutDialog() {
+        String aboutText = "<html>" +
+                "<div style='text-align: center; font-family: Arial; padding: 10px;'>" +
+                "<h2 style='color: #37f713;'>" + APP_NAME + "</h2>" +
+                "<p><strong>Version:</strong> " + CURRENT_APP_VERSION + "</p>" +
+                "<p>A competitive programming IDE for CodeForces integration.</p>" +
+                "<p>Write, test, and submit solutions directly from the editor.</p>" +
+                "<br>" +
+                "<p><em>Built with Java Swing & RSyntaxTextArea</em></p>" +
+                "<p><a href='https://github.com/0xPolybit/cp-ally-ide'>GitHub Repository</a></p>" +
+                "</div>" +
+                "</html>";
+        JOptionPane.showMessageDialog(
+                mainFrame,
+                aboutText,
+                "About " + APP_NAME,
+                JOptionPane.INFORMATION_MESSAGE);
     }
 
     private JSplitPane createContentSplit() {
@@ -641,11 +678,15 @@ public class MainWindow {
         codeEditor.setEditable(false);
         codeEditor.setFocusable(false);
         codeEditor.setRequestFocusEnabled(false);
-        applyEclipseEditorTheme(codeEditor);
+        applyEditorPreferences(
+            codeEditor,
+            appSettings != null ? appSettings.editorFontSize() : 14,
+            appSettings != null ? appSettings.editorColorScheme() : DEFAULT_EDITOR_THEME,
+            appSettings != null && appSettings.useTabsAsSpaces(),
+            appSettings != null ? appSettings.tabSpacing() : 4);
         installEditorAutoPairs(codeEditor);
         codeEditor.setText("Select a problem to get started...");
         codeEditor.setCaretPosition(0);
-     
         // Editor zoom (font size) keybindings: Ctrl + Plus / Ctrl + Equals / NumpadAdd to increase,
         // Ctrl + Minus / NumpadSubtract to decrease by 2pt.
         javax.swing.Action zoomInAction = new javax.swing.AbstractAction() {
@@ -722,6 +763,7 @@ public class MainWindow {
         am.put("zoomOut", zoomOutAction);
         RTextScrollPane scrollPane = new RTextScrollPane(codeEditor);
         codeScrollPane = scrollPane;
+        applyEditorFontSize(codeEditor, appSettings != null ? appSettings.editorFontSize() : 14);
 
         scrollPane.setFoldIndicatorEnabled(true);
         scrollPane.setBorder(BorderFactory.createLineBorder(new Color(67, 71, 76)));
@@ -740,46 +782,213 @@ public class MainWindow {
         return panel;
     }
 
-    private void applyEclipseEditorTheme(RSyntaxTextArea editor) {
-        Color background = new Color(30, 31, 34);
-        Color foreground = new Color(187, 187, 187);
-        Color keyword = new Color(204, 120, 50);
-        Color typeColor = new Color(152, 118, 170);
-        Color comment = new Color(128, 128, 128);
-        Color stringColor = new Color(106, 135, 89);
-        Color numberColor = new Color(104, 151, 187);
-        Color functionColor = new Color(255, 198, 109);
-        Color operatorColor = new Color(169, 183, 198);
+    private void applyEditorPreferences(RSyntaxTextArea editor, int fontSize, String colorScheme, boolean useTabsAsSpaces, int tabSpacing) {
+        applyEditorTheme(editor, colorScheme);
+        applyEditorFontSize(editor, fontSize);
+        applyEditorTabSettings(editor, useTabsAsSpaces, tabSpacing);
+    }
 
-        editor.setBackground(background);
-        editor.setForeground(foreground);
-        editor.setCaretColor(new Color(240, 240, 240));
-        editor.setCurrentLineHighlightColor(new Color(50, 54, 60));
-        editor.setSelectionColor(new Color(55, 247, 19, 58));
-        editor.setMatchedBracketBGColor(new Color(58, 63, 70));
-        editor.setMatchedBracketBorderColor(new Color(55, 247, 19, 140));
+    private void applyEditorFontSize(RSyntaxTextArea editor, int fontSize) {
+        int appliedSize = Math.max(8, Math.min(32, fontSize));
+        Font font = new Font(Font.MONOSPACED, Font.PLAIN, appliedSize);
+        editor.setFont(font);
+
+        SyntaxScheme scheme = editor.getSyntaxScheme();
+        if (scheme != null) {
+            for (int i = 0; i < scheme.getStyleCount(); i++) {
+                Style style = scheme.getStyle(i);
+                if (style != null && style.font != null) {
+                    style.font = style.font.deriveFont((float) appliedSize);
+                }
+            }
+            editor.setSyntaxScheme(scheme);
+        }
+
+        if (codeScrollPane != null) {
+            try {
+                codeScrollPane.getGutter().setLineNumberFont(new Font(Font.MONOSPACED, Font.PLAIN, appliedSize));
+            } catch (Exception ignored) {
+            }
+        }
+
+        editor.revalidate();
+        editor.repaint();
+    }
+
+    private void applyEditorTabSettings(RSyntaxTextArea editor, boolean useTabsAsSpaces, int tabSpacing) {
+        int validTabSpacing = Math.max(2, Math.min(8, tabSpacing));
+        editor.setTabsEmulated(useTabsAsSpaces);
+        editor.setTabSize(validTabSpacing);
+    }
+
+    private void applyEditorTheme(RSyntaxTextArea editor, String colorScheme) {
+        EditorTheme theme = switch (normalizeColorScheme(colorScheme)) {
+            case "monokai" -> EditorTheme.monokai();
+            case "solarized dark" -> EditorTheme.solarizedDark();
+            case "dracula" -> EditorTheme.dracula();
+            case "codeforces modern" -> EditorTheme.codeforcesModern();
+            default -> EditorTheme.eclipseDark();
+        };
+
+        editor.setBackground(theme.background());
+        editor.setForeground(theme.foreground());
+        editor.setCaretColor(theme.caret());
+        editor.setCurrentLineHighlightColor(theme.currentLine());
+        editor.setSelectionColor(theme.selection());
+        editor.setMatchedBracketBGColor(theme.matchedBracketBackground());
+        editor.setMatchedBracketBorderColor(theme.matchedBracketBorder());
         editor.setAnimateBracketMatching(false);
         editor.setPaintMatchedBracketPair(true);
 
         SyntaxScheme scheme = editor.getSyntaxScheme();
-        setTokenStyle(scheme, Token.RESERVED_WORD, keyword, true, false);
-        setTokenStyle(scheme, Token.RESERVED_WORD_2, typeColor, true, false);
-        setTokenStyle(scheme, Token.DATA_TYPE, typeColor, false, false);
-        setTokenStyle(scheme, Token.FUNCTION, functionColor, false, false);
-        setTokenStyle(scheme, Token.LITERAL_STRING_DOUBLE_QUOTE, stringColor, false, false);
-        setTokenStyle(scheme, Token.LITERAL_CHAR, stringColor, false, false);
-        setTokenStyle(scheme, Token.LITERAL_NUMBER_DECIMAL_INT, numberColor, false, false);
-        setTokenStyle(scheme, Token.LITERAL_NUMBER_FLOAT, numberColor, false, false);
-        setTokenStyle(scheme, Token.LITERAL_NUMBER_HEXADECIMAL, numberColor, false, false);
-        setTokenStyle(scheme, Token.COMMENT_EOL, comment, false, true);
-        setTokenStyle(scheme, Token.COMMENT_MULTILINE, comment, false, true);
-        setTokenStyle(scheme, Token.COMMENT_DOCUMENTATION, comment, false, true);
-        setTokenStyle(scheme, Token.OPERATOR, operatorColor, false, false);
-        setTokenStyle(scheme, Token.SEPARATOR, operatorColor, false, false);
-        setTokenStyle(scheme, Token.IDENTIFIER, foreground, false, false);
+        setTokenStyle(scheme, Token.RESERVED_WORD, theme.keyword(), true, false);
+        setTokenStyle(scheme, Token.RESERVED_WORD_2, theme.typeColor(), true, false);
+        setTokenStyle(scheme, Token.DATA_TYPE, theme.typeColor(), false, false);
+        setTokenStyle(scheme, Token.FUNCTION, theme.functionColor(), false, false);
+        setTokenStyle(scheme, Token.LITERAL_STRING_DOUBLE_QUOTE, theme.stringColor(), false, false);
+        setTokenStyle(scheme, Token.LITERAL_CHAR, theme.stringColor(), false, false);
+        setTokenStyle(scheme, Token.LITERAL_NUMBER_DECIMAL_INT, theme.numberColor(), false, false);
+        setTokenStyle(scheme, Token.LITERAL_NUMBER_FLOAT, theme.numberColor(), false, false);
+        setTokenStyle(scheme, Token.LITERAL_NUMBER_HEXADECIMAL, theme.numberColor(), false, false);
+        setTokenStyle(scheme, Token.COMMENT_EOL, theme.commentColor(), false, true);
+        setTokenStyle(scheme, Token.COMMENT_MULTILINE, theme.commentColor(), false, true);
+        setTokenStyle(scheme, Token.COMMENT_DOCUMENTATION, theme.commentColor(), false, true);
+        setTokenStyle(scheme, Token.OPERATOR, theme.operatorColor(), false, false);
+        setTokenStyle(scheme, Token.SEPARATOR, theme.operatorColor(), false, false);
+        setTokenStyle(scheme, Token.IDENTIFIER, theme.foreground(), false, false);
 
         editor.revalidate();
         editor.repaint();
+    }
+
+    private String normalizeColorScheme(String colorScheme) {
+        return colorScheme == null ? DEFAULT_EDITOR_THEME : colorScheme.trim().toLowerCase();
+    }
+
+    private AppSettings replaceEditorPreferences(AppSettings current, int editorFontSize, String editorColorScheme, boolean useTabsAsSpaces, int tabSpacing) {
+        if (current == null) {
+            return new AppSettings(-1, -1, 1200, 760, 420, 420, false, DEFAULT_LANGUAGE, editorFontSize, editorColorScheme, useTabsAsSpaces, tabSpacing);
+        }
+        return new AppSettings(
+                current.x(),
+                current.y(),
+                current.width(),
+                current.height(),
+                current.dividerLocation(),
+                current.testCasesDividerLocation(),
+                current.maximized(),
+                current.lastLanguage(),
+                editorFontSize,
+                editorColorScheme,
+                useTabsAsSpaces,
+                tabSpacing);
+    }
+
+    private record EditorTheme(
+            Color background,
+            Color foreground,
+            Color caret,
+            Color currentLine,
+            Color selection,
+            Color matchedBracketBackground,
+            Color matchedBracketBorder,
+            Color keyword,
+            Color typeColor,
+            Color commentColor,
+            Color stringColor,
+            Color numberColor,
+            Color functionColor,
+            Color operatorColor) {
+
+        static EditorTheme eclipseDark() {
+            return new EditorTheme(
+                    new Color(30, 31, 34),
+                    new Color(187, 187, 187),
+                    new Color(240, 240, 240),
+                    new Color(50, 54, 60),
+                    new Color(55, 247, 19, 58),
+                    new Color(58, 63, 70),
+                    new Color(55, 247, 19, 140),
+                    new Color(204, 120, 50),
+                    new Color(152, 118, 170),
+                    new Color(128, 128, 128),
+                    new Color(106, 135, 89),
+                    new Color(104, 151, 187),
+                    new Color(255, 198, 109),
+                    new Color(169, 183, 198));
+        }
+
+        static EditorTheme monokai() {
+            return new EditorTheme(
+                    new Color(39, 40, 34),
+                    new Color(248, 248, 242),
+                    new Color(248, 248, 242),
+                    new Color(49, 50, 44),
+                    new Color(73, 72, 62, 80),
+                    new Color(102, 217, 239),
+                    new Color(102, 217, 239, 140),
+                    new Color(249, 38, 114),
+                    new Color(166, 226, 46),
+                    new Color(117, 113, 94),
+                    new Color(230, 219, 116),
+                    new Color(174, 129, 255),
+                    new Color(102, 217, 239),
+                    new Color(248, 248, 242));
+        }
+
+        static EditorTheme solarizedDark() {
+            return new EditorTheme(
+                    new Color(0x00, 0x2b, 0x36),
+                    new Color(0x93, 0xa1, 0xa1),
+                    new Color(0xfd, 0xf6, 0xe3),
+                    new Color(0x07, 0x36, 0x42),
+                    new Color(0x58, 0x6e, 0x75, 80),
+                    new Color(0x26, 0x8b, 0xd2),
+                    new Color(0x26, 0x8b, 0xd2, 140),
+                    new Color(0xCB, 0x4B, 0x16),
+                    new Color(0xB5, 0x89, 0x00),
+                    new Color(0x58, 0x6E, 0x75),
+                    new Color(0x2A, 0xA1, 0x98),
+                    new Color(0xD3, 0x36, 0x82),
+                    new Color(0xB5, 0x89, 0x00),
+                    new Color(0x93, 0xA1, 0xA1));
+        }
+
+        static EditorTheme dracula() {
+            return new EditorTheme(
+                    new Color(40, 42, 54),
+                    new Color(248, 248, 242),
+                    new Color(248, 248, 242),
+                    new Color(68, 71, 90),
+                    new Color(98, 114, 164, 85),
+                    new Color(80, 250, 123),
+                    new Color(80, 250, 123, 140),
+                    new Color(189, 147, 249),
+                    new Color(139, 233, 253),
+                    new Color(98, 114, 164),
+                    new Color(255, 184, 108),
+                    new Color(241, 250, 140),
+                    new Color(80, 250, 123),
+                    new Color(248, 248, 242));
+        }
+
+        static EditorTheme codeforcesModern() {
+            return new EditorTheme(
+                    new Color(28, 30, 34),
+                    new Color(219, 223, 229),
+                    new Color(240, 240, 240),
+                    new Color(36, 39, 45),
+                    new Color(64, 81, 100, 90),
+                    new Color(82, 143, 255),
+                    new Color(82, 143, 255, 140),
+                    new Color(86, 156, 214),
+                    new Color(78, 201, 176),
+                    new Color(122, 126, 130),
+                    new Color(206, 145, 120),
+                    new Color(181, 206, 168),
+                    new Color(220, 220, 170),
+                    new Color(212, 212, 212));
+        }
     }
 
     private void setTokenStyle(SyntaxScheme scheme, int token, Color color, boolean bold, boolean italic) {
@@ -1610,7 +1819,11 @@ public class MainWindow {
                 dividerLocation,
                 testCasesDividerLocation,
                 maximized,
-                language);
+            language,
+            appSettings != null ? appSettings.editorFontSize() : 14,
+            appSettings != null ? appSettings.editorColorScheme() : DEFAULT_EDITOR_THEME,
+            appSettings != null && appSettings.useTabsAsSpaces(),
+            appSettings != null ? appSettings.tabSpacing() : 4);
 
         settingsRepository.save(settings);
     }

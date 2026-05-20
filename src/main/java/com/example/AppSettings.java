@@ -1,7 +1,7 @@
 package com.example;
 
-record AppSettings(int x, int y, int width, int height, int dividerLocation, int testCasesDividerLocation, boolean maximized, String lastLanguage) {
+record AppSettings(int x, int y, int width, int height, int dividerLocation, int testCasesDividerLocation, boolean maximized, String lastLanguage, int editorFontSize, String editorColorScheme, boolean useTabsAsSpaces, int tabSpacing) {
     static AppSettings defaults(String defaultLanguage) {
-        return new AppSettings(-1, -1, 1200, 760, 420, 420, false, defaultLanguage);
+        return new AppSettings(-1, -1, 1200, 760, 420, 420, false, defaultLanguage, 14, "Eclipse Dark", false, 4);
     }
 }
