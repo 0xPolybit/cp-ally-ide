@@ -1,5 +1,7 @@
 package com.example;
 
+import java.awt.Color;
+
 final class ExecutionResultFormatter {
 
     private ExecutionResultFormatter() {
@@ -13,22 +15,34 @@ final class ExecutionResultFormatter {
         return passed + " passed, " + failed + " failed, " + timedOut + " timed out, " + unknown + " unknown";
     }
 
-    static String buildResultsHtml(String language, CodeExecutionService.ExecutionReport report) {
+    static String buildResultsHtml(String language, CodeExecutionService.ExecutionReport report, AppThemePalette palette) {
+        AppThemePalette theme = palette != null ? palette : AppThemePalette.dark();
+        Color frame = theme.frameBackground();
+        Color panel = theme.panelBackground();
+        Color border = theme.borderColor();
+        Color text = theme.textColor();
+        Color muted = theme.mutedTextColor();
+        Color success = theme.successColor();
+        Color error = theme.errorColor();
+        Color warning = theme.warningColor();
+        Color codeText = theme.textColor();
+        Color codeBg = theme.surfaceBackground();
+
         StringBuilder html = new StringBuilder();
         html.append("<html><head><style>")
-                .append("body { background:#1e1f22; color:#dfe1e5; font-family:Segoe UI, Arial, sans-serif; margin:0; }")
+                .append("body { background:").append(toHex(frame)).append("; color:").append(toHex(text)).append("; font-family:Segoe UI, Arial, sans-serif; margin:0; }")
                 .append(".wrap { padding:16px; }")
-                .append(".title { font-size:16px; font-weight:700; color:#eceff4; margin-bottom:8px; }")
-                .append(".summary { color:#a9b0bc; margin-bottom:14px; }")
-                .append(".case { border:1px solid #43474c; border-radius:8px; background:#2b2d30; padding:12px; margin-bottom:12px; }")
-                .append(".meta { color:#b8bec8; margin-bottom:8px; }")
-                .append(".status-pass { color:#61d66e; font-weight:700; }")
-                .append(".status-fail { color:#f65656; font-weight:700; }")
-                .append(".status-tle { color:#f7d71a; font-weight:700; }")
-                .append(".status-unknown { color:#f7d71a; font-weight:700; }")
-                .append(".section { color:#cfd4dd; margin-top:8px; margin-bottom:4px; font-weight:600; }")
-                .append(".note { color:#f7d71a; margin-top:8px; font-size:12px; font-style:italic; }")
-                .append("pre { margin:0; background:#24262a; color:#d9dde4; border:1px solid #43474c; border-radius:6px; padding:10px; white-space:pre-wrap; }")
+                .append(".title { font-size:16px; font-weight:700; color:").append(toHex(text)).append("; margin-bottom:8px; }")
+                .append(".summary { color:").append(toHex(muted)).append("; margin-bottom:14px; }")
+                .append(".case { border:1px solid ").append(toHex(border)).append("; border-radius:8px; background:").append(toHex(panel)).append("; padding:12px; margin-bottom:12px; }")
+                .append(".meta { color:").append(toHex(muted)).append("; margin-bottom:8px; }")
+                .append(".status-pass { color:").append(toHex(success)).append("; font-weight:700; }")
+                .append(".status-fail { color:").append(toHex(error)).append("; font-weight:700; }")
+                .append(".status-tle { color:").append(toHex(warning)).append("; font-weight:700; }")
+                .append(".status-unknown { color:").append(toHex(warning)).append("; font-weight:700; }")
+                .append(".section { color:").append(toHex(text)).append("; margin-top:8px; margin-bottom:4px; font-weight:600; }")
+                .append(".note { color:").append(toHex(warning)).append("; margin-top:8px; font-size:12px; font-style:italic; }")
+                .append("pre { margin:0; background:").append(toHex(codeBg)).append("; color:").append(toHex(codeText)).append("; border:1px solid ").append(toHex(border)).append("; border-radius:6px; padding:10px; white-space:pre-wrap; }")
                 .append("</style></head><body><div class='wrap'>");
 
         html.append("<div class='title'>Local execution for ").append(escape(language)).append("</div>");
@@ -81,5 +95,9 @@ final class ExecutionResultFormatter {
                 .replace("&", "&amp;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;");
+    }
+
+    private static String toHex(Color color) {
+        return String.format("#%02x%02x%02x", color.getRed(), color.getGreen(), color.getBlue());
     }
 }

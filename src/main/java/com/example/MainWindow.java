@@ -1,6 +1,7 @@
 package com.example;
 
 import com.formdev.flatlaf.FlatDarkLaf;
+import com.formdev.flatlaf.FlatLightLaf;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.Style;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
@@ -14,7 +15,6 @@ import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
-import javax.swing.JDialog;
 import javax.swing.JEditorPane;
 import javax.swing.JFrame;
 import javax.swing.ImageIcon;
@@ -26,7 +26,6 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
-import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.JToolBar;
 import javax.swing.UIManager;
@@ -73,6 +72,7 @@ public class MainWindow {
     private static final Pattern PROBLEM_CODE_PATTERN = Pattern.compile("^(\\d{1,6})([A-Za-z][A-Za-z0-9]{0,2})$");
     private static final String DEFAULT_LANGUAGE = "Python 3";
     private static final String DEFAULT_EDITOR_THEME = "Eclipse Dark";
+    private static final String DEFAULT_APP_THEME = "Dark";
     private static final String SETTINGS_DIR_NAME = "CompetitiveProgrammingAlly";
     private static final String SETTINGS_FILE_NAME = "settings.properties";
     private static final String CURRENT_APP_VERSION = "0.1.4";
@@ -81,7 +81,6 @@ public class MainWindow {
     private static final Pattern SEMVER_PATTERN = Pattern.compile("\\b(\\d+\\.\\d+\\.\\d+)\\b");
     private static final int LEFT_FIELD_WIDTH = 280;
     private static final int LEFT_FIELD_HEIGHT = 32;
-    private static final Color ACCENT = new Color(55, 247, 19);
     private static final int MIN_WINDOW_WIDTH = 1000;
     private static final int MIN_WINDOW_HEIGHT = 680;
     private static final int MIN_LEFT_PANEL_WIDTH = 280;
@@ -117,15 +116,18 @@ public class MainWindow {
     private TestCasesPanel testCasesPanel;
     private boolean problemStatementLoaded;
     private String currentProblemCode;
+    private AppThemePalette appThemePalette = AppThemePalette.dark();
 
     public void showWindow() {
-        JFrame.setDefaultLookAndFeelDecorated(true);
-        FlatDarkLaf.setup();
-        applyGlobalDarkPalette();
-
         appSettings = settingsRepository.load();
+        appThemePalette = AppThemePalette.fromName(appSettings != null ? appSettings.appTheme() : DEFAULT_APP_THEME);
+
+        JFrame.setDefaultLookAndFeelDecorated(true);
+        applyAppTheme(appThemePalette);
+
         Path appDataDir = settingsRepository.getAppDataDirectory();
         problemHtmlRenderer = new ProblemHtmlRenderer(appDataDir);
+        problemHtmlRenderer.setTheme(appThemePalette);
         codeforcesService = new CodeforcesService(appDataDir);
 
         JFrame frame = new JFrame(APP_NAME + " v" + CURRENT_APP_VERSION);
@@ -134,11 +136,11 @@ public class MainWindow {
         frame.setLayout(new BorderLayout());
         frame.setMinimumSize(new Dimension(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT));
         frame.getRootPane().putClientProperty("JRootPane.menuBarEmbedded", true);
-        frame.getRootPane().putClientProperty("JRootPane.titleBarBackground", new Color(43, 45, 48));
-        frame.getRootPane().putClientProperty("JRootPane.titleBarForeground", new Color(230, 233, 238));
+        frame.getRootPane().putClientProperty("JRootPane.titleBarBackground", appThemePalette.titleBarBackground());
+        frame.getRootPane().putClientProperty("JRootPane.titleBarForeground", appThemePalette.titleBarForeground());
         frame.setJMenuBar(createEmbeddedTitleBar());
         mainFrame = frame;
-        testCasesPanel = new TestCasesPanel(mainFrame);
+        testCasesPanel = new TestCasesPanel(mainFrame, appThemePalette);
 
         frame.add(createContentSplit(), BorderLayout.CENTER);
         frame.addWindowListener(new WindowAdapter() {
@@ -265,56 +267,74 @@ public class MainWindow {
         }
     }
 
-    private void applyGlobalDarkPalette() {
-        Color surface0 = new Color(30, 31, 34);
-        Color surface1 = new Color(43, 45, 48);
-        Color surface2 = new Color(50, 53, 58);
-        Color surface3 = new Color(60, 63, 68);
-        Color border = new Color(67, 71, 76);
-        Color text = new Color(223, 225, 229);
+    private void applyAppTheme(AppThemePalette palette) {
+        AppThemePalette safePalette = palette != null ? palette : AppThemePalette.dark();
+        if (safePalette.lightTheme()) {
+            FlatLightLaf.setup();
+        } else {
+            FlatDarkLaf.setup();
+        }
 
-        UIManager.put("Component.accentColor", ACCENT);
-        UIManager.put("Component.focusColor", ACCENT);
+        UIManager.put("Component.accentColor", safePalette.accentColor());
+        UIManager.put("Component.focusColor", safePalette.accentColor());
 
-        UIManager.put("Panel.background", surface0);
-        UIManager.put("RootPane.background", surface0);
-        UIManager.put("Label.foreground", text);
+        UIManager.put("Panel.background", safePalette.frameBackground());
+        UIManager.put("RootPane.background", safePalette.frameBackground());
+        UIManager.put("Label.foreground", safePalette.textColor());
 
-        UIManager.put("ToolBar.background", surface1);
-        UIManager.put("ToolBar.borderColor", border);
-        UIManager.put("ToolBar.dockingBackground", surface1);
-        UIManager.put("ToolBar.overflowBackground", surface1);
+        UIManager.put("ToolBar.background", safePalette.panelBackground());
+        UIManager.put("ToolBar.borderColor", safePalette.borderColor());
+        UIManager.put("ToolBar.dockingBackground", safePalette.panelBackground());
+        UIManager.put("ToolBar.overflowBackground", safePalette.panelBackground());
 
-        UIManager.put("Button.background", surface2);
-        UIManager.put("Button.foreground", text);
-        UIManager.put("Button.hoverBackground", surface3);
-        UIManager.put("Button.default.background", ACCENT);
-        UIManager.put("Button.default.foreground", new Color(10, 11, 14));
+        UIManager.put("Button.background", safePalette.surfaceBackground());
+        UIManager.put("Button.foreground", safePalette.textColor());
+        UIManager.put("Button.hoverBackground", safePalette.surfaceRaised());
+        UIManager.put("Button.default.background", safePalette.accentColor());
+        UIManager.put("Button.default.foreground", safePalette.accentForeground());
 
-        UIManager.put("TextField.background", surface3);
-        UIManager.put("TextField.foreground", text);
-        UIManager.put("TextField.caretForeground", ACCENT);
-        UIManager.put("TextField.selectionBackground", new Color(55, 247, 19, 70));
-        UIManager.put("TextField.selectionForeground", text);
+        UIManager.put("TextField.background", safePalette.inputBackground());
+        UIManager.put("TextField.foreground", safePalette.inputForeground());
+        UIManager.put("TextField.caretForeground", safePalette.accentColor());
+        UIManager.put("TextField.selectionBackground", safePalette.selectionBackground());
+        UIManager.put("TextField.selectionForeground", safePalette.textColor());
 
-        UIManager.put("SplitPane.background", surface0);
-        UIManager.put("SplitPaneDivider.background", surface1);
+        UIManager.put("SplitPane.background", safePalette.frameBackground());
+        UIManager.put("SplitPaneDivider.background", safePalette.panelBackground());
         UIManager.put("SplitPaneDivider.style", "grip");
-        UIManager.put("SplitPaneDivider.gripColor", new Color(122, 128, 137));
-        UIManager.put("SplitPaneDivider.draggingColor", ACCENT);
+        UIManager.put("SplitPaneDivider.gripColor", safePalette.mutedTextColor());
+        UIManager.put("SplitPaneDivider.draggingColor", safePalette.accentColor());
 
-        UIManager.put("ScrollBar.background", surface0);
-        UIManager.put("ScrollBar.track", new Color(36, 38, 41));
-        UIManager.put("ScrollBar.thumb", new Color(80, 84, 90));
-        UIManager.put("ScrollBar.thumbHover", new Color(96, 101, 108));
-        UIManager.put("ScrollBar.thumbPressed", new Color(110, 115, 122));
+        UIManager.put("ScrollBar.background", safePalette.frameBackground());
+        UIManager.put("ScrollBar.track", safePalette.scrollbarTrack());
+        UIManager.put("ScrollBar.thumb", safePalette.scrollbarThumb());
+        UIManager.put("ScrollBar.thumbHover", safePalette.scrollbarThumbHover());
+        UIManager.put("ScrollBar.thumbPressed", safePalette.scrollbarThumbPressed());
+
+        UIManager.put("MenuBar.background", safePalette.panelBackground());
+        UIManager.put("MenuBar.foreground", safePalette.textColor());
+        UIManager.put("Menu.background", safePalette.panelBackground());
+        UIManager.put("Menu.foreground", safePalette.textColor());
+        UIManager.put("MenuItem.background", safePalette.panelBackground());
+        UIManager.put("MenuItem.foreground", safePalette.textColor());
+        UIManager.put("MenuItem.selectionBackground", safePalette.surfaceRaised());
+        UIManager.put("MenuItem.selectionForeground", safePalette.textColor());
+    }
+
+    private AppThemePalette currentThemePalette() {
+        if (appSettings == null) {
+            return appThemePalette != null ? appThemePalette : AppThemePalette.dark();
+        }
+        appThemePalette = AppThemePalette.fromName(appSettings.appTheme());
+        return appThemePalette;
     }
 
     private JMenuBar createEmbeddedTitleBar() {
+        AppThemePalette palette = currentThemePalette();
         JMenuBar titleBar = new JMenuBar();
         titleBar.setOpaque(true);
         titleBar.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
-        titleBar.setBackground(new Color(43, 45, 48));
+        titleBar.setBackground(palette.titleBarBackground());
 
         // File Menu
         JMenu fileMenu = new JMenu("File");
@@ -415,17 +435,39 @@ public class MainWindow {
 
     private void onPreferencesClicked() {
         try {
+            String currentAppTheme = appSettings != null ? appSettings.appTheme() : DEFAULT_APP_THEME;
             PreferencesDialog.PreferencesSelection initialSelection = new PreferencesDialog.PreferencesSelection(
                     appSettings != null ? appSettings.editorFontSize() : 14,
                     appSettings != null ? appSettings.editorColorScheme() : DEFAULT_EDITOR_THEME,
+                    currentAppTheme,
                     appSettings != null && appSettings.useTabsAsSpaces(),
                     appSettings != null ? appSettings.tabSpacing() : 4);
-            PreferencesDialog.PreferencesSelection selection = PreferencesDialog.showDialog(mainFrame, initialSelection);
+            PreferencesDialog.PreferencesSelection selection = PreferencesDialog.showDialog(mainFrame, initialSelection, currentThemePalette());
             if (selection != null) {
-                appSettings = replaceEditorPreferences(appSettings, selection.editorFontSize(), selection.editorColorScheme(), selection.useTabsAsSpaces(), selection.tabSpacing());
+                boolean appThemeChanged = !selection.appTheme().equalsIgnoreCase(currentAppTheme);
+                appSettings = replaceEditorPreferences(appSettings, selection.editorFontSize(), selection.editorColorScheme(), selection.appTheme(), selection.useTabsAsSpaces(), selection.tabSpacing());
+                appThemePalette = AppThemePalette.fromName(selection.appTheme());
                 settingsRepository.save(appSettings);
+                if (appThemeChanged) {
+                    JOptionPane.showMessageDialog(
+                            mainFrame,
+                            "The app theme has been updated. Please reopen the program to reflect all changes.",
+                            APP_NAME,
+                            JOptionPane.INFORMATION_MESSAGE);
+                    if (mainFrame != null) {
+                        mainFrame.dispose();
+                    }
+                    System.exit(0);
+                    return;
+                }
                 if (codeEditor != null) {
                     applyEditorPreferences(codeEditor, selection.editorFontSize(), selection.editorColorScheme(), selection.useTabsAsSpaces(), selection.tabSpacing());
+                }
+                refreshThemeAwareUi();
+                if (mainFrame != null) {
+                    SwingUtilities.updateComponentTreeUI(mainFrame);
+                    mainFrame.revalidate();
+                    mainFrame.repaint();
                 }
             }
         } catch (Exception ex) {
@@ -434,9 +476,10 @@ public class MainWindow {
     }
 
     private void showAboutDialog() {
+        AppThemePalette palette = currentThemePalette();
         String aboutText = "<html>" +
                 "<div style='text-align: center; font-family: Arial; padding: 10px;'>" +
-                "<h2 style='color: #37f713;'>" + APP_NAME + "</h2>" +
+                "<h2 style='color: " + toHex(palette.accentColor()) + ";'>" + APP_NAME + "</h2>" +
                 "<p><strong>Version:</strong> " + CURRENT_APP_VERSION + "</p>" +
                 "<p>A competitive programming IDE for CodeForces integration.</p>" +
                 "<p>Write, test, and submit solutions directly from the editor.</p>" +
@@ -500,9 +543,10 @@ public class MainWindow {
     }
 
     private JPanel createProblemStatementPanel() {
+        AppThemePalette palette = currentThemePalette();
         leftPanelContainer = new JPanel(new BorderLayout());
         leftPanelContainer.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 10));
-        leftPanelContainer.setBackground(new Color(30, 31, 34));
+        leftPanelContainer.setBackground(palette.frameBackground());
 
         problemEntryPanel = createProblemEntryPanel();
         leftPanelContainer.add(problemEntryPanel, BorderLayout.CENTER);
@@ -510,14 +554,15 @@ public class MainWindow {
     }
 
     private JPanel createProblemEntryPanel() {
+        AppThemePalette palette = currentThemePalette();
         JPanel panel = new JPanel(new GridBagLayout());
         panel.setOpaque(false);
 
         JPanel form = new JPanel();
         form.setOpaque(true);
-        form.setBackground(new Color(43, 45, 48));
+        form.setBackground(palette.panelBackground());
         form.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(67, 71, 76)),
+            BorderFactory.createLineBorder(palette.borderColor()),
                 BorderFactory.createEmptyBorder(18, 18, 18, 18)));
         form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
 
@@ -545,12 +590,12 @@ public class MainWindow {
 
         JLabel connectivityLabel = new JLabel("Checking CodeForces...");
         connectivityLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        connectivityLabel.setForeground(new Color(160, 167, 177));
+        connectivityLabel.setForeground(palette.mutedTextColor());
         connectivityLabel.setFont(connectivityLabel.getFont().deriveFont(Font.PLAIN, 12f));
 
         fetchStatusLabel = new JLabel(" ");
         fetchStatusLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        fetchStatusLabel.setForeground(new Color(246, 86, 86));
+        fetchStatusLabel.setForeground(palette.errorColor());
         fetchStatusLabel.setFont(fetchStatusLabel.getFont().deriveFont(Font.PLAIN, 12f));
 
         JLabel logoLabel = new JLabel();
@@ -581,9 +626,10 @@ public class MainWindow {
     }
 
     private JPanel createEditorPanel() {
+        AppThemePalette palette = currentThemePalette();
         JPanel panel = new JPanel(new BorderLayout());
         panel.setBorder(BorderFactory.createEmptyBorder(16, 10, 16, 16));
-        panel.setBackground(new Color(30, 31, 34));
+        panel.setBackground(palette.frameBackground());
 
         JToolBar editorToolbar = new JToolBar();
         editorToolbar.setFloatable(false);
@@ -600,7 +646,7 @@ public class MainWindow {
         editorToolbar.add(Box.createHorizontalStrut(20));
 
         runtimeSupportLabel = new JLabel("checking...");
-        runtimeSupportLabel.setForeground(new Color(169, 176, 188));
+        runtimeSupportLabel.setForeground(palette.mutedTextColor());
         runtimeSupportLabel.setFont(runtimeSupportLabel.getFont().deriveFont(Font.PLAIN, 12f));
         runtimeSupportLabel.setMaximumSize(new Dimension(40, 20));
         runtimeSupportLabel.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
@@ -618,7 +664,7 @@ public class MainWindow {
         editorToolbar.add(Box.createHorizontalStrut(10));
 
         executionStateLabel = new JLabel("Status: Idle");
-        executionStateLabel.setForeground(new Color(169, 176, 188));
+        executionStateLabel.setForeground(palette.mutedTextColor());
         executionStateLabel.setFont(executionStateLabel.getFont().deriveFont(Font.PLAIN, 12f));
         editorToolbar.add(executionStateLabel);
         editorToolbar.add(Box.createHorizontalStrut(10));
@@ -653,8 +699,8 @@ public class MainWindow {
         }
         languageDropdown.setPreferredSize(new Dimension(190, LEFT_FIELD_HEIGHT));
         languageDropdown.setMaximumSize(new Dimension(220, LEFT_FIELD_HEIGHT));
-        languageDropdown.setBackground(new Color(50, 53, 58));
-        languageDropdown.setForeground(new Color(223, 225, 229));
+        languageDropdown.setBackground(palette.inputBackground());
+        languageDropdown.setForeground(palette.inputForeground());
         languageDropdown.setFocusable(false);
         languageDropdown.setRequestFocusEnabled(false);
         languageDropdown.addItemListener(e -> {
@@ -673,7 +719,7 @@ public class MainWindow {
 
         codeEditor = new RSyntaxTextArea(24, 80);
         codeEditor.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
-        codeEditor.setTabSize(4);
+        codeEditor.setTabSize(appSettings != null ? appSettings.tabSpacing() : 4);
         codeEditor.setCodeFoldingEnabled(false);
         codeEditor.setEditable(false);
         codeEditor.setFocusable(false);
@@ -766,16 +812,16 @@ public class MainWindow {
         applyEditorFontSize(codeEditor, appSettings != null ? appSettings.editorFontSize() : 14);
 
         scrollPane.setFoldIndicatorEnabled(true);
-        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(67, 71, 76)));
-        scrollPane.getGutter().setBackground(new Color(36, 38, 41));
-        scrollPane.getGutter().setLineNumberColor(new Color(169, 176, 188));
-        scrollPane.getGutter().setBorderColor(new Color(67, 71, 76));
-        scrollPane.getVerticalScrollBar().setBackground(new Color(30, 31, 34));
-        scrollPane.getVerticalScrollBar().setForeground(new Color(84, 89, 96));
-        scrollPane.getHorizontalScrollBar().setBackground(new Color(30, 31, 34));
-        scrollPane.getHorizontalScrollBar().setForeground(new Color(84, 89, 96));
+        scrollPane.setBorder(BorderFactory.createLineBorder(palette.borderColor()));
+        scrollPane.getGutter().setBackground(palette.gutterBackground());
+        scrollPane.getGutter().setLineNumberColor(palette.mutedTextColor());
+        scrollPane.getGutter().setBorderColor(palette.borderColor());
+        scrollPane.getVerticalScrollBar().setBackground(palette.frameBackground());
+        scrollPane.getVerticalScrollBar().setForeground(palette.scrollbarThumb());
+        scrollPane.getHorizontalScrollBar().setBackground(palette.frameBackground());
+        scrollPane.getHorizontalScrollBar().setForeground(palette.scrollbarThumb());
         scrollPane.getVerticalScrollBar().setUnitIncrement(14);
-        scrollPane.setBackground(new Color(43, 45, 48));
+        scrollPane.setBackground(palette.panelBackground());
 
         panel.add(editorToolbar, BorderLayout.NORTH);
         panel.add(scrollPane, BorderLayout.CENTER);
@@ -822,15 +868,10 @@ public class MainWindow {
     }
 
     private void applyEditorTheme(RSyntaxTextArea editor, String colorScheme) {
-        EditorTheme theme = switch (normalizeColorScheme(colorScheme)) {
-            case "monokai" -> EditorTheme.monokai();
-            case "solarized dark" -> EditorTheme.solarizedDark();
-            case "dracula" -> EditorTheme.dracula();
-            case "codeforces modern" -> EditorTheme.codeforcesModern();
-            default -> EditorTheme.eclipseDark();
-        };
+        EditorTheme theme = editorThemeFor(colorScheme);
+        Color editorBackground = theme.background();
 
-        editor.setBackground(theme.background());
+        editor.setBackground(editorBackground);
         editor.setForeground(theme.foreground());
         editor.setCaretColor(theme.caret());
         editor.setCurrentLineHighlightColor(theme.currentLine());
@@ -857,17 +898,43 @@ public class MainWindow {
         setTokenStyle(scheme, Token.SEPARATOR, theme.operatorColor(), false, false);
         setTokenStyle(scheme, Token.IDENTIFIER, theme.foreground(), false, false);
 
+        if (codeScrollPane != null) {
+            codeScrollPane.setBackground(editorBackground);
+            try {
+                codeScrollPane.getViewport().setBackground(editorBackground);
+            } catch (Exception ignored) {
+            }
+        }
+
         editor.revalidate();
         editor.repaint();
+    }
+
+    private EditorTheme editorThemeFor(String colorScheme) {
+        return switch (normalizeColorScheme(colorScheme)) {
+            case "eclipse light" -> EditorTheme.eclipseLight();
+            case "monokai" -> EditorTheme.monokaiDark();
+            case "monokai dark" -> EditorTheme.monokaiDark();
+            case "monokai light" -> EditorTheme.monokaiLight();
+            case "solarized dark" -> EditorTheme.solarizedDark();
+            case "solarized light" -> EditorTheme.solarizedLight();
+            case "dracula" -> EditorTheme.draculaDark();
+            case "dracula dark" -> EditorTheme.draculaDark();
+            case "dracula light" -> EditorTheme.draculaLight();
+            case "codeforces modern" -> EditorTheme.codeforcesDark();
+            case "codeforces dark" -> EditorTheme.codeforcesDark();
+            case "codeforces light" -> EditorTheme.codeforcesLight();
+            default -> EditorTheme.eclipseDark();
+        };
     }
 
     private String normalizeColorScheme(String colorScheme) {
         return colorScheme == null ? DEFAULT_EDITOR_THEME : colorScheme.trim().toLowerCase();
     }
 
-    private AppSettings replaceEditorPreferences(AppSettings current, int editorFontSize, String editorColorScheme, boolean useTabsAsSpaces, int tabSpacing) {
+    private AppSettings replaceEditorPreferences(AppSettings current, int editorFontSize, String editorColorScheme, String appTheme, boolean useTabsAsSpaces, int tabSpacing) {
         if (current == null) {
-            return new AppSettings(-1, -1, 1200, 760, 420, 420, false, DEFAULT_LANGUAGE, editorFontSize, editorColorScheme, useTabsAsSpaces, tabSpacing);
+            return new AppSettings(-1, -1, 1200, 760, 420, 420, false, DEFAULT_LANGUAGE, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing);
         }
         return new AppSettings(
                 current.x(),
@@ -880,6 +947,7 @@ public class MainWindow {
                 current.lastLanguage(),
                 editorFontSize,
                 editorColorScheme,
+                appTheme,
                 useTabsAsSpaces,
                 tabSpacing);
     }
@@ -918,6 +986,24 @@ public class MainWindow {
                     new Color(169, 183, 198));
         }
 
+                static EditorTheme eclipseLight() {
+                    return new EditorTheme(
+                        new Color(250, 251, 253),
+                        new Color(35, 40, 48),
+                        new Color(35, 40, 48),
+                        new Color(238, 242, 247),
+                        new Color(32, 142, 98, 34),
+                        new Color(200, 208, 219),
+                        new Color(32, 142, 98, 120),
+                        new Color(204, 120, 50),
+                        new Color(152, 118, 170),
+                        new Color(110, 118, 130),
+                        new Color(106, 135, 89),
+                        new Color(82, 121, 180),
+                        new Color(196, 143, 61),
+                        new Color(90, 99, 112));
+                }
+
         static EditorTheme monokai() {
             return new EditorTheme(
                     new Color(39, 40, 34),
@@ -934,6 +1020,28 @@ public class MainWindow {
                     new Color(174, 129, 255),
                     new Color(102, 217, 239),
                     new Color(248, 248, 242));
+        }
+
+        static EditorTheme monokaiDark() {
+            return monokai();
+        }
+
+        static EditorTheme monokaiLight() {
+            return new EditorTheme(
+                    new Color(250, 251, 253),
+                    new Color(34, 38, 46),
+                    new Color(34, 38, 46),
+                    new Color(236, 241, 246),
+                    new Color(32, 142, 98, 34),
+                    new Color(205, 213, 223),
+                    new Color(32, 142, 98, 120),
+                    new Color(249, 38, 114),
+                    new Color(120, 158, 37),
+                    new Color(110, 118, 130),
+                    new Color(175, 120, 52),
+                    new Color(119, 90, 191),
+                    new Color(32, 142, 98),
+                    new Color(68, 75, 88));
         }
 
         static EditorTheme solarizedDark() {
@@ -954,6 +1062,24 @@ public class MainWindow {
                     new Color(0x93, 0xA1, 0xA1));
         }
 
+                static EditorTheme solarizedLight() {
+                    return new EditorTheme(
+                        new Color(0xFD, 0xF6, 0xE3),
+                        new Color(0x58, 0x6E, 0x75),
+                        new Color(0x58, 0x6E, 0x75),
+                        new Color(0xEE, 0xE8, 0xD5),
+                        new Color(0x2A, 0xA1, 0x98, 45),
+                        new Color(0xD8, 0xDE, 0xE3),
+                        new Color(0x2A, 0xA1, 0x98, 120),
+                        new Color(0xCB, 0x4B, 0x16),
+                        new Color(0xB5, 0x89, 0x00),
+                        new Color(0x93, 0xA1, 0xA1),
+                        new Color(0x2A, 0xA1, 0x98),
+                        new Color(0xD3, 0x36, 0x82),
+                        new Color(0xB5, 0x89, 0x00),
+                        new Color(0x00, 0x2B, 0x36));
+                }
+
         static EditorTheme dracula() {
             return new EditorTheme(
                     new Color(40, 42, 54),
@@ -972,6 +1098,28 @@ public class MainWindow {
                     new Color(248, 248, 242));
         }
 
+        static EditorTheme draculaDark() {
+            return dracula();
+        }
+
+        static EditorTheme draculaLight() {
+            return new EditorTheme(
+                    new Color(250, 251, 253),
+                    new Color(40, 42, 54),
+                    new Color(40, 42, 54),
+                    new Color(235, 240, 247),
+                    new Color(98, 114, 164, 38),
+                    new Color(214, 220, 229),
+                    new Color(98, 114, 164, 120),
+                    new Color(189, 147, 249),
+                    new Color(139, 233, 253),
+                    new Color(98, 114, 164),
+                    new Color(255, 184, 108),
+                    new Color(122, 120, 216),
+                    new Color(80, 250, 123),
+                    new Color(68, 71, 90));
+        }
+
         static EditorTheme codeforcesModern() {
             return new EditorTheme(
                     new Color(28, 30, 34),
@@ -988,6 +1136,28 @@ public class MainWindow {
                     new Color(181, 206, 168),
                     new Color(220, 220, 170),
                     new Color(212, 212, 212));
+        }
+
+        static EditorTheme codeforcesDark() {
+            return codeforcesModern();
+        }
+
+        static EditorTheme codeforcesLight() {
+            return new EditorTheme(
+                    new Color(250, 251, 253),
+                    new Color(35, 40, 48),
+                    new Color(35, 40, 48),
+                    new Color(235, 240, 246),
+                    new Color(32, 142, 98, 34),
+                    new Color(205, 213, 223),
+                    new Color(32, 142, 98, 120),
+                    new Color(86, 156, 214),
+                    new Color(78, 201, 176),
+                    new Color(122, 126, 130),
+                    new Color(206, 145, 120),
+                    new Color(181, 206, 168),
+                    new Color(220, 220, 170),
+                    new Color(92, 99, 110));
         }
     }
 
@@ -1187,6 +1357,7 @@ public class MainWindow {
     }
 
     private void showCodeforcesProblemView(String problemCode, RenderedProblemView statementOnly, RenderedProblemView full) {
+        AppThemePalette palette = currentThemePalette();
         copyPayloads.clear();
         copyPayloads.putAll(full.copyPayloads());
         if (testCasesPanel != null) {
@@ -1201,7 +1372,7 @@ public class MainWindow {
         pane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
         pane.setText(statementOnly.html());
         pane.setCaretPosition(0);
-        pane.setBackground(new Color(30, 31, 34));
+        pane.setBackground(palette.frameBackground());
         pane.addHyperlinkListener(event -> {
             if (event.getEventType() != HyperlinkEvent.EventType.ACTIVATED || event.getDescription() == null) {
                 return;
@@ -1223,7 +1394,7 @@ public class MainWindow {
 
         JScrollPane scrollPane = new JScrollPane(pane);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
-        scrollPane.getViewport().setBackground(new Color(30, 31, 34));
+        scrollPane.getViewport().setBackground(palette.frameBackground());
         scrollPane.getVerticalScrollBar().setUnitIncrement(14);
 
         JButton chooseDifferentProblemButton = new JButton("Choose Different Problem");
@@ -1447,7 +1618,7 @@ public class MainWindow {
         try {
             String language = selectedLanguage();
             String info = codeExecutionService.getDetailedSupportInfo(language);
-            SupportDialogs.showRuntimeSupportDialog(mainFrame, language, info);
+            SupportDialogs.showRuntimeSupportDialog(mainFrame, language, info, currentThemePalette());
         } catch (Exception ex) {
             System.err.println("[MainWindow] Failed to construct/show runtime support dialog: " + ex.getMessage());
         }
@@ -1550,83 +1721,7 @@ public class MainWindow {
     }
 
     private void showExecutionResultsDialog(String language, CodeExecutionService.ExecutionReport report) {
-        if (!report.success()) {
-            showCompilationErrorDialog(language, report.failureMessage());
-            return;
-        }
-
-        JDialog dialog = new JDialog(mainFrame, "Execution Results", true);
-        dialog.setLayout(new BorderLayout());
-        dialog.getContentPane().setBackground(new Color(30, 31, 34));
-
-        JPanel header = new JPanel(new BorderLayout());
-        header.setBackground(new Color(43, 45, 48));
-        header.setBorder(BorderFactory.createEmptyBorder(12, 14, 12, 14));
-
-        JLabel title = new JLabel("Local execution for " + language);
-        title.setForeground(new Color(236, 239, 244));
-        title.setFont(title.getFont().deriveFont(Font.BOLD, 15f));
-        header.add(title, BorderLayout.NORTH);
-
-        JLabel summary = new JLabel(ExecutionResultFormatter.summary(report));
-        summary.setForeground(new Color(169, 176, 188));
-        header.add(summary, BorderLayout.SOUTH);
-        dialog.add(header, BorderLayout.NORTH);
-
-        JEditorPane pane = new JEditorPane();
-        pane.setEditable(false);
-        pane.setContentType("text/html");
-        pane.setText(ExecutionResultFormatter.buildResultsHtml(language, report));
-        pane.setCaretPosition(0);
-        pane.setBorder(BorderFactory.createEmptyBorder());
-
-        JScrollPane scrollPane = new JScrollPane(pane);
-        scrollPane.setBorder(BorderFactory.createEmptyBorder());
-        scrollPane.getViewport().setBackground(new Color(30, 31, 34));
-        dialog.add(scrollPane, BorderLayout.CENTER);
-
-        dialog.setSize(860, 620);
-        dialog.setLocationRelativeTo(mainFrame);
-        dialog.setVisible(true);
-    }
-
-    private void showCompilationErrorDialog(String language, String failureMessage) {
-        JDialog dialog = new JDialog(mainFrame, "Execution Results", true);
-        dialog.setLayout(new BorderLayout());
-        dialog.getContentPane().setBackground(new Color(30, 31, 34));
-
-        JPanel header = new JPanel(new BorderLayout());
-        header.setBackground(new Color(43, 45, 48));
-        header.setBorder(BorderFactory.createEmptyBorder(12, 14, 12, 14));
-
-        JLabel title = new JLabel("Local execution for " + language);
-        title.setForeground(new Color(236, 239, 244));
-        title.setFont(title.getFont().deriveFont(Font.BOLD, 15f));
-        header.add(title, BorderLayout.NORTH);
-
-        JLabel summary = new JLabel("Compilation failed.");
-        summary.setForeground(new Color(246, 86, 86));
-        header.add(summary, BorderLayout.SOUTH);
-        dialog.add(header, BorderLayout.NORTH);
-
-        JTextArea area = new JTextArea();
-        area.setEditable(false);
-        area.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
-        area.setBackground(new Color(30, 31, 34));
-        area.setForeground(new Color(223, 225, 229));
-        area.setCaretColor(new Color(223, 225, 229));
-        area.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
-        area.setText(failureMessage == null ? "Compilation failed." : failureMessage);
-        area.setCaretPosition(0);
-
-        JScrollPane scrollPane = new JScrollPane(area);
-        scrollPane.setBorder(BorderFactory.createEmptyBorder());
-        scrollPane.getViewport().setBackground(new Color(30, 31, 34));
-        dialog.add(scrollPane, BorderLayout.CENTER);
-
-        dialog.setSize(860, 620);
-        dialog.setLocationRelativeTo(mainFrame);
-        dialog.setVisible(true);
+        ExecutionResultsDialog.show(mainFrame, language, report, currentThemePalette());
     }
 
     private void applyRunButtonIcons() {
@@ -1819,13 +1914,61 @@ public class MainWindow {
                 dividerLocation,
                 testCasesDividerLocation,
                 maximized,
-            language,
-            appSettings != null ? appSettings.editorFontSize() : 14,
-            appSettings != null ? appSettings.editorColorScheme() : DEFAULT_EDITOR_THEME,
-            appSettings != null && appSettings.useTabsAsSpaces(),
-            appSettings != null ? appSettings.tabSpacing() : 4);
+                language,
+                appSettings != null ? appSettings.editorFontSize() : 14,
+                appSettings != null ? appSettings.editorColorScheme() : DEFAULT_EDITOR_THEME,
+                appSettings != null ? appSettings.appTheme() : DEFAULT_APP_THEME,
+                appSettings != null && appSettings.useTabsAsSpaces(),
+                appSettings != null ? appSettings.tabSpacing() : 4);
 
         settingsRepository.save(settings);
+    }
+
+    private void refreshThemeAwareUi() {
+        AppThemePalette palette = currentThemePalette();
+        if (mainFrame != null) {
+            mainFrame.getRootPane().putClientProperty("JRootPane.titleBarBackground", palette.titleBarBackground());
+            mainFrame.getRootPane().putClientProperty("JRootPane.titleBarForeground", palette.titleBarForeground());
+        }
+        if (leftPanelContainer != null) {
+            leftPanelContainer.setBackground(palette.frameBackground());
+        }
+        if (problemEntryPanel != null) {
+            problemEntryPanel.setBackground(palette.frameBackground());
+        }
+        if (runtimeSupportLabel != null) {
+            runtimeSupportLabel.setForeground(palette.mutedTextColor());
+        }
+        if (executionStateLabel != null) {
+            executionStateLabel.setForeground(palette.mutedTextColor());
+        }
+        if (languageDropdown != null) {
+            languageDropdown.setBackground(palette.inputBackground());
+            languageDropdown.setForeground(palette.inputForeground());
+        }
+        if (codeScrollPane != null) {
+            Color editorBackground = editorThemeFor(appSettings != null ? appSettings.editorColorScheme() : DEFAULT_EDITOR_THEME).background();
+            codeScrollPane.setBackground(editorBackground);
+            try {
+                codeScrollPane.getViewport().setBackground(editorBackground);
+            } catch (Exception ignored) {
+            }
+            try {
+                codeScrollPane.getGutter().setBackground(palette.gutterBackground());
+                codeScrollPane.getGutter().setLineNumberColor(palette.mutedTextColor());
+                codeScrollPane.getGutter().setBorderColor(palette.borderColor());
+            } catch (Exception ignored) {
+            }
+        }
+        if (mainFrame != null) {
+            SwingUtilities.updateComponentTreeUI(mainFrame);
+            mainFrame.revalidate();
+            mainFrame.repaint();
+        }
+    }
+
+    private static String toHex(Color color) {
+        return String.format("#%02x%02x%02x", color.getRed(), color.getGreen(), color.getBlue());
     }
 
     private void applyWindowSettings(JFrame frame, AppSettings settings) {

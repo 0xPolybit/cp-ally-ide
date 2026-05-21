@@ -8,6 +8,7 @@ import org.jsoup.nodes.TextNode;
 import org.jsoup.parser.Tag;
 
 import javax.imageio.ImageIO;
+import java.awt.Color;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
@@ -23,40 +24,21 @@ class ProblemHtmlRenderer {
     private final Path appDataDirectory;
     private final Map<String, String> iconSourceCache = new HashMap<>();
     private final LatexImageRenderer latexImageRenderer;
+    private AppThemePalette appTheme = AppThemePalette.dark();
 
     ProblemHtmlRenderer(Path appDataDirectory) {
         this.appDataDirectory = appDataDirectory;
         this.latexImageRenderer = new LatexImageRenderer(appDataDirectory);
     }
 
+    void setTheme(AppThemePalette theme) {
+        this.appTheme = theme != null ? theme : AppThemePalette.dark();
+    }
+
     RenderedProblemView render(ProblemDetails details) {
         Map<String, String> copyPayloads = new HashMap<>();
         String problemHtml = prepareProblemHtml(details.problemHtml(), copyPayloads, details.code());
-        String css = """
-                <style>
-                body { background:#1e1f22; color:#dfe1e5; font-family:Segoe UI, Arial, sans-serif; margin:12px; }
-                .problem-statement { background:#2b2d30; border-radius:8px; padding:14px; }
-                .header .title { font-size:18px; font-weight:700; color:#eceff4; margin-bottom:10px; }
-                .metrics-row { margin-top:4px; margin-bottom:12px; }
-                .metrics-table { border-collapse:collapse; }
-                .metric-item { color:#b8bec8; white-space:nowrap; vertical-align:middle; line-height:18px; }
-                .metric-icon { width:16px; height:16px; vertical-align:middle; image-rendering:auto; }
-                .latex-inline { vertical-align:middle; }
-                .latex-inline-fallback { vertical-align:middle; }
-                .section-title { font-weight:700; margin-top:12px; margin-bottom:6px; color:#e8ebf0; }
-                .sample-tests .input, .sample-tests .output { margin-top:8px; }
-                .io-table { width:100%; border-collapse:collapse; margin-bottom:4px; }
-                .io-label-cell { text-align:left; vertical-align:middle; }
-                .io-copy-cell { text-align:right; vertical-align:middle; width:20px; }
-                .io-label { line-height:18px; }
-                .copy-btn { text-decoration:none; border:none; outline:none; }
-                .copy-btn img { width:16px; height:16px; vertical-align:middle; opacity:0.92; border:none; image-rendering:auto; }
-                pre { background:#24262a; color:#d9dde4; border:1px solid #43474c; border-radius:6px; padding:10px; white-space:pre-wrap; }
-                p { color:#d3d7de; line-height:1.45; }
-                .tex-font-style-bf { font-weight:bold; }
-                .latex-warning-box { background:#3d4949; border-left:4px solid #f7d71a; border-radius:4px; padding:12px; margin:12px 0; color:#e8ebf0; font-size:inherit; line-height:1.5; }
-                </style>
-                """;
+        String css = buildThemeCss();
 
         String body = "<div class='problem-statement'>" + problemHtml + "</div>";
         String html = "<html><head>" + css + "</head><body>" + body + "</body></html>";
@@ -75,30 +57,7 @@ class ProblemHtmlRenderer {
         }
         
         String problemHtmlWithoutTests = root.outerHtml();
-        String css = """
-                <style>
-                body { background:#1e1f22; color:#dfe1e5; font-family:Segoe UI, Arial, sans-serif; margin:12px; }
-                .problem-statement { background:#2b2d30; border-radius:8px; padding:14px; }
-                .header .title { font-size:18px; font-weight:700; color:#eceff4; margin-bottom:10px; }
-                .metrics-row { margin-top:4px; margin-bottom:12px; }
-                .metrics-table { border-collapse:collapse; }
-                .metric-item { color:#b8bec8; white-space:nowrap; vertical-align:middle; line-height:18px; }
-                .metric-icon { width:16px; height:16px; vertical-align:middle; image-rendering:auto; }
-                .latex-inline { vertical-align:middle; }
-                .latex-inline-fallback { vertical-align:middle; }
-                .section-title { font-weight:700; margin-top:12px; margin-bottom:6px; color:#e8ebf0; }
-                .io-table { width:100%; border-collapse:collapse; margin-bottom:4px; }
-                .io-label-cell { text-align:left; vertical-align:middle; }
-                .io-copy-cell { text-align:right; vertical-align:middle; width:20px; }
-                .io-label { line-height:18px; }
-                .copy-btn { text-decoration:none; border:none; outline:none; }
-                .copy-btn img { width:16px; height:16px; vertical-align:middle; opacity:0.92; border:none; image-rendering:auto; }
-                pre { background:#24262a; color:#d9dde4; border:1px solid #43474c; border-radius:6px; padding:10px; white-space:pre-wrap; }
-                p { color:#d3d7de; line-height:1.45; }
-                .tex-font-style-bf { font-weight:bold; }
-                .latex-warning-box { background:#3d4949; border-left:4px solid #f7d71a; border-radius:4px; padding:12px; margin:12px 0; color:#e8ebf0; font-size:inherit; line-height:1.5; }
-                </style>
-                """;
+        String css = buildThemeCss();
         
         String body = "<div class='problem-statement'>" + problemHtmlWithoutTests + "</div>";
         String html = "<html><head>" + css + "</head><body>" + body + "</body></html>";
@@ -109,7 +68,7 @@ class ProblemHtmlRenderer {
         Document doc = Jsoup.parseBodyFragment(rawProblemHtml);
         Element root = doc.body().children().isEmpty() ? doc.body() : doc.body().child(0);
 
-        latexImageRenderer.renderLatexNodes(root);
+        latexImageRenderer.renderLatexNodes(root, appTheme);
         enhanceHeaderMetrics(root);
         insertLatexWarningBox(root, problemCode);
         enhanceSampleTestsWithCopy(root, copyPayloads);
@@ -125,8 +84,46 @@ class ProblemHtmlRenderer {
         String problemUrl = buildProblemUrl(problemCode);
         Element warningBox = new Element(Tag.valueOf("div"), "");
         warningBox.addClass("latex-warning-box");
-        warningBox.html("<strong>Note:</strong> LaTeX rendering is limited in this view. If mathematical formulas or complex content are not displaying correctly, please visit <a href='" + problemUrl + "' style='color:#dfe1e5; text-decoration:underline;'>CodeForces.com</a> to view the problem statement with full support.");
+        warningBox.html("<strong>Note:</strong> LaTeX rendering is limited in this view. If mathematical formulas or complex content are not displaying correctly, please visit <a href='" + problemUrl + "' style='color:" + toHex(appTheme.textColor()) + "; text-decoration:underline;'>CodeForces.com</a> to view the problem statement with full support.");
         header.after(warningBox);
+    }
+
+    private String buildThemeCss() {
+        Color frame = appTheme.frameBackground();
+        Color panel = appTheme.panelBackground();
+        Color text = appTheme.textColor();
+        Color muted = appTheme.mutedTextColor();
+        Color border = appTheme.borderColor();
+        Color surface = appTheme.surfaceBackground();
+        Color warningBg = appTheme.lightTheme() ? new Color(255, 245, 214) : new Color(61, 73, 73);
+
+        return "<style>"
+                + "body { background:" + toHex(frame) + "; color:" + toHex(text) + "; font-family:Segoe UI, Arial, sans-serif; margin:12px; }"
+                + ".problem-statement { background:" + toHex(panel) + "; border-radius:8px; padding:14px; }"
+                + ".header .title { font-size:18px; font-weight:700; color:" + toHex(text) + "; margin-bottom:10px; }"
+                + ".metrics-row { margin-top:4px; margin-bottom:12px; }"
+                + ".metrics-table { border-collapse:collapse; }"
+                + ".metric-item { color:" + toHex(muted) + "; white-space:nowrap; vertical-align:middle; line-height:18px; }"
+                + ".metric-icon { width:16px; height:16px; vertical-align:middle; image-rendering:auto; }"
+                + ".latex-inline { vertical-align:middle; }"
+                + ".latex-inline-fallback { vertical-align:middle; }"
+                + ".section-title { font-weight:700; margin-top:12px; margin-bottom:6px; color:" + toHex(text) + "; }"
+                + ".sample-tests .input, .sample-tests .output { margin-top:8px; }"
+                + ".io-table { width:100%; border-collapse:collapse; margin-bottom:4px; }"
+                + ".io-label-cell { text-align:left; vertical-align:middle; }"
+                + ".io-copy-cell { text-align:right; vertical-align:middle; width:20px; }"
+                + ".io-label { line-height:18px; }"
+                + ".copy-btn { text-decoration:none; border:none; outline:none; }"
+                + ".copy-btn img { width:16px; height:16px; vertical-align:middle; opacity:0.92; border:none; image-rendering:auto; }"
+                + "pre { background:" + toHex(surface) + "; color:" + toHex(text) + "; border:1px solid " + toHex(border) + "; border-radius:6px; padding:10px; white-space:pre-wrap; }"
+                + "p { color:" + toHex(text) + "; line-height:1.45; }"
+                + ".tex-font-style-bf { font-weight:bold; }"
+                + ".latex-warning-box { background:" + toHex(warningBg) + "; border-left:4px solid " + toHex(appTheme.warningColor()) + "; border-radius:4px; padding:12px; margin:12px 0; color:" + toHex(text) + "; font-size:inherit; line-height:1.5; }"
+                + "</style>";
+    }
+
+    private static String toHex(Color color) {
+        return String.format("#%02x%02x%02x", color.getRed(), color.getGreen(), color.getBlue());
     }
 
     private String buildProblemUrl(String problemCode) {

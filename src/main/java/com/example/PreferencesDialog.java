@@ -5,6 +5,7 @@ import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
+import javax.swing.DefaultComboBoxModel;
 import javax.swing.JComboBox;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
@@ -22,63 +23,105 @@ import java.awt.Frame;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.awt.event.ItemEvent;
 
 final class PreferencesDialog {
 
-    record PreferencesSelection(int editorFontSize, String editorColorScheme, boolean useTabsAsSpaces, int tabSpacing) {
+    private static final String[] DARK_EDITOR_SCHEMES = {
+        "Eclipse Dark",
+        "Monokai Dark",
+        "Solarized Dark",
+        "Dracula Dark",
+        "Codeforces Dark"
+    };
+
+    private static final String[] LIGHT_EDITOR_SCHEMES = {
+        "Eclipse Light",
+        "Monokai Light",
+        "Solarized Light",
+        "Dracula Light",
+        "Codeforces Light"
+    };
+
+    record PreferencesSelection(int editorFontSize, String editorColorScheme, String appTheme, boolean useTabsAsSpaces, int tabSpacing) {
     }
 
     private PreferencesDialog() {
     }
 
-    static PreferencesSelection showDialog(Frame owner, PreferencesSelection initialSelection) {
+    static PreferencesSelection showDialog(Frame owner, PreferencesSelection initialSelection, AppThemePalette theme) {
         JDialog dialog = new JDialog(owner, "Preferences", true);
         dialog.setLayout(new BorderLayout());
-        dialog.getContentPane().setBackground(new Color(30, 31, 34));
+        AppThemePalette palette = theme != null ? theme : AppThemePalette.dark();
+        dialog.getContentPane().setBackground(palette.frameBackground());
 
         final PreferencesSelection[] result = new PreferencesSelection[1];
 
         JPanel content = new JPanel();
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBackground(new Color(43, 45, 48));
+        content.setBackground(palette.panelBackground());
         content.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(67, 71, 76)),
+            BorderFactory.createLineBorder(palette.borderColor()),
                 BorderFactory.createEmptyBorder(16, 16, 16, 16)));
 
         JLabel titleLabel = new JLabel("Preferences");
         titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 16f));
-        titleLabel.setForeground(new Color(223, 225, 229));
+        titleLabel.setForeground(palette.textColor());
         titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         JLabel subtitleLabel = new JLabel("Configure editor appearance and behavior.");
-        subtitleLabel.setForeground(new Color(169, 176, 188));
+        subtitleLabel.setForeground(palette.mutedTextColor());
         subtitleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         JSpinner fontSizeSpinner = createFontSizeSpinner(initialSelection != null ? initialSelection.editorFontSize() : 14);
-        JPanel fontSizeRow = createSettingRow("Editor Font Size", fontSizeSpinner);
+        JPanel fontSizeRow = createSettingRow("Editor Font Size", fontSizeSpinner, palette);
 
-        JComboBox<String> colorSchemeCombo = new JComboBox<>(new String[]{
-            "Eclipse Dark",
-            "Monokai",
-            "Solarized Dark",
-            "Dracula",
-            "Codeforces Modern"
+        JComboBox<String> appThemeCombo = new JComboBox<>(new String[]{
+            "Light",
+            "Dark",
+            "Ultra Dark"
         });
-        colorSchemeCombo.setSelectedItem(initialSelection != null ? initialSelection.editorColorScheme() : "Eclipse Dark");
-        if (colorSchemeCombo.getSelectedItem() == null) {
-            colorSchemeCombo.setSelectedItem("Eclipse Dark");
+        String initialAppTheme = initialSelection != null ? initialSelection.appTheme() : "Dark";
+        appThemeCombo.setSelectedItem(initialAppTheme);
+        if (appThemeCombo.getSelectedItem() == null) {
+            appThemeCombo.setSelectedItem("Dark");
+            initialAppTheme = "Dark";
         }
-        JPanel colorSchemeRow = createSettingRow("Editor Color Scheme", colorSchemeCombo);
+        JPanel appThemeRow = createSettingRow("App Theme", appThemeCombo, palette);
+
+        JComboBox<String> colorSchemeCombo = new JComboBox<>(editorSchemesForTheme(initialAppTheme));
+        colorSchemeCombo.setSelectedItem(mapEditorSchemeForTheme(
+                initialSelection != null ? initialSelection.editorColorScheme() : colorSchemeCombo.getItemAt(0),
+                initialAppTheme));
+        if (colorSchemeCombo.getSelectedItem() == null) {
+            colorSchemeCombo.setSelectedIndex(0);
+        }
+        JPanel colorSchemeRow = createSettingRow("Editor Color Scheme", colorSchemeCombo, palette);
+
+        appThemeCombo.addItemListener(event -> {
+            if (event.getStateChange() != ItemEvent.SELECTED) {
+                return;
+            }
+            String selectedAppTheme = event.getItem().toString();
+            String currentScheme = colorSchemeCombo.getSelectedItem() != null
+                    ? colorSchemeCombo.getSelectedItem().toString()
+                    : null;
+            colorSchemeCombo.setModel(new DefaultComboBoxModel<>(editorSchemesForTheme(selectedAppTheme)));
+            colorSchemeCombo.setSelectedItem(mapEditorSchemeForTheme(currentScheme, selectedAppTheme));
+            if (colorSchemeCombo.getSelectedItem() == null && colorSchemeCombo.getItemCount() > 0) {
+                colorSchemeCombo.setSelectedIndex(0);
+            }
+        });
 
         JCheckBox useTabsAsSpacesCheckbox = new JCheckBox();
         useTabsAsSpacesCheckbox.setSelected(initialSelection != null && initialSelection.useTabsAsSpaces());
         useTabsAsSpacesCheckbox.setFocusable(false);
-        useTabsAsSpacesCheckbox.setBackground(new Color(43, 45, 48));
-        useTabsAsSpacesCheckbox.setForeground(new Color(223, 225, 229));
-        JPanel useTabsAsSpacesRow = createSettingRow("Use Tabs as Spaces", useTabsAsSpacesCheckbox);
+        useTabsAsSpacesCheckbox.setBackground(palette.panelBackground());
+        useTabsAsSpacesCheckbox.setForeground(palette.textColor());
+        JPanel useTabsAsSpacesRow = createSettingRow("Use Tabs as Spaces", useTabsAsSpacesCheckbox, palette);
 
         JSpinner tabSpacingSpinner = createTabSpacingSpinner(initialSelection != null ? initialSelection.tabSpacing() : 4);
-        JPanel tabSpacingRow = createSettingRow("Tab Spacing (spaces)", tabSpacingSpinner);
+        JPanel tabSpacingRow = createSettingRow("Tab Spacing (spaces)", tabSpacingSpinner, palette);
 
         content.add(titleLabel);
         content.add(Box.createRigidArea(new Dimension(0, 8)));
@@ -87,6 +130,8 @@ final class PreferencesDialog {
         content.add(fontSizeRow);
         content.add(Box.createRigidArea(new Dimension(0, 12)));
         content.add(colorSchemeRow);
+        content.add(Box.createRigidArea(new Dimension(0, 12)));
+        content.add(appThemeRow);
         content.add(Box.createRigidArea(new Dimension(0, 12)));
         content.add(useTabsAsSpacesRow);
         content.add(Box.createRigidArea(new Dimension(0, 12)));
@@ -103,10 +148,13 @@ final class PreferencesDialog {
             int fontSize = ((Number) fontSizeSpinner.getValue()).intValue();
             String colorScheme = colorSchemeCombo.getSelectedItem() != null
                     ? colorSchemeCombo.getSelectedItem().toString()
-                    : "Eclipse Dark";
+                    : editorSchemesForTheme(appThemeCombo.getSelectedItem() != null ? appThemeCombo.getSelectedItem().toString() : "Dark")[0];
+            String appTheme = appThemeCombo.getSelectedItem() != null
+                    ? appThemeCombo.getSelectedItem().toString()
+                    : "Dark";
             boolean useTabsAsSpaces = useTabsAsSpacesCheckbox.isSelected();
             int tabSpacing = ((Number) tabSpacingSpinner.getValue()).intValue();
-            result[0] = new PreferencesSelection(fontSize, colorScheme, useTabsAsSpaces, tabSpacing);
+            result[0] = new PreferencesSelection(fontSize, colorScheme, appTheme, useTabsAsSpaces, tabSpacing);
             dialog.dispose();
         });
 
@@ -124,8 +172,8 @@ final class PreferencesDialog {
         root.add(content, BorderLayout.CENTER);
 
         dialog.add(root, BorderLayout.CENTER);
-        dialog.setSize(500, 440);
-        dialog.setMinimumSize(new Dimension(480, 420));
+        dialog.setSize(500, 500);
+        dialog.setMinimumSize(new Dimension(480, 480));
         dialog.setLocationRelativeTo(owner);
         dialog.setVisible(true);
         return result[0];
@@ -165,13 +213,13 @@ final class PreferencesDialog {
         return spinner;
     }
 
-    private static JPanel createSettingRow(String labelText, Component inputComponent) {
+    private static JPanel createSettingRow(String labelText, Component inputComponent, AppThemePalette palette) {
         JPanel row = new JPanel(new GridBagLayout());
         row.setOpaque(false);
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         JLabel label = new JLabel(labelText + ":");
-        label.setForeground(new Color(223, 225, 229));
+        label.setForeground(palette.textColor());
         label.setPreferredSize(new Dimension(170, 20));
 
         inputComponent.setFocusable(false);
@@ -201,5 +249,42 @@ final class PreferencesDialog {
         row.setPreferredSize(new Dimension(480, rowHeight));
 
         return row;
+    }
+
+    private static String[] editorSchemesForTheme(String appTheme) {
+        return isLightTheme(appTheme) ? LIGHT_EDITOR_SCHEMES : DARK_EDITOR_SCHEMES;
+    }
+
+    private static boolean isLightTheme(String appTheme) {
+        return appTheme != null && appTheme.trim().equalsIgnoreCase("Light");
+    }
+
+    private static String mapEditorSchemeForTheme(String scheme, String appTheme) {
+        String[] options = editorSchemesForTheme(appTheme);
+        if (scheme == null || scheme.isBlank()) {
+            return options[0];
+        }
+
+        String normalized = scheme.trim();
+        if (isLightTheme(appTheme)) {
+            if (normalized.endsWith(" Dark")) {
+                normalized = normalized.substring(0, normalized.length() - 5) + " Light";
+            } else if (!normalized.endsWith(" Light")) {
+                normalized = normalized + " Light";
+            }
+        } else {
+            if (normalized.endsWith(" Light")) {
+                normalized = normalized.substring(0, normalized.length() - 6) + " Dark";
+            } else if (!normalized.endsWith(" Dark")) {
+                normalized = normalized + " Dark";
+            }
+        }
+
+        for (String option : options) {
+            if (option.equalsIgnoreCase(normalized)) {
+                return option;
+            }
+        }
+        return options[0];
     }
 }

@@ -25,28 +25,20 @@ import java.net.URI;
 
 final class SupportDialogs {
 
-    private static final Color SURFACE = new Color(30, 31, 34);
-    private static final Color PANEL = new Color(43, 45, 48);
-    private static final Color BORDER = new Color(67, 71, 76);
-    private static final Color TEXT = new Color(223, 225, 229);
-    private static final Color MUTED = new Color(169, 176, 188);
-    private static final Color GREEN = new Color(97, 214, 110);
-    private static final Color RED = new Color(246, 86, 86);
-    private static final Color GOLD = new Color(246, 198, 67);
-
     private SupportDialogs() {
     }
 
-    static void showRuntimeSupportDialog(Frame owner, String language, String supportInfo) {
+    static void showRuntimeSupportDialog(Frame owner, String language, String supportInfo, AppThemePalette theme) {
+        AppThemePalette palette = theme != null ? theme : AppThemePalette.dark();
         JDialog dialog = new JDialog(owner, "Language Support Details", true);
         dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
         dialog.setLayout(new BorderLayout());
         dialog.setSize(new Dimension(500, 350));
         dialog.setLocationRelativeTo(owner);
 
-        JScrollPane scrollPane = new JScrollPane(createRuntimeSupportPanel(supportInfo, language));
-        scrollPane.setBorder(BorderFactory.createLineBorder(BORDER));
-        scrollPane.getViewport().setBackground(PANEL);
+        JScrollPane scrollPane = new JScrollPane(createRuntimeSupportPanel(supportInfo, language, palette));
+        scrollPane.setBorder(BorderFactory.createLineBorder(palette.borderColor()));
+        scrollPane.getViewport().setBackground(palette.panelBackground());
         scrollPane.getVerticalScrollBar().setUnitIncrement(16);
 
         JButton closeButton = new JButton("Close");
@@ -65,22 +57,23 @@ final class SupportDialogs {
         dialog.setVisible(true);
     }
 
-    static void showCreditsDialog(Frame owner) {
+    static void showCreditsDialog(Frame owner, AppThemePalette theme) {
+        AppThemePalette palette = theme != null ? theme : AppThemePalette.dark();
         JDialog dialog = new JDialog(owner, "Credits", true);
         dialog.setLayout(new BorderLayout());
-        dialog.getContentPane().setBackground(SURFACE);
+        dialog.getContentPane().setBackground(palette.frameBackground());
 
-        JPanel content = createCreditsContentPanel();
+        JPanel content = createCreditsContentPanel(palette);
         JScrollPane scrollPane = new JScrollPane(content);
-        scrollPane.setBorder(BorderFactory.createLineBorder(BORDER));
-        scrollPane.getViewport().setBackground(SURFACE);
+        scrollPane.setBorder(BorderFactory.createLineBorder(palette.borderColor()));
+        scrollPane.getViewport().setBackground(palette.frameBackground());
         scrollPane.getVerticalScrollBar().setUnitIncrement(16);
 
         JButton closeButton = new JButton("Close");
         closeButton.addActionListener(e -> dialog.dispose());
 
         JPanel footerPanel = new JPanel();
-        footerPanel.setBackground(SURFACE);
+        footerPanel.setBackground(palette.frameBackground());
         footerPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         footerPanel.add(closeButton);
 
@@ -96,16 +89,16 @@ final class SupportDialogs {
         dialog.setVisible(true);
     }
 
-    private static JPanel createRuntimeSupportPanel(String rawInfo, String language) {
+    private static JPanel createRuntimeSupportPanel(String rawInfo, String language, AppThemePalette palette) {
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setBackground(PANEL);
+        panel.setBackground(palette.panelBackground());
         panel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
 
         if (language != null && !language.isBlank()) {
             JLabel label = new JLabel("Language: " + language);
             label.setFont(label.getFont().deriveFont(Font.BOLD, 13f));
-            label.setForeground(TEXT);
+            label.setForeground(palette.textColor());
             label.setAlignmentX(Component.LEFT_ALIGNMENT);
             panel.add(label);
             panel.add(Box.createRigidArea(new Dimension(0, 8)));
@@ -123,27 +116,27 @@ final class SupportDialogs {
             if (line.equals("Required Tools:")) {
                 JLabel label = new JLabel(line);
                 label.setFont(label.getFont().deriveFont(Font.BOLD, 12f));
-                label.setForeground(TEXT);
+                label.setForeground(palette.textColor());
                 label.setAlignmentX(Component.LEFT_ALIGNMENT);
                 panel.add(label);
                 inToolsSection = true;
             } else if (line.startsWith("Status:")) {
                 JLabel label = new JLabel(line);
                 label.setFont(label.getFont().deriveFont(Font.BOLD, 12f));
-                label.setForeground(line.contains("Ready") ? GREEN : RED);
+                label.setForeground(line.contains("Ready") ? palette.successColor() : palette.errorColor());
                 label.setAlignmentX(Component.LEFT_ALIGNMENT);
                 panel.add(label);
                 inToolsSection = false;
             } else if (inToolsSection && (line.startsWith("  ✓") || line.startsWith("  ✗"))) {
                 JLabel label = new JLabel(line);
                 label.setFont(label.getFont().deriveFont(Font.PLAIN, 11f));
-                label.setForeground(line.startsWith("  ✓") ? GREEN : RED);
+                label.setForeground(line.startsWith("  ✓") ? palette.successColor() : palette.errorColor());
                 label.setAlignmentX(Component.LEFT_ALIGNMENT);
                 panel.add(label);
             } else {
                 JLabel label = new JLabel(line);
                 label.setFont(label.getFont().deriveFont(Font.PLAIN, 11f));
-                label.setForeground(MUTED);
+                label.setForeground(palette.mutedTextColor());
                 label.setAlignmentX(Component.LEFT_ALIGNMENT);
                 panel.add(label);
             }
@@ -153,20 +146,20 @@ final class SupportDialogs {
         return panel;
     }
 
-    private static JPanel createCreditsContentPanel() {
+    private static JPanel createCreditsContentPanel(AppThemePalette palette) {
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setBackground(PANEL);
+        panel.setBackground(palette.panelBackground());
         panel.setBorder(BorderFactory.createEmptyBorder(18, 18, 18, 18));
 
         JLabel title = new JLabel("Credits");
         title.setFont(title.getFont().deriveFont(Font.BOLD, 22f));
-        title.setForeground(TEXT);
+        title.setForeground(palette.textColor());
         title.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         JLabel subtitle = new JLabel("Project author and public profiles");
         subtitle.setFont(subtitle.getFont().deriveFont(Font.PLAIN, 12f));
-        subtitle.setForeground(MUTED);
+        subtitle.setForeground(palette.mutedTextColor());
         subtitle.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         JPanel header = new JPanel();
@@ -185,7 +178,8 @@ final class SupportDialogs {
                         {"Name", "Swastik Biswas"},
                         {"College", "Kalinga Institute for Industrial Technology"},
                         {"Nationality", "United States of America"}
-                }
+            },
+            palette
         ));
         panel.add(Box.createRigidArea(new Dimension(0, 14)));
         panel.add(createCreditsCard(
@@ -197,50 +191,51 @@ final class SupportDialogs {
                         {"LinkedIn", "https://www.linkedin.com/in/polybit/"},
                         {"CodeForces", "https://codeforces.com/profile/swastikpolybitbiswas"},
                         {"LeetCode", "https://leetcode.com/u/swastikbiswas/"}
-                }
+            },
+            palette
         ));
 
         panel.add(Box.createVerticalGlue());
         return panel;
     }
 
-    private static JPanel createCreditsCard(String heading, String[][] rows) {
+    private static JPanel createCreditsCard(String heading, String[][] rows, AppThemePalette palette) {
         JPanel card = new JPanel();
         card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
-        card.setBackground(SURFACE);
+        card.setBackground(palette.surfaceBackground());
         card.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(BORDER),
+                BorderFactory.createLineBorder(palette.borderColor()),
                 BorderFactory.createEmptyBorder(14, 14, 14, 14)));
         card.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         JLabel headingLabel = new JLabel(heading);
         headingLabel.setFont(headingLabel.getFont().deriveFont(Font.BOLD, 14f));
-        headingLabel.setForeground(GREEN);
+        headingLabel.setForeground(palette.successColor());
         headingLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
         card.add(headingLabel);
         card.add(Box.createRigidArea(new Dimension(0, 10)));
 
         for (String[] row : rows) {
-            card.add(createCreditsRow(row[0], row[1]));
+            card.add(createCreditsRow(row[0], row[1], palette));
             card.add(Box.createRigidArea(new Dimension(0, 8)));
         }
 
         return card;
     }
 
-    private static JPanel createCreditsRow(String labelText, String valueText) {
+    private static JPanel createCreditsRow(String labelText, String valueText, AppThemePalette palette) {
         JPanel row = new JPanel(new BorderLayout(10, 0));
         row.setOpaque(false);
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         JLabel label = new JLabel(labelText + ":");
         label.setFont(label.getFont().deriveFont(Font.BOLD, 12f));
-        label.setForeground(MUTED);
+        label.setForeground(palette.mutedTextColor());
 
-        JLabel value = createCreditsValueLabel(valueText);
+        JLabel value = createCreditsValueLabel(valueText, palette);
         value.setFont(value.getFont().deriveFont(Font.PLAIN, 12f));
         if (value.getForeground() == null || value.getForeground().equals(javax.swing.UIManager.getColor("Label.foreground"))) {
-            value.setForeground(TEXT);
+            value.setForeground(palette.textColor());
         }
 
         row.add(label, BorderLayout.WEST);
@@ -248,9 +243,9 @@ final class SupportDialogs {
         return row;
     }
 
-    private static JLabel createCreditsValueLabel(String valueText) {
+    private static JLabel createCreditsValueLabel(String valueText, AppThemePalette palette) {
         if (valueText != null && valueText.startsWith("http")) {
-            JLabel link = new JLabel("<html><span style='color:#61d66e;text-decoration:underline;'>" + valueText + "</span></html>");
+            JLabel link = new JLabel("<html><span style='color:" + toHex(palette.successColor()) + ";text-decoration:underline;'>" + valueText + "</span></html>");
             link.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             link.addMouseListener(new MouseAdapter() {
                 @Override
@@ -263,11 +258,15 @@ final class SupportDialogs {
 
         JLabel value = new JLabel(valueText);
         if ("Swastik Biswas".equals(valueText)) {
-            value.setForeground(GREEN);
+            value.setForeground(palette.successColor());
         } else if ("United States of America".equals(valueText)) {
-            value.setForeground(GOLD);
+            value.setForeground(palette.warningColor());
         }
         return value;
+    }
+
+    private static String toHex(Color color) {
+        return String.format("#%02x%02x%02x", color.getRed(), color.getGreen(), color.getBlue());
     }
 
     private static void openExternalUrl(String url) {

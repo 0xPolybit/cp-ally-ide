@@ -30,12 +30,12 @@ final class LatexImageRenderer {
         this.appDataDirectory = appDataDirectory;
     }
 
-    void renderLatexNodes(Element root) {
+    void renderLatexNodes(Element root, AppThemePalette activePalette) {
         for (Element script : root.select("script[type^=math/tex]")) {
             String type = script.attr("type");
             boolean display = type != null && type.contains("mode=display");
             String expression = normalizeLatexExpression(script.data().isBlank() ? script.html() : script.data());
-            String src = renderLatexToImageSource(expression, display);
+            String src = renderLatexToImageSource(expression, display, activePalette);
             if (src.isBlank()) {
                 Element fallback = new Element(Tag.valueOf("span"), "");
                 fallback.attr("style", "color:" + LATEX_FALLBACK_COLOR + ";");
@@ -59,7 +59,7 @@ final class LatexImageRenderer {
 
         for (Element texSpan : root.select("span.tex-span, div.tex-span")) {
             String expression = normalizeLatexExpression(texSpan.text());
-            String src = renderLatexToImageSource(expression, false);
+            String src = renderLatexToImageSource(expression, false, activePalette);
             if (src.isBlank()) {
                 texSpan.addClass("latex-inline-fallback");
                 texSpan.attr(LATEX_PROCESSED_ATTR, "1");
@@ -72,10 +72,10 @@ final class LatexImageRenderer {
             texSpan.replaceWith(img);
         }
 
-        renderLatexInTextNodes(root);
+        renderLatexInTextNodes(root, activePalette);
     }
 
-    private void renderLatexInTextNodes(Element root) {
+    private void renderLatexInTextNodes(Element root, AppThemePalette activePalette) {
         for (TextNode textNode : root.textNodes()) {
             String text = textNode.getWholeText();
             if (text == null || text.isBlank() || text.indexOf('$') < 0) {
@@ -94,7 +94,7 @@ final class LatexImageRenderer {
                 continue;
             }
 
-            List<Element> rendered = renderTextWithLatex(text);
+            List<Element> rendered = renderTextWithLatex(text, activePalette);
             if (rendered.isEmpty()) {
                 continue;
             }
@@ -110,11 +110,11 @@ final class LatexImageRenderer {
             if ("pre".equals(tag) || "code".equals(tag) || "script".equals(tag) || "style".equals(tag)) {
                 continue;
             }
-            renderLatexInTextNodes(child);
+            renderLatexInTextNodes(child, activePalette);
         }
     }
 
-    private List<Element> renderTextWithLatex(String text) {
+    private List<Element> renderTextWithLatex(String text, AppThemePalette activePalette) {
         List<Element> nodes = new ArrayList<>();
         int cursor = 0;
 
@@ -144,7 +144,7 @@ final class LatexImageRenderer {
 
             String expression = text.substring(start + delimiterLength, end).trim();
             boolean display = delimiterLength >= 2;
-            String src = renderLatexToImageSource(expression, display);
+            String src = renderLatexToImageSource(expression, display, activePalette);
             if (src.isBlank()) {
                 Element fallback = createProcessedTextSpan(text.substring(start, end + delimiterLength));
                 fallback.attr("style", "color:" + LATEX_FALLBACK_COLOR + ";");
@@ -188,47 +188,68 @@ final class LatexImageRenderer {
         return text.indexOf(delimiter, from);
     }
 
-    private String renderLatexToImageSource(String expression, boolean display) {
+    private String renderLatexToImageSource(String expression, boolean display, AppThemePalette activePalette) {
         if (expression == null || expression.isBlank()) {
             return "";
         }
-
         String normalized = normalizeLatexExpression(expression);
-        String cacheKey = (display ? "d:" : "i:") + normalized;
-        if (latexImageCache.containsKey(cacheKey)) {
-            return latexImageCache.get(cacheKey);
-        }
+        String baseKey = (display ? "d:" : "i:") + normalized;
 
+        // Ensure both variants exist in cache (light & dark)
         try {
-            TeXFormula formula = new TeXFormula(normalized);
-            float size = display ? 18f : 16f;
-            int style = display ? TeXConstants.STYLE_DISPLAY : TeXConstants.STYLE_TEXT;
-            TeXIcon icon = formula.createTeXIcon(style, size);
-            icon.setForeground(new java.awt.Color(223, 225, 229));
-
-            int fullWidth = icon.getIconWidth();
-            int fullHeight = icon.getIconHeight();
-            int croppedHeight = Math.max((int) (fullHeight * 0.75f), fullHeight - 6);
-
-            BufferedImage image = new BufferedImage(fullWidth, croppedHeight, BufferedImage.TYPE_INT_ARGB);
-            java.awt.Graphics2D g2 = image.createGraphics();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-            icon.paintIcon(null, g2, 0, -2);
-            g2.dispose();
-
             Path latexCacheDir = appDataDirectory.resolve("cache").resolve("latex");
             Files.createDirectories(latexCacheDir);
-            String fileName = Integer.toHexString(cacheKey.hashCode()) + ".png";
-            Path file = latexCacheDir.resolve(fileName);
-            ImageIO.write(image, "png", file.toFile());
 
-            String src = file.toUri().toString();
-            latexImageCache.put(cacheKey, src);
-            return src;
+            // Light variant
+            String lightKey = baseKey + "|light";
+            if (!latexImageCache.containsKey(lightKey)) {
+                String lightFileName = Integer.toHexString(lightKey.hashCode()) + "-light.png";
+                Path lightFile = latexCacheDir.resolve(lightFileName);
+                if (!Files.exists(lightFile)) {
+                    generateLatexPng(normalized, display, AppThemePalette.light().textColor(), lightFile);
+                }
+                latexImageCache.put(lightKey, lightFile.toUri().toString());
+            }
+
+            // Dark variant
+            String darkKey = baseKey + "|dark";
+            if (!latexImageCache.containsKey(darkKey)) {
+                String darkFileName = Integer.toHexString(darkKey.hashCode()) + "-dark.png";
+                Path darkFile = latexCacheDir.resolve(darkFileName);
+                if (!Files.exists(darkFile)) {
+                    generateLatexPng(normalized, display, AppThemePalette.dark().textColor(), darkFile);
+                }
+                latexImageCache.put(darkKey, darkFile.toUri().toString());
+            }
+
+            // Return the variant that matches the active palette
+            boolean wantLight = activePalette != null && activePalette.lightTheme();
+            String selectedKey = baseKey + (wantLight ? "|light" : "|dark");
+            return latexImageCache.getOrDefault(selectedKey, "");
         } catch (Exception e) {
             return "";
         }
+    }
+
+    private void generateLatexPng(String normalized, boolean display, java.awt.Color fg, Path outFile) throws Exception {
+        TeXFormula formula = new TeXFormula(normalized);
+        float size = display ? 18f : 16f;
+        int style = display ? TeXConstants.STYLE_DISPLAY : TeXConstants.STYLE_TEXT;
+        TeXIcon icon = formula.createTeXIcon(style, size);
+        icon.setForeground(fg);
+
+        int fullWidth = icon.getIconWidth();
+        int fullHeight = icon.getIconHeight();
+        int croppedHeight = Math.max((int) (fullHeight * 0.75f), fullHeight - 6);
+
+        BufferedImage image = new BufferedImage(fullWidth, croppedHeight, BufferedImage.TYPE_INT_ARGB);
+        java.awt.Graphics2D g2 = image.createGraphics();
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+        icon.paintIcon(null, g2, 0, -2);
+        g2.dispose();
+
+        ImageIO.write(image, "png", outFile.toFile());
     }
 
     private String normalizeLatexExpression(String raw) {

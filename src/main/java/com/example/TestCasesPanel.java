@@ -13,7 +13,6 @@ import javax.swing.JSplitPane;
 import javax.swing.JTabbedPane;
 import javax.swing.JTextArea;
 import java.awt.BorderLayout;
-import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Frame;
@@ -25,23 +24,19 @@ import java.util.Map;
 
 final class TestCasesPanel {
 
-    private static final Color SURFACE = new Color(30, 31, 34);
-    private static final Color PANEL = new Color(43, 45, 48);
-    private static final Color BORDER = new Color(67, 71, 76);
-    private static final Color TEXT = new Color(223, 225, 229);
-    private static final Color CODE = new Color(24, 26, 29);
-
     private final Frame owner;
+    private final AppThemePalette theme;
     private final Map<String, String> copyPayloads = new HashMap<>();
     private final List<CodeExecutionService.TestCaseSpec> customTestCases = new ArrayList<>();
     private final JTabbedPane testCasesTabs = new JTabbedPane();
     private final JPanel rootPanel = new JPanel(new BorderLayout());
     private List<CodeExecutionService.TestCaseSpec> sampleTestCases = List.of();
 
-    TestCasesPanel(Frame owner) {
+    TestCasesPanel(Frame owner, AppThemePalette theme) {
         this.owner = owner;
-        testCasesTabs.setBackground(PANEL);
-        testCasesTabs.setForeground(TEXT);
+        this.theme = theme != null ? theme : AppThemePalette.dark();
+        testCasesTabs.setBackground(this.theme.panelBackground());
+        testCasesTabs.setForeground(this.theme.textColor());
 
         JButton addTestCaseButton = new JButton("Add Test Case");
         addTestCaseButton.setFocusable(false);
@@ -50,7 +45,7 @@ final class TestCasesPanel {
         addTestCaseButton.addActionListener(e -> showAddCustomTestCaseDialog());
 
         JLabel sectionLabel = new JLabel("Test Cases");
-        sectionLabel.setForeground(TEXT);
+        sectionLabel.setForeground(this.theme.textColor());
         sectionLabel.setFont(sectionLabel.getFont().deriveFont(Font.BOLD));
 
         JPanel topBar = new JPanel(new BorderLayout());
@@ -91,7 +86,7 @@ final class TestCasesPanel {
 
         if (sampleTestCases.isEmpty() && customTestCases.isEmpty()) {
             JPanel emptyPanel = new JPanel();
-            emptyPanel.setBackground(SURFACE);
+            emptyPanel.setBackground(theme.frameBackground());
             testCasesTabs.addTab("No Test Cases", emptyPanel);
             testCasesTabs.setSelectedIndex(0);
             return;
@@ -125,7 +120,7 @@ final class TestCasesPanel {
         header.setOpaque(false);
 
         JLabel label = new JLabel(title);
-        label.setForeground(TEXT);
+        label.setForeground(theme.textColor());
 
         JButton closeButton = new JButton("x");
         closeButton.setFocusable(false);
@@ -141,11 +136,11 @@ final class TestCasesPanel {
 
     private JPanel createTestCasePanel(CodeExecutionService.TestCaseSpec testCase) {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(SURFACE);
+        panel.setBackground(theme.frameBackground());
         panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        splitPane.setBackground(SURFACE);
+        splitPane.setBackground(theme.frameBackground());
         splitPane.setResizeWeight(0.5);
 
         splitPane.setLeftComponent(createTestDataPanel("Input", testCase.input()));
@@ -158,26 +153,26 @@ final class TestCasesPanel {
 
     private JPanel createTestDataPanel(String title, String data) {
         JPanel panel = new JPanel(new BorderLayout(0, 8));
-        panel.setBackground(SURFACE);
+        panel.setBackground(theme.frameBackground());
         panel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
         JLabel titleLabel = new JLabel(title);
-        titleLabel.setForeground(TEXT);
+        titleLabel.setForeground(theme.textColor());
         titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD));
 
         JTextArea textArea = new JTextArea(data);
         textArea.setEditable(false);
         textArea.setFocusable(false);
-        textArea.setBackground(CODE);
-        textArea.setForeground(new Color(217, 221, 228));
+        textArea.setBackground(theme.surfaceBackground());
+        textArea.setForeground(theme.textColor());
         textArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         textArea.setLineWrap(true);
         textArea.setWrapStyleWord(false);
         textArea.setMargin(new java.awt.Insets(6, 6, 6, 6));
 
         JScrollPane scrollPane = new JScrollPane(textArea);
-        scrollPane.setBorder(BorderFactory.createLineBorder(BORDER));
-        scrollPane.setBackground(SURFACE);
+        scrollPane.setBorder(BorderFactory.createLineBorder(theme.borderColor()));
+        scrollPane.setBackground(theme.frameBackground());
         scrollPane.getVerticalScrollBar().setUnitIncrement(10);
 
         panel.add(titleLabel, BorderLayout.NORTH);
@@ -188,41 +183,41 @@ final class TestCasesPanel {
     private void showAddCustomTestCaseDialog() {
         JDialog dialog = new JDialog(owner, "Add Test Case", true);
         dialog.setLayout(new BorderLayout());
-        dialog.getContentPane().setBackground(SURFACE);
+        dialog.getContentPane().setBackground(theme.frameBackground());
 
         JPanel content = new JPanel();
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBackground(SURFACE);
+        content.setBackground(theme.frameBackground());
         content.setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
 
         JLabel inputLabel = new JLabel("Input (required)");
-        inputLabel.setForeground(TEXT);
+        inputLabel.setForeground(theme.textColor());
         content.add(inputLabel);
         content.add(Box.createVerticalStrut(6));
 
         JTextArea inputArea = new JTextArea(8, 40);
         inputArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        inputArea.setBackground(CODE);
-        inputArea.setForeground(TEXT);
-        inputArea.setCaretColor(TEXT);
+        inputArea.setBackground(theme.surfaceBackground());
+        inputArea.setForeground(theme.textColor());
+        inputArea.setCaretColor(theme.textColor());
         JScrollPane inputScroll = new JScrollPane(inputArea);
-        inputScroll.setBorder(BorderFactory.createLineBorder(BORDER));
+        inputScroll.setBorder(BorderFactory.createLineBorder(theme.borderColor()));
         inputScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
         content.add(inputScroll);
         content.add(Box.createVerticalStrut(12));
 
         JLabel outputLabel = new JLabel("Expected Output (optional)");
-        outputLabel.setForeground(TEXT);
+        outputLabel.setForeground(theme.textColor());
         content.add(outputLabel);
         content.add(Box.createVerticalStrut(6));
 
         JTextArea outputArea = new JTextArea(8, 40);
         outputArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        outputArea.setBackground(CODE);
-        outputArea.setForeground(TEXT);
-        outputArea.setCaretColor(TEXT);
+        outputArea.setBackground(theme.surfaceBackground());
+        outputArea.setForeground(theme.textColor());
+        outputArea.setCaretColor(theme.textColor());
         JScrollPane outputScroll = new JScrollPane(outputArea);
-        outputScroll.setBorder(BorderFactory.createLineBorder(BORDER));
+        outputScroll.setBorder(BorderFactory.createLineBorder(theme.borderColor()));
         outputScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
         content.add(outputScroll);
 
