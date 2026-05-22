@@ -14,7 +14,6 @@ import javax.swing.JSpinner;
 import javax.swing.JTextField;
 import javax.swing.SpinnerNumberModel;
 import java.awt.BorderLayout;
-import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -74,6 +73,7 @@ final class PreferencesDialog {
         subtitleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         JSpinner fontSizeSpinner = createFontSizeSpinner(initialSelection != null ? initialSelection.editorFontSize() : 14);
+        applySpinnerTheme(fontSizeSpinner, palette);
         JPanel fontSizeRow = createSettingRow("Editor Font Size", fontSizeSpinner, palette);
 
         JComboBox<String> appThemeCombo = new JComboBox<>(new String[]{
@@ -121,6 +121,7 @@ final class PreferencesDialog {
         JPanel useTabsAsSpacesRow = createSettingRow("Use Tabs as Spaces", useTabsAsSpacesCheckbox, palette);
 
         JSpinner tabSpacingSpinner = createTabSpacingSpinner(initialSelection != null ? initialSelection.tabSpacing() : 4);
+        applySpinnerTheme(tabSpacingSpinner, palette);
         JPanel tabSpacingRow = createSettingRow("Tab Spacing (spaces)", tabSpacingSpinner, palette);
 
         content.add(titleLabel);
@@ -190,9 +191,6 @@ final class PreferencesDialog {
         spinner.setEditor(editor);
         editor.getTextField().setColumns(3);
         editor.getTextField().setHorizontalAlignment(JTextField.CENTER);
-        editor.getTextField().setForeground(new Color(223, 225, 229));
-        editor.getTextField().setBackground(new Color(50, 53, 58));
-        editor.getTextField().setCaretColor(new Color(223, 225, 229));
         return spinner;
     }
 
@@ -207,9 +205,6 @@ final class PreferencesDialog {
         spinner.setEditor(editor);
         editor.getTextField().setColumns(3);
         editor.getTextField().setHorizontalAlignment(JTextField.CENTER);
-        editor.getTextField().setForeground(new Color(223, 225, 229));
-        editor.getTextField().setBackground(new Color(50, 53, 58));
-        editor.getTextField().setCaretColor(new Color(223, 225, 229));
         return spinner;
     }
 
@@ -249,6 +244,18 @@ final class PreferencesDialog {
         row.setPreferredSize(new Dimension(480, rowHeight));
 
         return row;
+    }
+
+    private static void applySpinnerTheme(JSpinner spinner, AppThemePalette palette) {
+        if (spinner == null || palette == null) {
+            return;
+        }
+
+        if (spinner.getEditor() instanceof JSpinner.NumberEditor numberEditor) {
+            numberEditor.getTextField().setForeground(palette.inputForeground());
+            numberEditor.getTextField().setBackground(palette.inputBackground());
+            numberEditor.getTextField().setCaretColor(palette.accentColor());
+        }
     }
 
     private static String[] editorSchemesForTheme(String appTheme) {

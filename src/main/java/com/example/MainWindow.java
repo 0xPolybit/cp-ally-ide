@@ -1178,8 +1178,11 @@ public class MainWindow {
     }
 
     private JTextField createPlaceholderField(String placeholder) {
+        AppThemePalette palette = currentThemePalette();
         JTextField field = new JTextField(placeholder);
-        field.setForeground(new Color(145, 150, 159));
+        field.setBackground(palette.inputBackground());
+        field.setForeground(palette.mutedTextColor());
+        field.setCaretColor(palette.inputForeground());
         field.setFocusable(true);
         field.setRequestFocusEnabled(true);
         field.addFocusListener(new FocusAdapter() {
@@ -1187,7 +1190,7 @@ public class MainWindow {
             public void focusGained(FocusEvent e) {
                 if (placeholder.equals(field.getText())) {
                     field.setText("");
-                    field.setForeground(new Color(223, 225, 229));
+                    field.setForeground(palette.inputForeground());
                 }
             }
 
@@ -1195,7 +1198,7 @@ public class MainWindow {
             public void focusLost(FocusEvent e) {
                 if (field.getText().trim().isEmpty()) {
                     field.setText(placeholder);
-                    field.setForeground(new Color(145, 150, 159));
+                    field.setForeground(palette.mutedTextColor());
                 }
             }
         });
@@ -1209,8 +1212,9 @@ public class MainWindow {
     }
 
     private void checkCodeforcesStatusAsync(JLabel statusLabel) {
+        AppThemePalette palette = currentThemePalette();
         statusLabel.setText("Checking CodeForces...");
-        statusLabel.setForeground(new Color(160, 167, 177));
+        statusLabel.setForeground(palette.mutedTextColor());
 
         SwingWorker<ConnectivityResult, Void> worker = new SwingWorker<>() {
             @Override
@@ -1226,7 +1230,7 @@ public class MainWindow {
                     statusLabel.setForeground(result.color());
                 } catch (Exception ignored) {
                     statusLabel.setText("CodeForces unresponsive");
-                    statusLabel.setForeground(new Color(246, 86, 86));
+                    statusLabel.setForeground(palette.errorColor());
                 }
             }
         };
@@ -1318,21 +1322,21 @@ public class MainWindow {
     }
 
     private void showFetchWarning(String message) {
-        fetchStatusLabel.setForeground(new Color(246, 86, 86));
+        fetchStatusLabel.setForeground(currentThemePalette().errorColor());
         fetchStatusLabel.setText(message);
         JOptionPane.showMessageDialog(null, message, APP_NAME, JOptionPane.WARNING_MESSAGE);
     }
 
     private JLabel createLoadingLabel(String text) {
         JLabel label = new JLabel(text);
-        label.setForeground(new Color(160, 167, 177));
+        label.setForeground(currentThemePalette().mutedTextColor());
         label.setBorder(BorderFactory.createEmptyBorder(12, 6, 12, 6));
         return label;
     }
 
     private void showLeftPanelLoading(String problemCode) {
         fetchProblemButton.setEnabled(false);
-        fetchStatusLabel.setForeground(new Color(160, 167, 177));
+        fetchStatusLabel.setForeground(currentThemePalette().mutedTextColor());
         fetchStatusLabel.setText("Fetching problem " + problemCode + "...");
 
         JPanel loadingPanel = new JPanel(new GridBagLayout());
