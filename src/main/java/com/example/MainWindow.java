@@ -1631,12 +1631,12 @@ public class MainWindow {
     private JLabel createHintIconLabel() {
         JLabel hintLabel = new JLabel();
         try {
-            ImageIcon hintIcon = UiIconLoader.loadClasspathIcon("/assets/hint.png");
+            ImageIcon hintIcon = UiIconLoader.loadThemedClasspathIcon("hint.png", currentThemePalette(), 16, 16);
             if (hintIcon != null) {
                 hintLabel.setIcon(hintIcon);
             }
         } catch (Exception ignored) {
-            System.err.println("[MainWindow] Failed to load hint icon (/assets/hint.png): " + ignored.getMessage());
+            System.err.println("[MainWindow] Failed to load hint icon: " + ignored.getMessage());
         }
         
         hintLabel.setMaximumSize(new Dimension(20, 20));
@@ -1733,7 +1733,8 @@ public class MainWindow {
             return;
         }
 
-        ImageIcon normal = UiIconLoader.loadScaledClasspathIcon("/assets/run.png", RUN_ICON_SIZE, RUN_ICON_SIZE);
+        AppThemePalette palette = currentThemePalette();
+        ImageIcon normal = UiIconLoader.loadThemedClasspathIcon("run.png", palette, RUN_ICON_SIZE, RUN_ICON_SIZE);
         ImageIcon hover = UiIconLoader.loadScaledClasspathIcon("/assets/run-hover.png", RUN_ICON_SIZE, RUN_ICON_SIZE);
         if (normal == null) {
             return;

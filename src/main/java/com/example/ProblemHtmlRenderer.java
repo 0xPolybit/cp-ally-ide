@@ -33,6 +33,7 @@ class ProblemHtmlRenderer {
 
     void setTheme(AppThemePalette theme) {
         this.appTheme = theme != null ? theme : AppThemePalette.dark();
+        this.iconSourceCache.clear();
     }
 
     RenderedProblemView render(ProblemDetails details) {
@@ -382,8 +383,9 @@ class ProblemHtmlRenderer {
     }
 
     private String loadIconSource(String iconFile) {
-        if (iconSourceCache.containsKey(iconFile)) {
-            return iconSourceCache.get(iconFile);
+        String cacheKey = iconFile + "|" + (appTheme != null && appTheme.lightTheme() ? "light" : "dark");
+        if (iconSourceCache.containsKey(cacheKey)) {
+            return iconSourceCache.get(cacheKey);
         }
 
         Path iconPath = resolveInlineIconPath(iconFile);
@@ -399,7 +401,7 @@ class ProblemHtmlRenderer {
 
             if (source.getWidth() == INLINE_ICON_SIZE && source.getHeight() == INLINE_ICON_SIZE) {
                 String src = iconPath.toAbsolutePath().toUri().toString();
-                iconSourceCache.put(iconFile, src);
+                iconSourceCache.put(cacheKey, src);
                 return src;
             }
 
@@ -419,7 +421,7 @@ class ProblemHtmlRenderer {
             ImageIO.write(target, "png", scaledFile.toFile());
 
             String src = scaledFile.toUri().toString();
-            iconSourceCache.put(iconFile, src);
+            iconSourceCache.put(cacheKey, src);
             return src;
         } catch (IOException e) {
             return "";
@@ -427,6 +429,12 @@ class ProblemHtmlRenderer {
     }
 
     private Path resolveInlineIconPath(String iconFile) {
+        String themedFileName = UiIconLoader.themedAssetPath(iconFile, appTheme);
+        Path themedPath = Path.of(themedFileName.replaceFirst("^/", ""));
+        if (Files.exists(themedPath)) {
+            return themedPath;
+        }
+
         int dot = iconFile.lastIndexOf('.');
         String base = dot >= 0 ? iconFile.substring(0, dot) : iconFile;
         String ext = dot >= 0 ? iconFile.substring(dot) : "";
