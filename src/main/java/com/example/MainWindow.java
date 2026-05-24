@@ -73,6 +73,7 @@ public class MainWindow {
     private static final String DEFAULT_LANGUAGE = "Python 3";
     private static final String DEFAULT_EDITOR_THEME = "Eclipse Dark";
     private static final String DEFAULT_APP_THEME = "Dark";
+    private static final String EMPTY_PROBLEM_CODE = "__EMPTY_PROBLEM__";
     private static final String SETTINGS_DIR_NAME = "CompetitiveProgrammingAlly";
     private static final String SETTINGS_FILE_NAME = "settings.properties";
     private static final String CURRENT_APP_VERSION = "0.1.4";
@@ -555,7 +556,7 @@ public class MainWindow {
 
     private JPanel createProblemEntryPanel() {
         AppThemePalette palette = currentThemePalette();
-        JPanel panel = new JPanel(new GridBagLayout());
+        JPanel panel = new JPanel(new BorderLayout());
         panel.setOpaque(false);
 
         JPanel form = new JPanel();
@@ -587,6 +588,13 @@ public class MainWindow {
         }
         fetchProblemButton.addActionListener(e -> onFetchProblemClicked());
         initialFocusButton = fetchProblemButton;
+
+        JButton openEmptyButton = createOpenEmptyButton();
+
+        JPanel actionStrip = new JPanel(new BorderLayout());
+        actionStrip.setOpaque(false);
+        actionStrip.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
+        actionStrip.add(openEmptyButton, BorderLayout.WEST);
 
         JLabel connectivityLabel = new JLabel("Checking CodeForces...");
         connectivityLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -621,7 +629,12 @@ public class MainWindow {
         gbc.gridx = 0;
         gbc.gridy = 0;
         gbc.anchor = GridBagConstraints.CENTER;
-        panel.add(form, gbc);
+        JPanel formHolder = new JPanel(new GridBagLayout());
+        formHolder.setOpaque(false);
+        formHolder.add(form, gbc);
+
+        panel.add(actionStrip, BorderLayout.NORTH);
+        panel.add(formHolder, BorderLayout.CENTER);
         return panel;
     }
 
@@ -1351,7 +1364,7 @@ public class MainWindow {
 
     private void restoreProblemEntryPanelWithError(String message) {
         fetchProblemButton.setEnabled(true);
-        fetchStatusLabel.setForeground(new Color(246, 86, 86));
+        fetchStatusLabel.setForeground(currentThemePalette().errorColor());
         fetchStatusLabel.setText(message);
 
         leftPanelContainer.removeAll();
@@ -1361,6 +1374,16 @@ public class MainWindow {
     }
 
     private void showCodeforcesProblemView(String problemCode, RenderedProblemView statementOnly, RenderedProblemView full) {
+        renderProblemView(problemCode, statementOnly, full, false);
+    }
+
+    private void showEmptyProblemView() {
+        saveCurrentProgramToCache();
+        RenderedProblemView empty = problemHtmlRenderer.renderEmptyProblem();
+        renderProblemView(EMPTY_PROBLEM_CODE, empty, empty, true);
+    }
+
+    private void renderProblemView(String problemCode, RenderedProblemView statementOnly, RenderedProblemView full, boolean emptyProblem) {
         AppThemePalette palette = currentThemePalette();
         copyPayloads.clear();
         copyPayloads.putAll(full.copyPayloads());
@@ -1368,7 +1391,6 @@ public class MainWindow {
             testCasesPanel.setSamplePayloads(full.copyPayloads());
         }
 
-        // Top panel: Statement without test cases
         JEditorPane pane = new JEditorPane();
         pane.setContentType("text/html");
         pane.setEditable(false);
@@ -1401,31 +1423,27 @@ public class MainWindow {
         scrollPane.getViewport().setBackground(palette.frameBackground());
         scrollPane.getVerticalScrollBar().setUnitIncrement(14);
 
-        JButton chooseDifferentProblemButton = new JButton("Choose Different Problem");
-        chooseDifferentProblemButton.setFocusable(false);
-        chooseDifferentProblemButton.setRequestFocusEnabled(false);
-        chooseDifferentProblemButton.setPreferredSize(new Dimension(280, LEFT_FIELD_HEIGHT));
-        chooseDifferentProblemButton.setIcon(UiIconLoader.loadScaledClasspathIcon("/assets/codeforces.png", 16, 16));
-        if (chooseDifferentProblemButton.getIcon() != null) {
-            chooseDifferentProblemButton.setHorizontalTextPosition(javax.swing.SwingConstants.RIGHT);
-            chooseDifferentProblemButton.setIconTextGap(8);
-        }
-        chooseDifferentProblemButton.addActionListener(e -> promptForDifferentProblem());
+        JButton chooseDifferentProblemButton = createProblemActionButton("Choose Different Problem", () -> promptForDifferentProblem());
+        JButton openEmptyButton = createProblemActionButton("Open Empty", this::promptOpenEmptyProblem);
 
         JPanel topBar = new JPanel(new BorderLayout());
         topBar.setOpaque(false);
         topBar.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
-        topBar.add(chooseDifferentProblemButton, BorderLayout.WEST);
+        JPanel actionRow = new JPanel();
+        actionRow.setOpaque(false);
+        actionRow.setLayout(new BoxLayout(actionRow, BoxLayout.X_AXIS));
+        actionRow.add(chooseDifferentProblemButton);
+        actionRow.add(Box.createRigidArea(new Dimension(8, 0)));
+        actionRow.add(openEmptyButton);
+        topBar.add(actionRow, BorderLayout.WEST);
 
         JPanel statementPanel = new JPanel(new BorderLayout());
         statementPanel.setOpaque(false);
         statementPanel.add(topBar, BorderLayout.NORTH);
         statementPanel.add(scrollPane, BorderLayout.CENTER);
 
-        // Bottom panel: Test cases in tabs
         JPanel testCasesSection = testCasesPanel != null ? testCasesPanel.createPanel() : new JPanel();
 
-        // Split pane: statement on top, test cases on bottom
         JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, statementPanel, testCasesSection);
         splitPane.setResizeWeight(0.5);
 
@@ -1445,6 +1463,37 @@ public class MainWindow {
         currentProblemCode = problemCode;
         problemStatementLoaded = true;
         enableEditorForProblem();
+    }
+
+    private JButton createProblemActionButton(String text, Runnable action) {
+        JButton button = new JButton(text);
+        button.setFocusable(false);
+        button.setRequestFocusEnabled(false);
+        button.setAlignmentX(Component.LEFT_ALIGNMENT);
+        button.setPreferredSize(new Dimension(280, LEFT_FIELD_HEIGHT));
+        button.setMaximumSize(new Dimension(280, LEFT_FIELD_HEIGHT));
+        button.addActionListener(e -> action.run());
+        return button;
+    }
+
+    private JButton createOpenEmptyButton() {
+        JButton button = createProblemActionButton("Open Empty", this::promptOpenEmptyProblem);
+        return button;
+    }
+
+    private void promptOpenEmptyProblem() {
+        int selection = JOptionPane.showConfirmDialog(
+                mainFrame,
+                "Open an empty problem?\n\nYour current code will be saved before switching.",
+                "Open Empty Problem",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.QUESTION_MESSAGE);
+        if (selection != JOptionPane.YES_OPTION) {
+            return;
+        }
+
+        saveCurrentProgramToCache();
+        showEmptyProblemView();
     }
 
     private void copyToClipboard(String text) {
@@ -1527,7 +1576,8 @@ public class MainWindow {
 
         String language = selectedLanguage();
         CodeExecutionService.LanguageSupport support = codeExecutionService.detectSupport(language);
-        boolean ready = problemStatementLoaded && support.supported();
+        boolean hasTestCases = testCasesPanel != null && !testCasesPanel.getExecutionTestCases().isEmpty();
+        boolean ready = problemStatementLoaded && support.supported() && hasTestCases;
 
         runtimeSupportLabel.setText("<html><span style='color:"
                 + (support.supported() ? "#61d66e" : "#f65656")
@@ -1536,7 +1586,7 @@ public class MainWindow {
                 + "</span></html>");
         runtimeSupportLabel.setToolTipText(support.message());
         runButton.setEnabled(ready);
-        runButton.setToolTipText(ready ? "Run the sample test cases locally" : support.message());
+        runButton.setToolTipText(ready ? "Run the sample test cases locally" : (hasTestCases ? support.message() : "No test cases available to run."));
     }
 
     private String selectedLanguage() {

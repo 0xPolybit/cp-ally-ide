@@ -65,6 +65,18 @@ class ProblemHtmlRenderer {
         return new RenderedProblemView(html, copyPayloads);
     }
 
+    RenderedProblemView renderEmptyProblem() {
+        String html = "<div class='header'>"
+                + "<div class='title'>Empty Problem</div>"
+                + "</div>"
+                + "<div class='empty-problem'>"
+                + "<p>Use this workspace to solve a problem without fetching from CodeForces.</p>"
+                + "</div>";
+        String body = "<div class='problem-statement'>" + html + "</div>";
+        String rendered = "<html><head>" + buildThemeCss() + "</head><body>" + body + "</body></html>";
+        return new RenderedProblemView(rendered, Map.of());
+    }
+
     private String prepareProblemHtml(String rawProblemHtml, Map<String, String> copyPayloads, String problemCode) {
         Document doc = Jsoup.parseBodyFragment(rawProblemHtml);
         Element root = doc.body().children().isEmpty() ? doc.body() : doc.body().child(0);
@@ -110,6 +122,7 @@ class ProblemHtmlRenderer {
                 + ".latex-inline-fallback { vertical-align:middle; }"
                 + ".section-title { font-weight:700; margin-top:12px; margin-bottom:6px; color:" + toHex(text) + "; }"
                 + ".sample-tests .input, .sample-tests .output { margin-top:8px; }"
+                + ".empty-problem { margin-top:12px; }"
                 + ".io-table { width:100%; border-collapse:collapse; margin-bottom:4px; }"
                 + ".io-label-cell { text-align:left; vertical-align:middle; }"
                 + ".io-copy-cell { text-align:right; vertical-align:middle; width:20px; }"
