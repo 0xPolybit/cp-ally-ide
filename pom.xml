@@ -6,7 +6,7 @@
 
     <groupId>com.example</groupId>
     <artifactId>cp-ally-ide</artifactId>
-    <version>0.1.4</version>
+    <version>0.2.0</version>
     <name>cp-ally-ide</name>
 
     <properties>
