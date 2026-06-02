@@ -38,6 +38,7 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Desktop;
 import java.awt.Font;
+import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Toolkit;
@@ -119,6 +120,18 @@ public class MainWindow {
     private boolean currentProblemIsEmpty;
     private String currentProblemCode;
     private AppThemePalette appThemePalette = AppThemePalette.dark();
+    private java.util.concurrent.ScheduledExecutorService autosaveExecutor;
+    private volatile String lastAutosavedSource = null;
+    private double editorZoomFactor = 1.0;
+    private double problemZoomFactor = 1.0;
+    private static final double ZOOM_MIN = 0.25;
+    private static final double ZOOM_MAX = 4.0;
+    private static final double ZOOM_STEP = 0.05;
+    private javax.swing.JEditorPane problemPane;
+    private ProblemDetails currentProblemDetails;
+    private javax.swing.JLabel zoomPercentLabel;
+    private enum ZoomTarget { EDITOR, PROBLEM }
+    private ZoomTarget activeZoomTarget = ZoomTarget.EDITOR;
 
     public void showWindow() {
         appSettings = settingsRepository.load();
@@ -148,6 +161,7 @@ public class MainWindow {
         frame.addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
+                stopAutosave();
                 saveCurrentProgramToCache();
                 persistSettings(frame);
             }
@@ -171,6 +185,9 @@ public class MainWindow {
         if (initialFocusButton != null) {
             SwingUtilities.invokeLater(() -> initialFocusButton.requestFocusInWindow());
         }
+
+        // Start autosave according to settings
+        startAutosaveIfNeeded();
 
         checkForAppUpdatesAsync();
     }
@@ -383,6 +400,24 @@ public class MainWindow {
         helpMenu.addSeparator();
         helpMenu.add(aboutItem);
         titleBar.add(helpMenu);
+        // Right-aligned zoom controls
+        titleBar.add(Box.createHorizontalGlue());
+        JPanel zoomPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        zoomPanel.setOpaque(false);
+        javax.swing.JButton zoomOutBtn = new javax.swing.JButton("-");
+        zoomOutBtn.setFocusable(false);
+        zoomOutBtn.setToolTipText("Zoom out active region (Ctrl+Wheel or touch pinch)");
+        zoomOutBtn.addActionListener(e -> zoomOut(activeZoomTarget));
+        javax.swing.JButton zoomInBtn = new javax.swing.JButton("+");
+        zoomInBtn.setFocusable(false);
+        zoomInBtn.setToolTipText("Zoom in active region (Ctrl+Wheel or touch pinch)");
+        zoomInBtn.addActionListener(e -> zoomIn(activeZoomTarget));
+        zoomPercentLabel = new JLabel(zoomLabelText());
+        zoomPercentLabel.setForeground(palette.textColor());
+        zoomPanel.add(zoomOutBtn);
+        zoomPanel.add(zoomPercentLabel);
+        zoomPanel.add(zoomInBtn);
+        titleBar.add(zoomPanel);
         return titleBar;
     }
 
@@ -443,13 +478,17 @@ public class MainWindow {
                     appSettings != null ? appSettings.editorColorScheme() : DEFAULT_EDITOR_THEME,
                     currentAppTheme,
                     appSettings != null && appSettings.useTabsAsSpaces(),
-                    appSettings != null ? appSettings.tabSpacing() : 4);
+                    appSettings != null ? appSettings.tabSpacing() : 4,
+                    appSettings != null ? appSettings.autosaveEnabled() : true,
+                    appSettings != null ? appSettings.autosaveIntervalSeconds() : 10);
             PreferencesDialog.PreferencesSelection selection = PreferencesDialog.showDialog(mainFrame, initialSelection, currentThemePalette());
             if (selection != null) {
                 boolean appThemeChanged = !selection.appTheme().equalsIgnoreCase(currentAppTheme);
-                appSettings = replaceEditorPreferences(appSettings, selection.editorFontSize(), selection.editorColorScheme(), selection.appTheme(), selection.useTabsAsSpaces(), selection.tabSpacing());
+                appSettings = replaceEditorPreferences(appSettings, selection.editorFontSize(), selection.editorColorScheme(), selection.appTheme(), selection.useTabsAsSpaces(), selection.tabSpacing(), selection.autosaveEnabled(), selection.autosaveIntervalSeconds());
                 appThemePalette = AppThemePalette.fromName(selection.appTheme());
                 settingsRepository.save(appSettings);
+                // Restart autosave executor if autosave settings changed
+                restartAutosaveIfNeeded();
                 if (appThemeChanged) {
                     JOptionPane.showMessageDialog(
                             mainFrame,
@@ -747,67 +786,40 @@ public class MainWindow {
         installEditorAutoPairs(codeEditor);
         codeEditor.setText("Select a problem to get started...");
         codeEditor.setCaretPosition(0);
+        codeEditor.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                activeZoomTarget = ZoomTarget.EDITOR;
+            }
+
+            @Override
+            public void mousePressed(MouseEvent e) {
+                activeZoomTarget = ZoomTarget.EDITOR;
+            }
+        });
+        // Support Ctrl+wheel / pinch-to-zoom on the editor
+        codeEditor.addMouseWheelListener(e -> {
+            try {
+                if (e.isControlDown()) {
+                    if (e.getWheelRotation() < 0) zoomIn(ZoomTarget.EDITOR); else zoomOut(ZoomTarget.EDITOR);
+                    e.consume();
+                }
+            } catch (Exception ignored) {
+            }
+        });
         // Editor zoom (font size) keybindings: Ctrl + Plus / Ctrl + Equals / NumpadAdd to increase,
         // Ctrl + Minus / NumpadSubtract to decrease by 2pt.
         javax.swing.Action zoomInAction = new javax.swing.AbstractAction() {
             @Override
             public void actionPerformed(java.awt.event.ActionEvent e) {
-                java.awt.Font f = codeEditor.getFont();
-                int newSize = Math.min(40, Math.max(8, f.getSize() + 2));
-                codeEditor.setFont(f.deriveFont((float) newSize));
-
-                // Update syntax scheme fonts so token styles scale as well
-                SyntaxScheme scheme = codeEditor.getSyntaxScheme();
-                if (scheme != null) {
-                    for (int i = 0; i < scheme.getStyleCount(); i++) {
-                        org.fife.ui.rsyntaxtextarea.Style s = scheme.getStyle(i);
-                        if (s != null && s.font != null) {
-                            s.font = s.font.deriveFont((float) newSize);
-                        }
-                    }
-                    codeEditor.setSyntaxScheme(scheme);
-                }
-
-                // Update gutter line number font if available
-                if (codeScrollPane != null) {
-                    try {
-                        codeScrollPane.getGutter().setLineNumberFont(new java.awt.Font(java.awt.Font.MONOSPACED, java.awt.Font.PLAIN, newSize));
-                    } catch (Exception ignored) {
-                    }
-                }
-
-                codeEditor.revalidate();
-                codeEditor.repaint();
+                zoomIn(ZoomTarget.EDITOR);
             }
          };
 
         javax.swing.Action zoomOutAction = new javax.swing.AbstractAction() {
             @Override
             public void actionPerformed(java.awt.event.ActionEvent e) {
-                java.awt.Font f = codeEditor.getFont();
-                int newSize = Math.min(40, Math.max(8, f.getSize() - 2));
-                codeEditor.setFont(f.deriveFont((float) newSize));
-
-                SyntaxScheme scheme = codeEditor.getSyntaxScheme();
-                if (scheme != null) {
-                    for (int i = 0; i < scheme.getStyleCount(); i++) {
-                        org.fife.ui.rsyntaxtextarea.Style s = scheme.getStyle(i);
-                        if (s != null && s.font != null) {
-                            s.font = s.font.deriveFont((float) newSize);
-                        }
-                    }
-                    codeEditor.setSyntaxScheme(scheme);
-                }
-
-                if (codeScrollPane != null) {
-                    try {
-                        codeScrollPane.getGutter().setLineNumberFont(new java.awt.Font(java.awt.Font.MONOSPACED, java.awt.Font.PLAIN, newSize));
-                    } catch (Exception ignored) {
-                    }
-                }
-
-                codeEditor.revalidate();
-                codeEditor.repaint();
+                zoomOut(ZoomTarget.EDITOR);
             }
         };
 
@@ -946,9 +958,9 @@ public class MainWindow {
         return colorScheme == null ? DEFAULT_EDITOR_THEME : colorScheme.trim().toLowerCase();
     }
 
-    private AppSettings replaceEditorPreferences(AppSettings current, int editorFontSize, String editorColorScheme, String appTheme, boolean useTabsAsSpaces, int tabSpacing) {
+    private AppSettings replaceEditorPreferences(AppSettings current, int editorFontSize, String editorColorScheme, String appTheme, boolean useTabsAsSpaces, int tabSpacing, boolean autosaveEnabled, int autosaveIntervalSeconds) {
         if (current == null) {
-            return new AppSettings(-1, -1, 1200, 760, 420, 420, false, DEFAULT_LANGUAGE, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing);
+            return new AppSettings(-1, -1, 1200, 760, 420, 420, false, DEFAULT_LANGUAGE, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveIntervalSeconds);
         }
         return new AppSettings(
                 current.x(),
@@ -963,7 +975,9 @@ public class MainWindow {
                 editorColorScheme,
                 appTheme,
                 useTabsAsSpaces,
-                tabSpacing);
+                tabSpacing,
+                autosaveEnabled,
+                autosaveIntervalSeconds);
     }
 
     private record EditorTheme(
@@ -1279,10 +1293,12 @@ public class MainWindow {
 
         showLeftPanelLoading(contestId + index);
 
+        final ProblemDetails[] fetched = new ProblemDetails[1];
         SwingWorker<RenderedProblemView[], Void> worker = new SwingWorker<>() {
             @Override
             protected RenderedProblemView[] doInBackground() throws Exception {
                 ProblemDetails details = codeforcesService.fetchProblemDetails(contestId, index);
+                fetched[0] = details;
                 RenderedProblemView full = problemHtmlRenderer.render(details);
                 RenderedProblemView statementOnly = problemHtmlRenderer.renderStatementOnly(details);
                 return new RenderedProblemView[]{statementOnly, full};
@@ -1292,6 +1308,7 @@ public class MainWindow {
             protected void done() {
                 try {
                     RenderedProblemView[] renders = get();
+                    currentProblemDetails = fetched[0];
                     showCodeforcesProblemView(contestId + index, renders[0], renders[1]);
                 } catch (Exception ex) {
                     restoreProblemEntryPanelWithError("Could not fetch that problem.");
@@ -1380,6 +1397,7 @@ public class MainWindow {
 
     private void showEmptyProblemView() {
         saveCurrentProgramToCache();
+        currentProblemDetails = null;
         RenderedProblemView empty = problemHtmlRenderer.renderEmptyProblem();
         renderProblemView(EMPTY_PROBLEM_CODE, empty, empty, true);
     }
@@ -1393,34 +1411,58 @@ public class MainWindow {
             testCasesPanel.setSamplePayloads(full.copyPayloads());
         }
 
-        JEditorPane pane = new JEditorPane();
-        pane.setContentType("text/html");
-        pane.setEditable(false);
-        pane.setFocusable(false);
-        pane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
-        pane.setText(statementOnly.html());
-        pane.setCaretPosition(0);
-        pane.setBackground(palette.frameBackground());
-        pane.addHyperlinkListener(event -> {
-            if (event.getEventType() != HyperlinkEvent.EventType.ACTIVATED || event.getDescription() == null) {
-                return;
-            }
-            String description = event.getDescription();
-            if (description.startsWith("copy:")) {
-                String key = description.substring("copy:".length());
-                String payload = copyPayloads.get(key);
-                if (payload != null) {
-                    copyToClipboard(payload);
+        // Create or reuse persistent problemPane so we can re-render on zoom changes without rebuilding UI
+        if (problemPane == null) {
+            problemPane = new JEditorPane();
+            problemPane.setContentType("text/html");
+            problemPane.setEditable(false);
+            problemPane.setFocusable(false);
+            problemPane.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseEntered(MouseEvent e) {
+                    activeZoomTarget = ZoomTarget.PROBLEM;
                 }
-                return;
-            }
 
-            if (description.startsWith("http://") || description.startsWith("https://")) {
-                openExternalUrl(description);
+                @Override
+                public void mousePressed(MouseEvent e) {
+                    activeZoomTarget = ZoomTarget.PROBLEM;
+                }
+            });
+            problemPane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
+            problemPane.addHyperlinkListener(event -> {
+                if (event.getEventType() != HyperlinkEvent.EventType.ACTIVATED || event.getDescription() == null) {
+                    return;
+                }
+                String description = event.getDescription();
+                if (description.startsWith("copy:")) {
+                    String key = description.substring("copy:".length());
+                    String payload = copyPayloads.get(key);
+                    if (payload != null) {
+                        copyToClipboard(payload);
+                    }
+                    return;
+                }
+
+                if (description.startsWith("http://") || description.startsWith("https://")) {
+                    openExternalUrl(description);
+                }
+            });
+        }
+        problemPane.setText(statementOnly.html());
+        problemPane.setCaretPosition(0);
+        problemPane.setBackground(palette.frameBackground());
+
+        JScrollPane scrollPane = new JScrollPane(problemPane);
+        // Support Ctrl+wheel / pinch-to-zoom on the problem pane
+        problemPane.addMouseWheelListener(e -> {
+            try {
+                if (e.isControlDown()) {
+                    if (e.getWheelRotation() < 0) zoomIn(ZoomTarget.PROBLEM); else zoomOut(ZoomTarget.PROBLEM);
+                    e.consume();
+                }
+            } catch (Exception ignored) {
             }
         });
-
-        JScrollPane scrollPane = new JScrollPane(pane);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
         scrollPane.getViewport().setBackground(palette.frameBackground());
         scrollPane.getVerticalScrollBar().setUnitIncrement(14);
@@ -1511,6 +1553,8 @@ public class MainWindow {
 
         applyLanguageTemplateOrCachedProgram();
         updateExecutionAvailability();
+        // Ensure editor zoom reflects current zoomFactor
+        applyZoomToEditor();
     }
 
     private void applyLanguageTemplateOrCachedProgram() {
@@ -1527,6 +1571,8 @@ public class MainWindow {
             codeEditor.setSyntaxEditingStyle(resolveSyntaxStyle(language));
             codeEditor.setText(cachedProgram);
             codeEditor.setCaretPosition(Math.min(codeEditor.getText().length(), cachedProgram.length()));
+            lastAutosavedSource = codeEditor.getText();
+            applyZoomToEditor();
             return;
         }
 
@@ -1548,6 +1594,8 @@ public class MainWindow {
             cursor = boilerplate.indexOf("# code goes here...");
         }
         codeEditor.setCaretPosition(Math.max(0, cursor));
+        lastAutosavedSource = codeEditor.getText();
+        applyZoomToEditor();
     }
 
     private void saveCurrentProgramToCache() {
@@ -1969,21 +2017,156 @@ public class MainWindow {
         int testCasesDividerLocation = statementTestCasesSplitPane != null ? statementTestCasesSplitPane.getDividerLocation() : 420;
 
         AppSettings settings = new AppSettings(
-                frame.getX(),
-                frame.getY(),
-                frame.getWidth(),
-                frame.getHeight(),
-                dividerLocation,
-                testCasesDividerLocation,
-                maximized,
-                language,
-                appSettings != null ? appSettings.editorFontSize() : 14,
-                appSettings != null ? appSettings.editorColorScheme() : DEFAULT_EDITOR_THEME,
-                appSettings != null ? appSettings.appTheme() : DEFAULT_APP_THEME,
-                appSettings != null && appSettings.useTabsAsSpaces(),
-                appSettings != null ? appSettings.tabSpacing() : 4);
+            frame.getX(),
+            frame.getY(),
+            frame.getWidth(),
+            frame.getHeight(),
+            dividerLocation,
+            testCasesDividerLocation,
+            maximized,
+            language,
+            appSettings != null ? appSettings.editorFontSize() : 14,
+            appSettings != null ? appSettings.editorColorScheme() : DEFAULT_EDITOR_THEME,
+            appSettings != null ? appSettings.appTheme() : DEFAULT_APP_THEME,
+            appSettings != null && appSettings.useTabsAsSpaces(),
+            appSettings != null ? appSettings.tabSpacing() : 4,
+            appSettings != null ? appSettings.autosaveEnabled() : true,
+            appSettings != null ? appSettings.autosaveIntervalSeconds() : 10);
 
         settingsRepository.save(settings);
+    }
+
+    // Zoom helpers
+    private void zoomIn(ZoomTarget target) {
+        adjustZoom(target, ZOOM_STEP);
+    }
+
+    private void zoomOut(ZoomTarget target) {
+        adjustZoom(target, -ZOOM_STEP);
+    }
+
+    private void resetZoom(ZoomTarget target) {
+        setZoomFactor(target, 1.0);
+    }
+
+    private void adjustZoom(ZoomTarget target, double delta) {
+        if (target == ZoomTarget.PROBLEM) {
+            setZoomFactor(ZoomTarget.PROBLEM, problemZoomFactor + delta);
+        } else {
+            setZoomFactor(ZoomTarget.EDITOR, editorZoomFactor + delta);
+        }
+    }
+
+    private double clampZoom(double z) {
+        if (z < ZOOM_MIN) return ZOOM_MIN;
+        if (z > ZOOM_MAX) return ZOOM_MAX;
+        // snap to step
+        double steps = Math.round(z / ZOOM_STEP);
+        return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, steps * ZOOM_STEP));
+    }
+
+    private void setZoomFactor(ZoomTarget target, double newZoom) {
+        double clampedZoom = clampZoom(newZoom);
+        if (target == ZoomTarget.PROBLEM) {
+            problemZoomFactor = clampedZoom;
+            if (problemHtmlRenderer != null) {
+                problemHtmlRenderer.setZoomFactor(problemZoomFactor);
+            }
+            rerenderProblemStatement();
+        } else {
+            editorZoomFactor = clampedZoom;
+            applyZoomToEditor();
+        }
+        if (zoomPercentLabel != null) {
+            zoomPercentLabel.setText(zoomLabelText());
+        }
+    }
+
+    private void applyZoomToEditor() {
+        if (codeEditor == null) return;
+        int base = appSettings != null ? appSettings.editorFontSize() : 14;
+        int newSize = Math.max(8, (int) Math.round(base * editorZoomFactor));
+        applyEditorFontSize(codeEditor, newSize);
+    }
+
+    private void rerenderProblemStatement() {
+        try {
+            if (!problemStatementLoaded || problemPane == null || problemHtmlRenderer == null) {
+                return;
+            }
+            if (currentProblemDetails != null) {
+                RenderedProblemView full = problemHtmlRenderer.render(currentProblemDetails);
+                RenderedProblemView statementOnly = problemHtmlRenderer.renderStatementOnly(currentProblemDetails);
+                copyPayloads.clear();
+                copyPayloads.putAll(full.copyPayloads());
+                if (testCasesPanel != null) {
+                    testCasesPanel.setSamplePayloads(full.copyPayloads());
+                }
+                problemPane.setText(statementOnly.html());
+                problemPane.setCaretPosition(0);
+            } else if (currentProblemIsEmpty) {
+                RenderedProblemView empty = problemHtmlRenderer.renderEmptyProblem();
+                problemPane.setText(empty.html());
+                problemPane.setCaretPosition(0);
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private String zoomLabelText() {
+        return "E " + (int) Math.round(editorZoomFactor * 100) + "% | P " + (int) Math.round(problemZoomFactor * 100) + "%";
+    }
+
+    private void startAutosaveIfNeeded() {
+        stopAutosave();
+        if (appSettings == null || !appSettings.autosaveEnabled()) {
+            return;
+        }
+        int interval = Math.max(1, appSettings.autosaveIntervalSeconds());
+        startAutosave(interval);
+    }
+
+    private void restartAutosaveIfNeeded() {
+        // Called after preferences change
+        startAutosaveIfNeeded();
+    }
+
+    private void startAutosave(int intervalSeconds) {
+        try {
+            autosaveExecutor = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "cpa-autosave");
+                t.setDaemon(true);
+                return t;
+            });
+
+            autosaveExecutor.scheduleAtFixedRate(() -> {
+                try {
+                    if (appSettings == null || !appSettings.autosaveEnabled()) return;
+                    if (!problemStatementLoaded || currentProblemCode == null || codeEditor == null) return;
+                    String current = codeEditor.getText();
+                    if (current == null) return;
+                    if (!current.equals(lastAutosavedSource)) {
+                        String language = languageDropdown != null && languageDropdown.getSelectedItem() != null
+                                ? languageDropdown.getSelectedItem().toString()
+                                : DEFAULT_LANGUAGE;
+                        programCacheRepository.save(currentProblemCode, language, current);
+                        lastAutosavedSource = current;
+                    }
+                } catch (Exception ignored) {
+                }
+            }, intervalSeconds, intervalSeconds, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void stopAutosave() {
+        try {
+            if (autosaveExecutor != null) {
+                autosaveExecutor.shutdownNow();
+                autosaveExecutor = null;
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     private void refreshThemeAwareUi() {
@@ -2007,6 +2190,9 @@ public class MainWindow {
         if (languageDropdown != null) {
             languageDropdown.setBackground(palette.inputBackground());
             languageDropdown.setForeground(palette.inputForeground());
+        }
+        if (zoomPercentLabel != null) {
+            zoomPercentLabel.setForeground(palette.textColor());
         }
         if (codeScrollPane != null) {
             Color editorBackground = editorThemeFor(appSettings != null ? appSettings.editorColorScheme() : DEFAULT_EDITOR_THEME).background();

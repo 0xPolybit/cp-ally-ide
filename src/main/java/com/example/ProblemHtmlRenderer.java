@@ -25,10 +25,17 @@ class ProblemHtmlRenderer {
     private final Map<String, String> iconSourceCache = new HashMap<>();
     private final LatexImageRenderer latexImageRenderer;
     private AppThemePalette appTheme = AppThemePalette.dark();
+    private double zoomFactor = 1.0;
 
     ProblemHtmlRenderer(Path appDataDirectory) {
         this.appDataDirectory = appDataDirectory;
         this.latexImageRenderer = new LatexImageRenderer(appDataDirectory);
+    }
+
+    void setZoomFactor(double zoom) {
+        if (zoom <= 0) return;
+        this.zoomFactor = zoom;
+        this.iconSourceCache.clear();
     }
 
     void setTheme(AppThemePalette theme) {
@@ -109,11 +116,16 @@ class ProblemHtmlRenderer {
         Color border = appTheme.borderColor();
         Color surface = appTheme.surfaceBackground();
         Color warningBg = appTheme.lightTheme() ? new Color(255, 245, 214) : new Color(61, 73, 73);
+        // Compute scaled font sizes based on zoomFactor
+        int baseBody = 14;
+        int baseTitle = 18;
+        int bodyPx = Math.max(8, (int) Math.round(baseBody * zoomFactor));
+        int titlePx = Math.max(10, (int) Math.round(baseTitle * zoomFactor));
 
         return "<style>"
-                + "body { background:" + toHex(frame) + "; color:" + toHex(text) + "; font-family:Segoe UI, Arial, sans-serif; margin:12px; }"
+            + "body { background:" + toHex(frame) + "; color:" + toHex(text) + "; font-family:Segoe UI, Arial, sans-serif; margin:12px; font-size:" + bodyPx + "px; }"
                 + ".problem-statement { background:" + toHex(panel) + "; border-radius:8px; padding:14px; }"
-                + ".header .title { font-size:18px; font-weight:700; color:" + toHex(text) + "; margin-bottom:10px; }"
+            + ".header .title { font-size:" + titlePx + "px; font-weight:700; color:" + toHex(text) + "; margin-bottom:10px; }"
                 + ".metrics-row { margin-top:4px; margin-bottom:12px; }"
                 + ".metrics-table { border-collapse:collapse; }"
                 + ".metric-item { color:" + toHex(muted) + "; white-space:nowrap; vertical-align:middle; line-height:18px; }"
@@ -129,7 +141,7 @@ class ProblemHtmlRenderer {
                 + ".io-label { line-height:18px; }"
                 + ".copy-btn { text-decoration:none; border:none; outline:none; }"
                 + ".copy-btn img { width:16px; height:16px; vertical-align:middle; opacity:0.92; border:none; image-rendering:auto; }"
-                + "pre { background:" + toHex(surface) + "; color:" + toHex(text) + "; border:1px solid " + toHex(border) + "; border-radius:6px; padding:10px; white-space:pre-wrap; }"
+            + "pre { background:" + toHex(surface) + "; color:" + toHex(text) + "; border:1px solid " + toHex(border) + "; border-radius:6px; padding:10px; white-space:pre-wrap; font-size:" + Math.max(10, (int)Math.round(bodyPx * 0.95)) + "px; }"
                 + "p { color:" + toHex(text) + "; line-height:1.45; }"
                 + ".tex-font-style-bf { font-weight:bold; }"
                 + ".latex-warning-box { background:" + toHex(warningBg) + "; border-left:4px solid " + toHex(appTheme.warningColor()) + "; border-radius:4px; padding:12px; margin:12px 0; color:" + toHex(text) + "; font-size:inherit; line-height:1.5; }"
