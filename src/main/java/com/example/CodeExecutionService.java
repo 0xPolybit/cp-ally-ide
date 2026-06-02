@@ -192,6 +192,71 @@ class CodeExecutionService {
         }
     }
 
+    ExecutionReport runProgramOnce(String language, String sourceCode) throws IOException, InterruptedException {
+        LanguagePlan plan = resolvePlan(language);
+        if (plan == null) {
+            return ExecutionReport.failure("No local runner is configured for this language.");
+        }
+
+        List<String> missingCommands = new ArrayList<>();
+        for (String command : plan.requiredCommands()) {
+            if (!isCommandAvailable(command)) {
+                missingCommands.add(command);
+            }
+        }
+        if (!missingCommands.isEmpty()) {
+            return ExecutionReport.failure("Missing local toolchain: " + String.join(", ", missingCommands));
+        }
+
+        Path workDir = Files.createTempDirectory("cpa-run-");
+        try {
+            Path sourceFile = workDir.resolve(plan.sourceFileName());
+            Files.writeString(sourceFile, sourceCode, StandardCharsets.UTF_8);
+
+            String compileLog = "";
+            if (!plan.interpreted()) {
+                ProcessResult compileResult = runProcess(plan.compileCommand().create(sourceFile, workDir), workDir, "", COMPILE_TIMEOUT_MILLIS);
+                compileLog = joinNonBlank(compileResult.stdout(), compileResult.stderr());
+                if (compileResult.timedOut()) {
+                    return ExecutionReport.failure("Compilation timed out.\n\n" + compileLog);
+                }
+                if (compileResult.exitCode() != 0) {
+                    return ExecutionReport.failure("Compilation failed.\n\n" + compileLog);
+                }
+            }
+
+            ProcessResult runResult = runProcess(plan.runCommand().create(sourceFile, workDir), workDir, "", RUN_TIMEOUT_MILLIS);
+            String details;
+            boolean passed = !runResult.timedOut() && runResult.exitCode() == 0;
+            if (runResult.timedOut()) {
+                details = "Time limit exceeded.";
+            } else if (runResult.exitCode() != 0) {
+                details = joinNonBlank("Runtime error.", runResult.stderr());
+            } else {
+                details = "Executed with empty input.";
+            }
+
+            List<TestCaseResult> results = List.of(new TestCaseResult(
+                    1,
+                    "Empty input run",
+                    passed,
+                    runResult.timedOut(),
+                    false,
+                    runResult.durationMillis(),
+                    runResult.peakMemoryKb(),
+                    "",
+                    "",
+                    runResult.stdout(),
+                    runResult.stderr(),
+                    details,
+                    ""));
+
+            return ExecutionReport.success(results, compileLog);
+        } finally {
+            deleteRecursively(workDir);
+        }
+    }
+
     private LanguagePlan resolvePlan(String language) {
         if (language == null) {
             return null;

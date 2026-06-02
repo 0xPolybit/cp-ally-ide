@@ -116,6 +116,7 @@ public class MainWindow {
     private JSplitPane statementTestCasesSplitPane;
     private TestCasesPanel testCasesPanel;
     private boolean problemStatementLoaded;
+    private boolean currentProblemIsEmpty;
     private String currentProblemCode;
     private AppThemePalette appThemePalette = AppThemePalette.dark();
 
@@ -1385,6 +1386,7 @@ public class MainWindow {
 
     private void renderProblemView(String problemCode, RenderedProblemView statementOnly, RenderedProblemView full, boolean emptyProblem) {
         AppThemePalette palette = currentThemePalette();
+        currentProblemIsEmpty = emptyProblem;
         copyPayloads.clear();
         copyPayloads.putAll(full.copyPayloads());
         if (testCasesPanel != null) {
@@ -1577,7 +1579,7 @@ public class MainWindow {
         String language = selectedLanguage();
         CodeExecutionService.LanguageSupport support = codeExecutionService.detectSupport(language);
         boolean hasTestCases = testCasesPanel != null && !testCasesPanel.getExecutionTestCases().isEmpty();
-        boolean ready = problemStatementLoaded && support.supported() && hasTestCases;
+        boolean ready = problemStatementLoaded && support.supported() && (hasTestCases || currentProblemIsEmpty);
 
         runtimeSupportLabel.setText("<html><span style='color:"
                 + (support.supported() ? "#61d66e" : "#f65656")
@@ -1586,7 +1588,9 @@ public class MainWindow {
                 + "</span></html>");
         runtimeSupportLabel.setToolTipText(support.message());
         runButton.setEnabled(ready);
-        runButton.setToolTipText(ready ? "Run the sample test cases locally" : (hasTestCases ? support.message() : "No test cases available to run."));
+        runButton.setToolTipText(ready
+            ? (currentProblemIsEmpty && !hasTestCases ? "Run the current code with empty input." : "Run the sample test cases locally")
+            : (hasTestCases ? support.message() : "No test cases available to run."));
     }
 
     private String selectedLanguage() {
@@ -1616,7 +1620,8 @@ public class MainWindow {
         List<CodeExecutionService.TestCaseSpec> testCases = testCasesPanel != null
             ? testCasesPanel.getExecutionTestCases()
             : SampleTestCaseCollector.collect(copyPayloads);
-        if (testCases.isEmpty()) {
+        boolean emptyProblemRun = currentProblemIsEmpty && testCases.isEmpty();
+        if (testCases.isEmpty() && !emptyProblemRun) {
             JOptionPane.showMessageDialog(
                     mainFrame,
                     "No test cases were found for this problem.",
@@ -1633,7 +1638,9 @@ public class MainWindow {
         SwingWorker<CodeExecutionService.ExecutionReport, Void> worker = new SwingWorker<>() {
             @Override
             protected CodeExecutionService.ExecutionReport doInBackground() throws Exception {
-                return codeExecutionService.runSampleTests(language, sourceCode, testCases);
+                return emptyProblemRun
+                        ? codeExecutionService.runProgramOnce(language, sourceCode)
+                        : codeExecutionService.runSampleTests(language, sourceCode, testCases);
             }
 
             @Override
