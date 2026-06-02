@@ -2045,10 +2045,6 @@ public class MainWindow {
         adjustZoom(target, -ZOOM_STEP);
     }
 
-    private void resetZoom(ZoomTarget target) {
-        setZoomFactor(target, 1.0);
-    }
-
     private void adjustZoom(ZoomTarget target, double delta) {
         if (target == ZoomTarget.PROBLEM) {
             setZoomFactor(ZoomTarget.PROBLEM, problemZoomFactor + delta);
