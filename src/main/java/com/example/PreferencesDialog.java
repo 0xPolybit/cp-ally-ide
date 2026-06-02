@@ -42,7 +42,7 @@ final class PreferencesDialog {
         "Codeforces Light"
     };
 
-    record PreferencesSelection(int editorFontSize, String editorColorScheme, String appTheme, boolean useTabsAsSpaces, int tabSpacing) {
+    record PreferencesSelection(int editorFontSize, String editorColorScheme, String appTheme, boolean useTabsAsSpaces, int tabSpacing, boolean autosaveEnabled, int autosaveIntervalSeconds) {
     }
 
     private PreferencesDialog() {
@@ -124,6 +124,17 @@ final class PreferencesDialog {
         applySpinnerTheme(tabSpacingSpinner, palette);
         JPanel tabSpacingRow = createSettingRow("Tab Spacing (spaces)", tabSpacingSpinner, palette);
 
+        JCheckBox autosaveCheckbox = new JCheckBox();
+        autosaveCheckbox.setSelected(initialSelection == null || initialSelection.autosaveEnabled());
+        autosaveCheckbox.setFocusable(false);
+        autosaveCheckbox.setBackground(palette.panelBackground());
+        autosaveCheckbox.setForeground(palette.textColor());
+        JPanel autosaveRow = createSettingRow("Enable Auto-save", autosaveCheckbox, palette);
+
+        JSpinner autosaveIntervalSpinner = new JSpinner(new SpinnerNumberModel(initialSelection != null ? initialSelection.autosaveIntervalSeconds() : 10, 1, 600, 1));
+        applySpinnerTheme(autosaveIntervalSpinner, palette);
+        JPanel autosaveIntervalRow = createSettingRow("Auto-save Interval (sec)", autosaveIntervalSpinner, palette);
+
         content.add(titleLabel);
         content.add(Box.createRigidArea(new Dimension(0, 8)));
         content.add(subtitleLabel);
@@ -137,6 +148,10 @@ final class PreferencesDialog {
         content.add(useTabsAsSpacesRow);
         content.add(Box.createRigidArea(new Dimension(0, 12)));
         content.add(tabSpacingRow);
+        content.add(Box.createRigidArea(new Dimension(0, 12)));
+        content.add(autosaveRow);
+        content.add(Box.createRigidArea(new Dimension(0, 12)));
+        content.add(autosaveIntervalRow);
 
         JButton cancelButton = new JButton("Cancel");
         cancelButton.addActionListener(e -> {
@@ -155,7 +170,9 @@ final class PreferencesDialog {
                     : "Dark";
             boolean useTabsAsSpaces = useTabsAsSpacesCheckbox.isSelected();
             int tabSpacing = ((Number) tabSpacingSpinner.getValue()).intValue();
-            result[0] = new PreferencesSelection(fontSize, colorScheme, appTheme, useTabsAsSpaces, tabSpacing);
+            boolean autosaveEnabled = autosaveCheckbox.isSelected();
+            int autosaveInterval = ((Number) autosaveIntervalSpinner.getValue()).intValue();
+            result[0] = new PreferencesSelection(fontSize, colorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveInterval);
             dialog.dispose();
         });
 

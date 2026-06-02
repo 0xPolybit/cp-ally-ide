@@ -119,6 +119,8 @@ public class MainWindow {
     private boolean currentProblemIsEmpty;
     private String currentProblemCode;
     private AppThemePalette appThemePalette = AppThemePalette.dark();
+    private java.util.concurrent.ScheduledExecutorService autosaveExecutor;
+    private volatile String lastAutosavedSource = null;
 
     public void showWindow() {
         appSettings = settingsRepository.load();
@@ -148,6 +150,7 @@ public class MainWindow {
         frame.addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
+                stopAutosave();
                 saveCurrentProgramToCache();
                 persistSettings(frame);
             }
@@ -171,6 +174,9 @@ public class MainWindow {
         if (initialFocusButton != null) {
             SwingUtilities.invokeLater(() -> initialFocusButton.requestFocusInWindow());
         }
+
+        // Start autosave according to settings
+        startAutosaveIfNeeded();
 
         checkForAppUpdatesAsync();
     }
@@ -443,13 +449,17 @@ public class MainWindow {
                     appSettings != null ? appSettings.editorColorScheme() : DEFAULT_EDITOR_THEME,
                     currentAppTheme,
                     appSettings != null && appSettings.useTabsAsSpaces(),
-                    appSettings != null ? appSettings.tabSpacing() : 4);
+                    appSettings != null ? appSettings.tabSpacing() : 4,
+                    appSettings != null ? appSettings.autosaveEnabled() : true,
+                    appSettings != null ? appSettings.autosaveIntervalSeconds() : 10);
             PreferencesDialog.PreferencesSelection selection = PreferencesDialog.showDialog(mainFrame, initialSelection, currentThemePalette());
             if (selection != null) {
                 boolean appThemeChanged = !selection.appTheme().equalsIgnoreCase(currentAppTheme);
-                appSettings = replaceEditorPreferences(appSettings, selection.editorFontSize(), selection.editorColorScheme(), selection.appTheme(), selection.useTabsAsSpaces(), selection.tabSpacing());
+                appSettings = replaceEditorPreferences(appSettings, selection.editorFontSize(), selection.editorColorScheme(), selection.appTheme(), selection.useTabsAsSpaces(), selection.tabSpacing(), selection.autosaveEnabled(), selection.autosaveIntervalSeconds());
                 appThemePalette = AppThemePalette.fromName(selection.appTheme());
                 settingsRepository.save(appSettings);
+                // Restart autosave executor if autosave settings changed
+                restartAutosaveIfNeeded();
                 if (appThemeChanged) {
                     JOptionPane.showMessageDialog(
                             mainFrame,
@@ -946,9 +956,9 @@ public class MainWindow {
         return colorScheme == null ? DEFAULT_EDITOR_THEME : colorScheme.trim().toLowerCase();
     }
 
-    private AppSettings replaceEditorPreferences(AppSettings current, int editorFontSize, String editorColorScheme, String appTheme, boolean useTabsAsSpaces, int tabSpacing) {
+    private AppSettings replaceEditorPreferences(AppSettings current, int editorFontSize, String editorColorScheme, String appTheme, boolean useTabsAsSpaces, int tabSpacing, boolean autosaveEnabled, int autosaveIntervalSeconds) {
         if (current == null) {
-            return new AppSettings(-1, -1, 1200, 760, 420, 420, false, DEFAULT_LANGUAGE, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing);
+            return new AppSettings(-1, -1, 1200, 760, 420, 420, false, DEFAULT_LANGUAGE, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveIntervalSeconds);
         }
         return new AppSettings(
                 current.x(),
@@ -963,7 +973,9 @@ public class MainWindow {
                 editorColorScheme,
                 appTheme,
                 useTabsAsSpaces,
-                tabSpacing);
+                tabSpacing,
+                autosaveEnabled,
+                autosaveIntervalSeconds);
     }
 
     private record EditorTheme(
@@ -1527,6 +1539,7 @@ public class MainWindow {
             codeEditor.setSyntaxEditingStyle(resolveSyntaxStyle(language));
             codeEditor.setText(cachedProgram);
             codeEditor.setCaretPosition(Math.min(codeEditor.getText().length(), cachedProgram.length()));
+            lastAutosavedSource = codeEditor.getText();
             return;
         }
 
@@ -1548,6 +1561,7 @@ public class MainWindow {
             cursor = boilerplate.indexOf("# code goes here...");
         }
         codeEditor.setCaretPosition(Math.max(0, cursor));
+        lastAutosavedSource = codeEditor.getText();
     }
 
     private void saveCurrentProgramToCache() {
@@ -1969,21 +1983,75 @@ public class MainWindow {
         int testCasesDividerLocation = statementTestCasesSplitPane != null ? statementTestCasesSplitPane.getDividerLocation() : 420;
 
         AppSettings settings = new AppSettings(
-                frame.getX(),
-                frame.getY(),
-                frame.getWidth(),
-                frame.getHeight(),
-                dividerLocation,
-                testCasesDividerLocation,
-                maximized,
-                language,
-                appSettings != null ? appSettings.editorFontSize() : 14,
-                appSettings != null ? appSettings.editorColorScheme() : DEFAULT_EDITOR_THEME,
-                appSettings != null ? appSettings.appTheme() : DEFAULT_APP_THEME,
-                appSettings != null && appSettings.useTabsAsSpaces(),
-                appSettings != null ? appSettings.tabSpacing() : 4);
+            frame.getX(),
+            frame.getY(),
+            frame.getWidth(),
+            frame.getHeight(),
+            dividerLocation,
+            testCasesDividerLocation,
+            maximized,
+            language,
+            appSettings != null ? appSettings.editorFontSize() : 14,
+            appSettings != null ? appSettings.editorColorScheme() : DEFAULT_EDITOR_THEME,
+            appSettings != null ? appSettings.appTheme() : DEFAULT_APP_THEME,
+            appSettings != null && appSettings.useTabsAsSpaces(),
+            appSettings != null ? appSettings.tabSpacing() : 4,
+            appSettings != null ? appSettings.autosaveEnabled() : true,
+            appSettings != null ? appSettings.autosaveIntervalSeconds() : 10);
 
         settingsRepository.save(settings);
+    }
+
+    private void startAutosaveIfNeeded() {
+        stopAutosave();
+        if (appSettings == null || !appSettings.autosaveEnabled()) {
+            return;
+        }
+        int interval = Math.max(1, appSettings.autosaveIntervalSeconds());
+        startAutosave(interval);
+    }
+
+    private void restartAutosaveIfNeeded() {
+        // Called after preferences change
+        startAutosaveIfNeeded();
+    }
+
+    private void startAutosave(int intervalSeconds) {
+        try {
+            autosaveExecutor = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "cpa-autosave");
+                t.setDaemon(true);
+                return t;
+            });
+
+            autosaveExecutor.scheduleAtFixedRate(() -> {
+                try {
+                    if (appSettings == null || !appSettings.autosaveEnabled()) return;
+                    if (!problemStatementLoaded || currentProblemCode == null || codeEditor == null) return;
+                    String current = codeEditor.getText();
+                    if (current == null) return;
+                    if (!current.equals(lastAutosavedSource)) {
+                        String language = languageDropdown != null && languageDropdown.getSelectedItem() != null
+                                ? languageDropdown.getSelectedItem().toString()
+                                : DEFAULT_LANGUAGE;
+                        programCacheRepository.save(currentProblemCode, language, current);
+                        lastAutosavedSource = current;
+                    }
+                } catch (Exception ignored) {
+                }
+            }, intervalSeconds, intervalSeconds, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void stopAutosave() {
+        try {
+            if (autosaveExecutor != null) {
+                autosaveExecutor.shutdownNow();
+                autosaveExecutor = null;
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     private void refreshThemeAwareUi() {
