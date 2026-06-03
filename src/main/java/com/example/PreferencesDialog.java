@@ -1,23 +1,20 @@
 package com.example;
 
 import javax.swing.BorderFactory;
-import javax.swing.Box;
-import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.DefaultComboBoxModel;
 import javax.swing.JComboBox;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
+import javax.swing.JScrollPane;
 import javax.swing.JPanel;
 import javax.swing.JSpinner;
 import javax.swing.JTextField;
 import javax.swing.SpinnerNumberModel;
 import java.awt.BorderLayout;
-import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
-import java.awt.Font;
 import java.awt.Frame;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
@@ -56,56 +53,48 @@ final class PreferencesDialog {
 
         final PreferencesSelection[] result = new PreferencesSelection[1];
 
-        JPanel content = new JPanel();
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBackground(palette.panelBackground());
-        content.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(palette.borderColor()),
-                BorderFactory.createEmptyBorder(16, 16, 16, 16)));
+        JPanel grid = new JPanel(new GridBagLayout());
+        grid.setOpaque(false);
+        grid.setBackground(palette.panelBackground());
 
-        JLabel titleLabel = new JLabel("Preferences");
-        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 16f));
-        titleLabel.setForeground(palette.textColor());
-        titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        GridBagConstraints labelGbc = new GridBagConstraints();
+        labelGbc.gridx = 0;
+        labelGbc.anchor = GridBagConstraints.WEST;
+        labelGbc.insets = new Insets(8, 12, 8, 12);
 
-        JLabel subtitleLabel = new JLabel("Configure editor appearance and behavior.");
-        subtitleLabel.setForeground(palette.mutedTextColor());
-        subtitleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        GridBagConstraints controlGbc = new GridBagConstraints();
+        controlGbc.gridx = 1;
+        controlGbc.weightx = 1.0;
+        controlGbc.fill = GridBagConstraints.HORIZONTAL;
+        controlGbc.insets = new Insets(8, 0, 8, 12);
+
+        int row = 0;
 
         JSpinner fontSizeSpinner = createFontSizeSpinner(initialSelection != null ? initialSelection.editorFontSize() : 14);
         applySpinnerTheme(fontSizeSpinner, palette);
-        JPanel fontSizeRow = createSettingRow("Editor Font Size", fontSizeSpinner, palette);
+        labelGbc.gridy = row; controlGbc.gridy = row++;
+        grid.add(new JLabel("Editor Font Size:"), labelGbc);
+        grid.add(fontSizeSpinner, controlGbc);
 
-        JComboBox<String> appThemeCombo = new JComboBox<>(new String[]{
-            "Light",
-            "Dark",
-            "Ultra Dark"
-        });
+        JComboBox<String> appThemeCombo = new JComboBox<>(new String[]{"Light","Dark","Ultra Dark"});
         String initialAppTheme = initialSelection != null ? initialSelection.appTheme() : "Dark";
-        appThemeCombo.setSelectedItem(initialAppTheme);
-        if (appThemeCombo.getSelectedItem() == null) {
-            appThemeCombo.setSelectedItem("Dark");
-            initialAppTheme = "Dark";
-        }
-        JPanel appThemeRow = createSettingRow("App Theme", appThemeCombo, palette);
+        appThemeCombo.setSelectedItem(initialAppTheme == null ? "Dark" : initialAppTheme);
+        labelGbc.gridy = row; controlGbc.gridy = row++;
+        grid.add(new JLabel("App Theme:"), labelGbc);
+        grid.add(appThemeCombo, controlGbc);
 
         JComboBox<String> colorSchemeCombo = new JComboBox<>(editorSchemesForTheme(initialAppTheme));
         colorSchemeCombo.setSelectedItem(mapEditorSchemeForTheme(
                 initialSelection != null ? initialSelection.editorColorScheme() : colorSchemeCombo.getItemAt(0),
                 initialAppTheme));
-        if (colorSchemeCombo.getSelectedItem() == null) {
-            colorSchemeCombo.setSelectedIndex(0);
-        }
-        JPanel colorSchemeRow = createSettingRow("Editor Color Scheme", colorSchemeCombo, palette);
+        labelGbc.gridy = row; controlGbc.gridy = row++;
+        grid.add(new JLabel("Editor Color Scheme:"), labelGbc);
+        grid.add(colorSchemeCombo, controlGbc);
 
         appThemeCombo.addItemListener(event -> {
-            if (event.getStateChange() != ItemEvent.SELECTED) {
-                return;
-            }
+            if (event.getStateChange() != ItemEvent.SELECTED) return;
             String selectedAppTheme = event.getItem().toString();
-            String currentScheme = colorSchemeCombo.getSelectedItem() != null
-                    ? colorSchemeCombo.getSelectedItem().toString()
-                    : null;
+            String currentScheme = colorSchemeCombo.getSelectedItem() != null ? colorSchemeCombo.getSelectedItem().toString() : null;
             colorSchemeCombo.setModel(new DefaultComboBoxModel<>(editorSchemesForTheme(selectedAppTheme)));
             colorSchemeCombo.setSelectedItem(mapEditorSchemeForTheme(currentScheme, selectedAppTheme));
             if (colorSchemeCombo.getSelectedItem() == null && colorSchemeCombo.getItemCount() > 0) {
@@ -118,56 +107,46 @@ final class PreferencesDialog {
         useTabsAsSpacesCheckbox.setFocusable(false);
         useTabsAsSpacesCheckbox.setBackground(palette.panelBackground());
         useTabsAsSpacesCheckbox.setForeground(palette.textColor());
-        JPanel useTabsAsSpacesRow = createSettingRow("Use Tabs as Spaces", useTabsAsSpacesCheckbox, palette);
+        labelGbc.gridy = row; controlGbc.gridy = row++;
+        grid.add(new JLabel("Use Tabs as Spaces:"), labelGbc);
+        grid.add(useTabsAsSpacesCheckbox, controlGbc);
 
         JSpinner tabSpacingSpinner = createTabSpacingSpinner(initialSelection != null ? initialSelection.tabSpacing() : 4);
         applySpinnerTheme(tabSpacingSpinner, palette);
-        JPanel tabSpacingRow = createSettingRow("Tab Spacing (spaces)", tabSpacingSpinner, palette);
+        labelGbc.gridy = row; controlGbc.gridy = row++;
+        grid.add(new JLabel("Tab Spacing (spaces):"), labelGbc);
+        grid.add(tabSpacingSpinner, controlGbc);
 
         JCheckBox autosaveCheckbox = new JCheckBox();
         autosaveCheckbox.setSelected(initialSelection == null || initialSelection.autosaveEnabled());
         autosaveCheckbox.setFocusable(false);
         autosaveCheckbox.setBackground(palette.panelBackground());
         autosaveCheckbox.setForeground(palette.textColor());
-        JPanel autosaveRow = createSettingRow("Enable Auto-save", autosaveCheckbox, palette);
+        labelGbc.gridy = row; controlGbc.gridy = row++;
+        grid.add(new JLabel("Enable Auto-save:"), labelGbc);
+        grid.add(autosaveCheckbox, controlGbc);
 
         JSpinner autosaveIntervalSpinner = new JSpinner(new SpinnerNumberModel(initialSelection != null ? initialSelection.autosaveIntervalSeconds() : 10, 1, 600, 1));
         applySpinnerTheme(autosaveIntervalSpinner, palette);
-        JPanel autosaveIntervalRow = createSettingRow("Auto-save Interval (sec)", autosaveIntervalSpinner, palette);
+        labelGbc.gridy = row; controlGbc.gridy = row++;
+        grid.add(new JLabel("Auto-save Interval (sec):"), labelGbc);
+        grid.add(autosaveIntervalSpinner, controlGbc);
 
-        content.add(titleLabel);
-        content.add(Box.createRigidArea(new Dimension(0, 8)));
-        content.add(subtitleLabel);
-        content.add(Box.createRigidArea(new Dimension(0, 18)));
-        content.add(fontSizeRow);
-        content.add(Box.createRigidArea(new Dimension(0, 12)));
-        content.add(colorSchemeRow);
-        content.add(Box.createRigidArea(new Dimension(0, 12)));
-        content.add(appThemeRow);
-        content.add(Box.createRigidArea(new Dimension(0, 12)));
-        content.add(useTabsAsSpacesRow);
-        content.add(Box.createRigidArea(new Dimension(0, 12)));
-        content.add(tabSpacingRow);
-        content.add(Box.createRigidArea(new Dimension(0, 12)));
-        content.add(autosaveRow);
-        content.add(Box.createRigidArea(new Dimension(0, 12)));
-        content.add(autosaveIntervalRow);
+        // Wrap grid in scroll pane
+        JScrollPane scroll = new JScrollPane(grid);
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+        scroll.getViewport().setBackground(palette.panelBackground());
 
+        // Footer buttons
         JButton cancelButton = new JButton("Cancel");
-        cancelButton.addActionListener(e -> {
-            result[0] = null;
-            dialog.dispose();
-        });
-
+        cancelButton.addActionListener(e -> { result[0] = null; dialog.dispose(); });
         JButton saveButton = new JButton("Save");
         saveButton.addActionListener(e -> {
             int fontSize = ((Number) fontSizeSpinner.getValue()).intValue();
             String colorScheme = colorSchemeCombo.getSelectedItem() != null
                     ? colorSchemeCombo.getSelectedItem().toString()
                     : editorSchemesForTheme(appThemeCombo.getSelectedItem() != null ? appThemeCombo.getSelectedItem().toString() : "Dark")[0];
-            String appTheme = appThemeCombo.getSelectedItem() != null
-                    ? appThemeCombo.getSelectedItem().toString()
-                    : "Dark";
+            String appTheme = appThemeCombo.getSelectedItem() != null ? appThemeCombo.getSelectedItem().toString() : "Dark";
             boolean useTabsAsSpaces = useTabsAsSpacesCheckbox.isSelected();
             int tabSpacing = ((Number) tabSpacingSpinner.getValue()).intValue();
             boolean autosaveEnabled = autosaveCheckbox.isSelected();
@@ -176,22 +155,27 @@ final class PreferencesDialog {
             dialog.dispose();
         });
 
-        JPanel footer = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        JPanel footer = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
         footer.setOpaque(false);
-        footer.setBorder(BorderFactory.createEmptyBorder(16, 0, 0, 0));
         footer.add(cancelButton);
         footer.add(saveButton);
 
-        content.add(footer);
-
         JPanel root = new JPanel(new BorderLayout());
         root.setOpaque(false);
-        root.setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
-        root.add(content, BorderLayout.CENTER);
+        root.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        root.add(scroll, BorderLayout.CENTER);
+        root.add(footer, BorderLayout.SOUTH);
 
         dialog.add(root, BorderLayout.CENTER);
-        dialog.setSize(500, 500);
-        dialog.setMinimumSize(new Dimension(480, 480));
+
+        // Size: half of owner width/height (or sensible defaults)
+        int w = 600, h = 520;
+        if (owner != null && owner.isShowing()) {
+            w = Math.max(480, owner.getWidth() / 2);
+            h = Math.max(360, owner.getHeight() / 2);
+        }
+        dialog.setSize(w, h);
+        dialog.setMinimumSize(new Dimension(480, 360));
         dialog.setLocationRelativeTo(owner);
         dialog.setVisible(true);
         return result[0];
@@ -223,44 +207,6 @@ final class PreferencesDialog {
         editor.getTextField().setColumns(3);
         editor.getTextField().setHorizontalAlignment(JTextField.CENTER);
         return spinner;
-    }
-
-    private static JPanel createSettingRow(String labelText, Component inputComponent, AppThemePalette palette) {
-        JPanel row = new JPanel(new GridBagLayout());
-        row.setOpaque(false);
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        JLabel label = new JLabel(labelText + ":");
-        label.setForeground(palette.textColor());
-        label.setPreferredSize(new Dimension(170, 20));
-
-        inputComponent.setFocusable(false);
-        int defaultHeight = inputComponent.getPreferredSize().height;
-        inputComponent.setPreferredSize(new Dimension(210, defaultHeight));
-        inputComponent.setMinimumSize(new Dimension(210, defaultHeight));
-        inputComponent.setMaximumSize(new Dimension(210, defaultHeight));
-
-        GridBagConstraints gbc = new GridBagConstraints();
-
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        gbc.anchor = GridBagConstraints.WEST;
-        gbc.weightx = 0;
-        gbc.insets = new Insets(0, 0, 0, 8);
-        row.add(label, gbc);
-
-        gbc.gridx = 1;
-        gbc.weightx = 1.0;
-        gbc.anchor = GridBagConstraints.EAST;
-        gbc.fill = GridBagConstraints.NONE;
-        row.add(inputComponent, gbc);
-
-        // Prevent the row from becoming too tall when the dialog resizes
-        int rowHeight = Math.max(label.getPreferredSize().height, inputComponent.getPreferredSize().height) + 8;
-        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, rowHeight));
-        row.setPreferredSize(new Dimension(480, rowHeight));
-
-        return row;
     }
 
     private static void applySpinnerTheme(JSpinner spinner, AppThemePalette palette) {
