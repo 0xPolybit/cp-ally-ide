@@ -24,7 +24,8 @@ class CodeforcesService {
     private static final String[] PROBLEM_HOSTS = {
             "https://codeforces.com",
             "https://m1.codeforces.com",
-            "https://mirror.codeforces.com"
+            "https://mirror.codeforces.com",
+            "https://codeforces.org"
     };
 
     ProblemDetails fetchProblemDetails(String contestId, String index) throws IOException {
@@ -59,13 +60,22 @@ class CodeforcesService {
                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
                 .header("Accept-Language", "en-US,en;q=0.9")
                 .followRedirects(true)
+                .ignoreHttpErrors(true)
                 .maxBodySize(0)
                 .timeout(15000)
                 .get();
 
         Element statementRoot = document.selectFirst("div.problem-statement");
         if (statementRoot == null) {
-            throw new IOException("Missing problem statement from " + host);
+            Element fallbackRoot = document.selectFirst("div.ttypography");
+            if (fallbackRoot != null) {
+                Element wrapper = new Element("div");
+                wrapper.addClass("problem-statement");
+                wrapper.appendChild(fallbackRoot.clone());
+                statementRoot = wrapper;
+            } else {
+                throw new IOException("Missing problem statement from " + host + " (HTTP " + document.connection().response().statusCode() + ")");
+            }
         }
 
         Element titleElement = statementRoot.selectFirst("div.header div.title");

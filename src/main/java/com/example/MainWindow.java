@@ -1540,6 +1540,11 @@ public class MainWindow {
             return;
         }
 
+        if (currentProblemIsEmpty) {
+            applyLanguageTemplate();
+            return;
+        }
+
         String language = languageDropdown.getSelectedItem().toString();
         String cachedProgram = currentProblemCode != null
                 ? programCacheRepository.loadLatestSource(currentProblemCode, language)
