@@ -361,9 +361,16 @@ public class MainWindow {
         preferencesItem.addActionListener(e -> onPreferencesClicked());
         JMenuItem clearCacheItem = new JMenuItem("Clear All Cache");
         clearCacheItem.addActionListener(e -> onClearAllCacheClicked());
+        JMenuItem chooseDifferentProblemItem = new JMenuItem("Choose Problem");
+        chooseDifferentProblemItem.addActionListener(e -> promptForDifferentProblem());
+        JMenuItem openEmptyProblemItem = new JMenuItem("Open Empty");
+        openEmptyProblemItem.addActionListener(e -> promptOpenEmptyProblem());
         JMenuItem exitItem = new JMenuItem("Exit");
         exitItem.addActionListener(e -> System.exit(0));
         fileMenu.add(preferencesItem);
+        fileMenu.addSeparator();
+        fileMenu.add(chooseDifferentProblemItem);
+        fileMenu.add(openEmptyProblemItem);
         fileMenu.addSeparator();
         fileMenu.add(clearCacheItem);
         fileMenu.add(exitItem);
@@ -629,12 +636,9 @@ public class MainWindow {
         fetchProblemButton.addActionListener(e -> onFetchProblemClicked());
         initialFocusButton = fetchProblemButton;
 
-        JButton openEmptyButton = createOpenEmptyButton();
-
         JPanel actionStrip = new JPanel(new BorderLayout());
         actionStrip.setOpaque(false);
         actionStrip.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
-        actionStrip.add(openEmptyButton, BorderLayout.WEST);
 
         JLabel connectivityLabel = new JLabel("Checking CodeForces...");
         connectivityLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -1467,19 +1471,9 @@ public class MainWindow {
         scrollPane.getViewport().setBackground(palette.frameBackground());
         scrollPane.getVerticalScrollBar().setUnitIncrement(14);
 
-        JButton chooseDifferentProblemButton = createProblemActionButton("Choose Different Problem", () -> promptForDifferentProblem());
-        JButton openEmptyButton = createProblemActionButton("Open Empty", this::promptOpenEmptyProblem);
-
         JPanel topBar = new JPanel(new BorderLayout());
         topBar.setOpaque(false);
         topBar.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
-        JPanel actionRow = new JPanel();
-        actionRow.setOpaque(false);
-        actionRow.setLayout(new BoxLayout(actionRow, BoxLayout.X_AXIS));
-        actionRow.add(chooseDifferentProblemButton);
-        actionRow.add(Box.createRigidArea(new Dimension(8, 0)));
-        actionRow.add(openEmptyButton);
-        topBar.add(actionRow, BorderLayout.WEST);
 
         JPanel statementPanel = new JPanel(new BorderLayout());
         statementPanel.setOpaque(false);
@@ -1507,22 +1501,6 @@ public class MainWindow {
         currentProblemCode = problemCode;
         problemStatementLoaded = true;
         enableEditorForProblem();
-    }
-
-    private JButton createProblemActionButton(String text, Runnable action) {
-        JButton button = new JButton(text);
-        button.setFocusable(false);
-        button.setRequestFocusEnabled(false);
-        button.setAlignmentX(Component.LEFT_ALIGNMENT);
-        button.setPreferredSize(new Dimension(280, LEFT_FIELD_HEIGHT));
-        button.setMaximumSize(new Dimension(280, LEFT_FIELD_HEIGHT));
-        button.addActionListener(e -> action.run());
-        return button;
-    }
-
-    private JButton createOpenEmptyButton() {
-        JButton button = createProblemActionButton("Open Empty", this::promptOpenEmptyProblem);
-        return button;
     }
 
     private void promptOpenEmptyProblem() {
