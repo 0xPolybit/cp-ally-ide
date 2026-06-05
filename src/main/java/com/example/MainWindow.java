@@ -1315,6 +1315,8 @@ public class MainWindow {
                     currentProblemDetails = fetched[0];
                     showCodeforcesProblemView(contestId + index, renders[0], renders[1]);
                 } catch (Exception ex) {
+                    System.err.println("[MainWindow] Failed to fetch CodeForces problem " + rawCode + ": " + ex.getMessage());
+                    ex.printStackTrace(System.err);
                     restoreProblemEntryPanelWithError("Could not fetch that problem.");
                     JOptionPane.showMessageDialog(
                             null,
