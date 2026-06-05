@@ -1599,6 +1599,11 @@ public class MainWindow {
             return;
         }
 
+        // Do not persist code for the special empty problem slot — always treat empty problem as ephemeral
+        if (currentProblemIsEmpty || EMPTY_PROBLEM_CODE.equals(currentProblemCode)) {
+            return;
+        }
+
         programCacheRepository.save(currentProblemCode, language, sourceCode);
     }
 
@@ -2122,6 +2127,8 @@ public class MainWindow {
                 try {
                     if (appSettings == null || !appSettings.autosaveEnabled()) return;
                     if (!problemStatementLoaded || currentProblemCode == null || codeEditor == null) return;
+                    // Never autosave the ephemeral empty problem slot
+                    if (currentProblemIsEmpty || EMPTY_PROBLEM_CODE.equals(currentProblemCode)) return;
                     String current = codeEditor.getText();
                     if (current == null) return;
                     if (!current.equals(lastAutosavedSource)) {
