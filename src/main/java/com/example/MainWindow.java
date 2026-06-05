@@ -25,6 +25,7 @@ import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JScrollBar;
 import javax.swing.JSplitPane;
 import javax.swing.JTextField;
 import javax.swing.JToolBar;
@@ -65,6 +66,7 @@ import java.util.regex.Pattern;
 import java.awt.event.ItemEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseWheelEvent;
 
 public class MainWindow {
 
@@ -802,15 +804,8 @@ public class MainWindow {
             }
         });
         // Support Ctrl+wheel / pinch-to-zoom on the editor
-        codeEditor.addMouseWheelListener(e -> {
-            try {
-                if (e.isControlDown()) {
-                    if (e.getWheelRotation() < 0) zoomIn(ZoomTarget.EDITOR); else zoomOut(ZoomTarget.EDITOR);
-                    e.consume();
-                }
-            } catch (Exception ignored) {
-            }
-        });
+        // Mouse wheel handling for the editor is attached to the scroll pane below so
+        // wheel events reliably control the scrollbar even when the editor isn't focusable.
         // Editor zoom (font size) keybindings: Ctrl + Plus / Ctrl + Equals / NumpadAdd to increase,
         // Ctrl + Minus / NumpadSubtract to decrease by 2pt.
         javax.swing.Action zoomInAction = new javax.swing.AbstractAction() {
@@ -838,6 +833,45 @@ public class MainWindow {
         am.put("zoomIn", zoomInAction);
         am.put("zoomOut", zoomOutAction);
         RTextScrollPane scrollPane = new RTextScrollPane(codeEditor);
+        // Ensure wheel scrolling is enabled on the scroll pane (some platforms/custom components
+        // can prevent wheel events from reaching the scrollbar). Attach a listener to the
+        // scroll pane to support Ctrl+wheel zooming while forwarding normal wheel events
+        // to the scrollbar explicitly for consistent behavior.
+        scrollPane.setWheelScrollingEnabled(true);
+        scrollPane.addMouseWheelListener(e -> {
+            try {
+                if (e.isControlDown()) {
+                    if (e.getWheelRotation() < 0) zoomIn(ZoomTarget.EDITOR); else zoomOut(ZoomTarget.EDITOR);
+                    e.consume();
+                    return;
+                }
+                JScrollBar vsb = scrollPane.getVerticalScrollBar();
+                int units = e.getUnitsToScroll();
+                int increment = Math.max(1, vsb.getUnitIncrement());
+                vsb.setValue(vsb.getValue() + units * increment);
+                e.consume();
+            } catch (Exception ignored) {
+            }
+        });
+        // Also add a listener on the editor itself to forward wheel events to the
+        // scroll pane. This helps when the editor component intercepts wheel events
+        // and the scroll pane doesn't receive them.
+        codeEditor.addMouseWheelListener(e -> {
+            try {
+                if (e.isControlDown()) {
+                    // let scrollPane's handler manage Ctrl+wheel zoom
+                    return;
+                }
+                if (codeScrollPane != null) {
+                    JScrollBar vsb = codeScrollPane.getVerticalScrollBar();
+                    int units = e.getUnitsToScroll();
+                    int increment = Math.max(1, vsb.getUnitIncrement());
+                    vsb.setValue(vsb.getValue() + units * increment);
+                    e.consume();
+                }
+            } catch (Exception ignored) {
+            }
+        });
         codeScrollPane = scrollPane;
         applyEditorFontSize(codeEditor, appSettings != null ? appSettings.editorFontSize() : 14);
 
@@ -1459,8 +1493,9 @@ public class MainWindow {
         problemPane.setBackground(palette.frameBackground());
 
         JScrollPane scrollPane = new JScrollPane(problemPane);
-        // Support Ctrl+wheel / pinch-to-zoom on the problem pane
-        problemPane.addMouseWheelListener(e -> {
+        // Ensure wheel scrolling works for the problem pane and support Ctrl+wheel / pinch-to-zoom.
+        scrollPane.setWheelScrollingEnabled(true);
+        scrollPane.addMouseWheelListener(e -> {
             try {
                 if (e.isControlDown()) {
                     if (e.getWheelRotation() < 0) zoomIn(ZoomTarget.PROBLEM); else zoomOut(ZoomTarget.PROBLEM);
