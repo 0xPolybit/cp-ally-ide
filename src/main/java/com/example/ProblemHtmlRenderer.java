@@ -121,18 +121,26 @@ class ProblemHtmlRenderer {
         int baseTitle = 18;
         int bodyPx = Math.max(8, (int) Math.round(baseBody * zoomFactor));
         int titlePx = Math.max(10, (int) Math.round(baseTitle * zoomFactor));
+        int h1 = Math.max(bodyPx + 6, titlePx + 6);
+        int h2 = Math.max(bodyPx + 4, titlePx + 4);
+        int h3 = Math.max(bodyPx + 2, titlePx + 2);
 
         return "<style>"
             + "body { background:" + toHex(frame) + "; color:" + toHex(text) + "; font-family:Segoe UI, Arial, sans-serif; margin:12px; font-size:" + bodyPx + "px; }"
-                + ".problem-statement { background:" + toHex(panel) + "; border-radius:8px; padding:14px; }"
+            + ".problem-statement { background:" + toHex(panel) + "; border-radius:8px; padding:14px; }"
             + ".header .title { font-size:" + titlePx + "px; font-weight:700; color:" + toHex(text) + "; margin-bottom:10px; }"
-                + ".metrics-row { margin-top:4px; margin-bottom:12px; }"
+            + "/* Heading hierarchy */"
+            + ".problem-statement h1 { font-size:" + h1 + "px; margin:0 0 10px 0; font-weight:700; }"
+            + ".problem-statement h2 { font-size:" + h2 + "px; margin:10px 0 8px 0; font-weight:700; }"
+            + ".problem-statement h3 { font-size:" + h3 + "px; margin:8px 0 6px 0; font-weight:700; }"
+            + ".section-title { font-weight:700; margin-top:12px; margin-bottom:6px; color:" + toHex(text) + "; font-size:" + Math.max(bodyPx + 2, h3) + "px; }"
+            + ".metrics-row { margin-top:4px; margin-bottom:12px; }"
                 + ".metrics-table { border-collapse:collapse; }"
                 + ".metric-item { color:" + toHex(muted) + "; white-space:nowrap; vertical-align:middle; line-height:18px; }"
                 + ".metric-icon { width:16px; height:16px; vertical-align:middle; image-rendering:auto; }"
                 + ".latex-inline { vertical-align:middle; }"
                 + ".latex-inline-fallback { vertical-align:middle; }"
-                + ".section-title { font-weight:700; margin-top:12px; margin-bottom:6px; color:" + toHex(text) + "; }"
+                
                 + ".sample-tests .input, .sample-tests .output { margin-top:8px; }"
                 + ".empty-problem { margin-top:12px; }"
                 + ".io-table { width:100%; border-collapse:collapse; margin-bottom:4px; }"
