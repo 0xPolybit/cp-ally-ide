@@ -116,44 +116,48 @@ class ProblemHtmlRenderer {
         Color border = appTheme.borderColor();
         Color surface = appTheme.surfaceBackground();
         Color warningBg = appTheme.lightTheme() ? new Color(255, 245, 214) : new Color(61, 73, 73);
-        // Compute scaled font sizes based on zoomFactor
-        int baseBody = 14;
-        int baseTitle = 18;
-        int bodyPx = Math.max(8, (int) Math.round(baseBody * zoomFactor));
-        int titlePx = Math.max(10, (int) Math.round(baseTitle * zoomFactor));
-        int h1 = Math.max(bodyPx + 6, titlePx + 6);
-        int h2 = Math.max(bodyPx + 4, titlePx + 4);
-        int h3 = Math.max(bodyPx + 2, titlePx + 2);
+
+        // Font scale — all sizes derived from a single bodyPx anchor
+        int bodyPx    = Math.max(8,  (int) Math.round(13 * zoomFactor)); // slightly compact body
+        int titlePx   = Math.max(10, (int) Math.round(20 * zoomFactor)); // problem title (level 1)
+        int h1        = Math.max(10, (int) Math.round(18 * zoomFactor)); // generic h1 (level 2)
+        int h2        = Math.max(9,  (int) Math.round(15 * zoomFactor)); // section headings / h2 (level 3)
+        int h3        = Math.max(8,  (int) Math.round(13 * zoomFactor)); // sub-section / h3 — same weight as body
+        int captionPx = Math.max(7,  (int) Math.round(11 * zoomFactor)); // metric row, info boxes (level 4)
+        int prePx     = Math.max(7,  (int) Math.round(12 * zoomFactor)); // code/pre blocks
 
         return "<style>"
             + "body { background:" + toHex(frame) + "; color:" + toHex(text) + "; font-family:Segoe UI, Arial, sans-serif; margin:12px; font-size:" + bodyPx + "px; }"
             + ".problem-statement { background:" + toHex(panel) + "; border-radius:8px; padding:14px; }"
-            + ".header .title { font-size:" + titlePx + "px; font-weight:700; color:" + toHex(text) + "; margin-bottom:10px; }"
-            + "/* Heading hierarchy */"
-            + ".problem-statement h1 { font-size:" + h1 + "px; margin:0 0 10px 0; font-weight:700; }"
-            + ".problem-statement h2 { font-size:" + h2 + "px; margin:10px 0 8px 0; font-weight:700; }"
-            + ".problem-statement h3 { font-size:" + h3 + "px; margin:8px 0 6px 0; font-weight:700; }"
-            + ".section-title { font-weight:700; margin-top:12px; margin-bottom:6px; color:" + toHex(text) + "; font-size:" + Math.max(bodyPx + 2, h3) + "px; }"
+            // Level 1 — problem title
+            + ".header .title { font-size:" + titlePx + "px; font-weight:700; color:" + toHex(text) + "; margin-bottom:10px; letter-spacing:-0.2px; }"
+            // Levels 2-4 — generic HTML heading elements
+            + ".problem-statement h1 { font-size:" + h1 + "px; font-weight:700; margin:10px 0 8px 0; }"
+            + ".problem-statement h2 { font-size:" + h2 + "px; font-weight:700; margin:10px 0 6px 0; }"
+            + ".problem-statement h3 { font-size:" + h3 + "px; font-weight:700; margin:8px 0 4px 0; }"
+            // Level 3 — Codeforces section titles (Input / Output / Note / Examples)
+            + ".section-title { font-size:" + h2 + "px; font-weight:700; margin-top:14px; margin-bottom:5px; color:" + toHex(text) + "; }"
+            // Level 4 — metric/info row (time, memory, i/o)
             + ".metrics-row { margin-top:4px; margin-bottom:12px; }"
-                + ".metrics-table { border-collapse:collapse; }"
-                + ".metric-item { color:" + toHex(muted) + "; white-space:nowrap; vertical-align:middle; line-height:18px; }"
-                + ".metric-icon { width:16px; height:16px; vertical-align:middle; image-rendering:auto; }"
-                + ".latex-inline { vertical-align:middle; }"
-                + ".latex-inline-fallback { vertical-align:middle; }"
-                
-                + ".sample-tests .input, .sample-tests .output { margin-top:8px; }"
-                + ".empty-problem { margin-top:12px; }"
-                + ".io-table { width:100%; border-collapse:collapse; margin-bottom:4px; }"
-                + ".io-label-cell { text-align:left; vertical-align:middle; }"
-                + ".io-copy-cell { text-align:right; vertical-align:middle; width:20px; }"
-                + ".io-label { line-height:18px; }"
-                + ".copy-btn { text-decoration:none; border:none; outline:none; }"
-                + ".copy-btn img { width:16px; height:16px; vertical-align:middle; opacity:0.92; border:none; image-rendering:auto; }"
-            + "pre { background:" + toHex(surface) + "; color:" + toHex(text) + "; border:1px solid " + toHex(border) + "; border-radius:6px; padding:10px; white-space:pre-wrap; font-size:" + Math.max(10, (int)Math.round(bodyPx * 0.95)) + "px; }"
-                + "p { color:" + toHex(text) + "; line-height:1.45; }"
-                + ".tex-font-style-bf { font-weight:bold; }"
-                + ".latex-warning-box { background:" + toHex(warningBg) + "; border-left:4px solid " + toHex(appTheme.warningColor()) + "; border-radius:4px; padding:12px; margin:12px 0; color:" + toHex(text) + "; font-size:inherit; line-height:1.5; }"
-                + "</style>";
+            + ".metrics-table { border-collapse:collapse; }"
+            + ".metric-item { font-size:" + captionPx + "px; color:" + toHex(muted) + "; white-space:nowrap; vertical-align:middle; line-height:1.4; }"
+            + ".metric-icon { width:14px; height:14px; vertical-align:middle; image-rendering:auto; }"
+            + ".latex-inline { vertical-align:middle; }"
+            + ".latex-inline-fallback { vertical-align:middle; }"
+            + ".sample-tests .input, .sample-tests .output { margin-top:8px; }"
+            + ".empty-problem { margin-top:12px; }"
+            + ".io-table { width:100%; border-collapse:collapse; margin-bottom:4px; }"
+            + ".io-label-cell { text-align:left; vertical-align:middle; }"
+            + ".io-copy-cell { text-align:right; vertical-align:middle; width:20px; }"
+            + ".io-label { font-size:" + h2 + "px; font-weight:600; line-height:1.6; }"
+            + ".copy-btn { text-decoration:none; border:none; outline:none; }"
+            + ".copy-btn img { width:14px; height:14px; vertical-align:middle; opacity:0.85; border:none; image-rendering:auto; }"
+            + "pre { background:" + toHex(surface) + "; color:" + toHex(text) + "; border:1px solid " + toHex(border) + "; border-radius:6px; padding:10px; white-space:pre-wrap; font-size:" + prePx + "px; }"
+            + "p { color:" + toHex(text) + "; line-height:1.5; margin:6px 0; }"
+            + ".tex-font-style-bf { font-weight:bold; }"
+            // Level 4 — warning/info box treated as a caption-level element
+            + ".latex-warning-box { background:" + toHex(warningBg) + "; border-left:4px solid " + toHex(appTheme.warningColor()) + "; border-radius:4px; padding:10px 12px; margin:12px 0; color:" + toHex(text) + "; font-size:" + captionPx + "px; line-height:1.5; }"
+            + "</style>";
     }
 
     private static String toHex(Color color) {
