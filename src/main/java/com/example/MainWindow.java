@@ -360,12 +360,15 @@ public class MainWindow {
         JMenu fileMenu = new JMenu("File");
         JMenuItem preferencesItem = new JMenuItem("Preferences");
         preferencesItem.addActionListener(e -> onPreferencesClicked());
+        preferencesItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_P, java.awt.event.InputEvent.CTRL_DOWN_MASK));
         JMenuItem clearCacheItem = new JMenuItem("Clear All Cache");
         clearCacheItem.addActionListener(e -> onClearAllCacheClicked());
         JMenuItem chooseDifferentProblemItem = new JMenuItem("Choose Problem");
         chooseDifferentProblemItem.addActionListener(e -> promptForDifferentProblem());
+        chooseDifferentProblemItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_N, java.awt.event.InputEvent.CTRL_DOWN_MASK));
         JMenuItem openEmptyProblemItem = new JMenuItem("Open Empty");
         openEmptyProblemItem.addActionListener(e -> promptOpenEmptyProblem());
+        openEmptyProblemItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_E, java.awt.event.InputEvent.CTRL_DOWN_MASK));
         JMenuItem exitItem = new JMenuItem("Exit");
         exitItem.addActionListener(e -> System.exit(0));
         fileMenu.add(preferencesItem);
@@ -392,6 +395,7 @@ public class MainWindow {
         JMenu runMenu = new JMenu("Run");
         JMenuItem runCodeItem = new JMenuItem("Run Code");
         runCodeItem.addActionListener(e -> onRunButtonClicked());
+        runCodeItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_R, java.awt.event.InputEvent.CTRL_DOWN_MASK));
         runMenu.add(runCodeItem);
         titleBar.add(runMenu);
 
