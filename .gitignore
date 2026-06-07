@@ -41,3 +41,5 @@ buildNumber.properties
 !.vscode/tasks.json
 !.vscode/extensions.json
 !.vscode/*.code-snippets
+# Local handoff / agent notes
+HANDOFF.md
