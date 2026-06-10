@@ -84,6 +84,18 @@ final class ProblemCacheRepository {
         }
     }
 
+    void clear(String problemCode) {
+        if (isBlank(problemCode)) {
+            return;
+        }
+        try {
+            String fileName = sanitize(problemCode) + FILE_EXTENSION;
+            Files.deleteIfExists(problemsDirectory.resolve(fileName));
+        } catch (IOException ignored) {
+            // Best-effort cleanup.
+        }
+    }
+
     void clearAll() {
         if (!Files.isDirectory(problemsDirectory)) {
             return;

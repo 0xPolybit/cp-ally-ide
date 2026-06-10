@@ -41,7 +41,10 @@ class CodeforcesService {
         String problemCode = contestId + index;
         ProblemDetails cached = problemCache.load(problemCode);
         if (cached != null) {
-            return cached;
+            if (!looksLikeBotCheckHtml(cached.problemHtml())) {
+                return cached;
+            }
+            System.err.println("[CodeforcesService] Cached HTML for " + problemCode + " looks like a bot-check page, re-fetching");
         }
 
         IOException lastError = null;
@@ -219,12 +222,14 @@ class CodeforcesService {
     }
 
     private boolean looksLikeBotCheck(Document document) {
-        String text = document.text();
-        if (text == null) {
+        return looksLikeBotCheckHtml(document.text());
+    }
+
+    private boolean looksLikeBotCheckHtml(String html) {
+        if (html == null) {
             return false;
         }
-
-        String lowered = text.toLowerCase();
+        String lowered = html.toLowerCase();
         return lowered.contains("browser is being checked")
                 || lowered.contains("please wait")
                 || lowered.contains("security check");
@@ -244,6 +249,10 @@ class CodeforcesService {
 
     void clearProblemCache() {
         problemCache.clearAll();
+    }
+
+    void clearProblemCache(String problemCode) {
+        problemCache.clear(problemCode);
     }
 
     ConnectivityResult evaluateConnectivity() {

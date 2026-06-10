@@ -116,7 +116,9 @@ public class MainWindow {
     private final Map<String, String> copyPayloads = new HashMap<>();
     private JSplitPane contentSplitPane;
     private JSplitPane statementTestCasesSplitPane;
+    private JScrollPane problemScrollPane;
     private TestCasesPanel testCasesPanel;
+    private JMenuItem refreshProblemItem;
     private boolean problemStatementLoaded;
     private boolean currentProblemIsEmpty;
     private String currentProblemCode;
@@ -369,12 +371,16 @@ public class MainWindow {
         JMenuItem openEmptyProblemItem = new JMenuItem("Open Empty");
         openEmptyProblemItem.addActionListener(e -> promptOpenEmptyProblem());
         openEmptyProblemItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_E, java.awt.event.InputEvent.CTRL_DOWN_MASK));
+        refreshProblemItem = new JMenuItem("Refresh Problem");
+        refreshProblemItem.addActionListener(e -> refreshCurrentProblem());
+        refreshProblemItem.setEnabled(false);
         JMenuItem exitItem = new JMenuItem("Exit");
         exitItem.addActionListener(e -> System.exit(0));
         fileMenu.add(preferencesItem);
         fileMenu.addSeparator();
         fileMenu.add(chooseDifferentProblemItem);
         fileMenu.add(openEmptyProblemItem);
+        fileMenu.add(refreshProblemItem);
         fileMenu.addSeparator();
         fileMenu.add(clearCacheItem);
         fileMenu.add(exitItem);
@@ -1428,6 +1434,10 @@ public class MainWindow {
         fetchStatusLabel.setForeground(currentThemePalette().errorColor());
         fetchStatusLabel.setText(message);
 
+        if (refreshProblemItem != null) {
+            refreshProblemItem.setEnabled(false);
+        }
+
         leftPanelContainer.removeAll();
         leftPanelContainer.add(problemEntryPanel, BorderLayout.CENTER);
         leftPanelContainer.revalidate();
@@ -1436,6 +1446,15 @@ public class MainWindow {
 
     private void showCodeforcesProblemView(String problemCode, RenderedProblemView statementOnly, RenderedProblemView full) {
         renderProblemView(problemCode, statementOnly, full, false);
+    }
+
+    private void refreshCurrentProblem() {
+        if (!problemStatementLoaded || currentProblemCode == null || currentProblemIsEmpty) {
+            return;
+        }
+        String code = currentProblemCode;
+        codeforcesService.clearProblemCache(code);
+        fetchProblemByCode(code, true);
     }
 
     private void showEmptyProblemView() {
@@ -1495,46 +1514,48 @@ public class MainWindow {
         problemPane.setCaretPosition(0);
         problemPane.setBackground(palette.frameBackground());
 
-        JScrollPane scrollPane = new JScrollPane(problemPane);
-        // Ensure wheel scrolling works for the problem pane and support Ctrl+wheel / pinch-to-zoom.
-        scrollPane.setWheelScrollingEnabled(true);
-        scrollPane.addMouseWheelListener(e -> {
-            try {
-                if (e.isControlDown()) {
-                    if (e.getWheelRotation() < 0) zoomIn(ZoomTarget.PROBLEM); else zoomOut(ZoomTarget.PROBLEM);
-                    e.consume();
+        if (problemScrollPane == null) {
+            // Build the persistent scroll pane and split pane once
+            problemScrollPane = new JScrollPane(problemPane);
+            problemScrollPane.setWheelScrollingEnabled(true);
+            problemScrollPane.addMouseWheelListener(e -> {
+                try {
+                    if (e.isControlDown()) {
+                        if (e.getWheelRotation() < 0) zoomIn(ZoomTarget.PROBLEM); else zoomOut(ZoomTarget.PROBLEM);
+                        e.consume();
+                    }
+                } catch (Exception ignored) {
                 }
-            } catch (Exception ignored) {
-            }
-        });
-        scrollPane.setBorder(BorderFactory.createEmptyBorder());
-        scrollPane.getViewport().setBackground(palette.frameBackground());
-        scrollPane.getVerticalScrollBar().setUnitIncrement(14);
+            });
+            problemScrollPane.setBorder(BorderFactory.createEmptyBorder());
+            problemScrollPane.getVerticalScrollBar().setUnitIncrement(14);
 
-        JPanel topBar = new JPanel(new BorderLayout());
-        topBar.setOpaque(false);
-        topBar.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
+            JPanel topBar = new JPanel(new BorderLayout());
+            topBar.setOpaque(false);
+            topBar.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
 
-        JPanel statementPanel = new JPanel(new BorderLayout());
-        statementPanel.setOpaque(false);
-        statementPanel.add(topBar, BorderLayout.NORTH);
-        statementPanel.add(scrollPane, BorderLayout.CENTER);
+            JPanel statementPanel = new JPanel(new BorderLayout());
+            statementPanel.setOpaque(false);
+            statementPanel.add(topBar, BorderLayout.NORTH);
+            statementPanel.add(problemScrollPane, BorderLayout.CENTER);
 
-        JPanel testCasesSection = testCasesPanel != null ? testCasesPanel.createPanel() : new JPanel();
+            JPanel testCasesSection = testCasesPanel != null ? testCasesPanel.createPanel() : new JPanel();
 
-        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, statementPanel, testCasesSection);
-        splitPane.setResizeWeight(0.5);
+            int minTestCaseHeight = MIN_WINDOW_HEIGHT / 3;
+            int preferredDivider = appSettings != null && appSettings.testCasesDividerLocation() > 0
+                ? appSettings.testCasesDividerLocation()
+                : mainFrame.getHeight() - minTestCaseHeight - 10;
 
-        int minTestCaseHeight = MIN_WINDOW_HEIGHT / 3;
-        int preferredDivider = appSettings != null && appSettings.testCasesDividerLocation() > 0
-            ? appSettings.testCasesDividerLocation()
-            : mainFrame.getHeight() - minTestCaseHeight - 10;
-        splitPane.setDividerLocation(preferredDivider);
+            JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, statementPanel, testCasesSection);
+            splitPane.setResizeWeight(0.5);
+            splitPane.setDividerLocation(preferredDivider);
+            statementTestCasesSplitPane = splitPane;
+        }
 
-        statementTestCasesSplitPane = splitPane;
+        problemScrollPane.getViewport().setBackground(palette.frameBackground());
 
         leftPanelContainer.removeAll();
-        leftPanelContainer.add(splitPane, BorderLayout.CENTER);
+        leftPanelContainer.add(statementTestCasesSplitPane, BorderLayout.CENTER);
         leftPanelContainer.revalidate();
         leftPanelContainer.repaint();
 
@@ -1567,6 +1588,10 @@ public class MainWindow {
             codeEditor.setEditable(true);
             codeEditor.setFocusable(true);
             codeEditor.setRequestFocusEnabled(true);
+        }
+
+        if (refreshProblemItem != null) {
+            refreshProblemItem.setEnabled(!currentProblemIsEmpty);
         }
 
         applyLanguageTemplateOrCachedProgram();
@@ -1839,6 +1864,23 @@ public class MainWindow {
                 };
 
                 if (closing == null) {
+                    return;
+                }
+
+                // Wrap selection in pair if text is selected
+                if (editor.getSelectionStart() != editor.getSelectionEnd()) {
+                    try {
+                        String selected = editor.getSelectedText();
+                        if (selected == null) selected = "";
+                        int start = editor.getSelectionStart();
+                        int end = editor.getSelectionEnd();
+                        editor.getDocument().remove(start, end - start);
+                        editor.getDocument().insertString(start, e.getKeyChar() + selected + closing, null);
+                        editor.setCaretPosition(start + 1 + selected.length() + 1);
+                        e.consume();
+                    } catch (Exception ignored) {
+                        // Keep default typing behavior if wrapping fails.
+                    }
                     return;
                 }
 
@@ -2169,12 +2211,24 @@ public class MainWindow {
                     if (!problemStatementLoaded || currentProblemCode == null || codeEditor == null) return;
                     // Never autosave the ephemeral empty problem slot
                     if (currentProblemIsEmpty || EMPTY_PROBLEM_CODE.equals(currentProblemCode)) return;
-                    String current = codeEditor.getText();
+                    // Read Swing component state on the EDT
+                    final String[] edtResult = {null, null};
+                    try {
+                        SwingUtilities.invokeAndWait(() -> {
+                            if (codeEditor != null) edtResult[0] = codeEditor.getText();
+                            if (languageDropdown != null && languageDropdown.getSelectedItem() != null)
+                                edtResult[1] = languageDropdown.getSelectedItem().toString();
+                        });
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    } catch (java.lang.reflect.InvocationTargetException ignored) {
+                        return;
+                    }
+                    String current = edtResult[0];
                     if (current == null) return;
                     if (!current.equals(lastAutosavedSource)) {
-                        String language = languageDropdown != null && languageDropdown.getSelectedItem() != null
-                                ? languageDropdown.getSelectedItem().toString()
-                                : DEFAULT_LANGUAGE;
+                        String language = edtResult[1] != null ? edtResult[1] : DEFAULT_LANGUAGE;
                         programCacheRepository.save(currentProblemCode, language, current);
                         lastAutosavedSource = current;
                     }
