@@ -94,13 +94,21 @@ final class SplashScreenWindow {
     }
 
     private ImageIcon loadLogoIcon() {
-        Path logoPath = Path.of("assets", "logo.png");
-        if (!Files.exists(logoPath)) {
-            return new ImageIcon();
+        java.net.URL logoUrl = SplashScreenWindow.class.getResource("/assets/logo.png");
+        if (logoUrl == null) {
+            Path logoPath = Path.of("assets", "logo.png");
+            if (!Files.exists(logoPath)) {
+                return new ImageIcon();
+            }
+            try {
+                logoUrl = logoPath.toUri().toURL();
+            } catch (Exception ignored) {
+                return new ImageIcon();
+            }
         }
 
         try {
-            BufferedImage logoImage = ImageIO.read(logoPath.toFile());
+            BufferedImage logoImage = ImageIO.read(logoUrl);
             if (logoImage == null) {
                 return new ImageIcon();
             }

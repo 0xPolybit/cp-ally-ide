@@ -144,6 +144,9 @@ public class MainWindow {
         applyAppTheme(appThemePalette);
 
         Path appDataDir = settingsRepository.getAppDataDirectory();
+        DiagnosticLogger.initialize(appDataDir);
+        DiagnosticLogger.info("App starting up. Version: " + CURRENT_APP_VERSION);
+
         problemHtmlRenderer = new ProblemHtmlRenderer(appDataDir);
         problemHtmlRenderer.setTheme(appThemePalette);
         codeforcesService = new CodeforcesService(appDataDir);
@@ -862,13 +865,11 @@ public class MainWindow {
             } catch (Exception ignored) {
             }
         });
-        // Also add a listener on the editor itself to forward wheel events to the
-        // scroll pane. This helps when the editor component intercepts wheel events
-        // and the scroll pane doesn't receive them.
         codeEditor.addMouseWheelListener(e -> {
             try {
                 if (e.isControlDown()) {
-                    // let scrollPane's handler manage Ctrl+wheel zoom
+                    if (e.getWheelRotation() < 0) zoomIn(ZoomTarget.EDITOR); else zoomOut(ZoomTarget.EDITOR);
+                    e.consume();
                     return;
                 }
                 if (codeScrollPane != null) {
@@ -1358,8 +1359,7 @@ public class MainWindow {
                     currentProblemDetails = fetched[0];
                     showCodeforcesProblemView(contestId + index, renders[0], renders[1]);
                 } catch (Exception ex) {
-                    System.err.println("[MainWindow] Failed to fetch CodeForces problem " + rawCode + ": " + ex.getMessage());
-                    ex.printStackTrace(System.err);
+                    DiagnosticLogger.error("[MainWindow] Failed to fetch CodeForces problem " + rawCode, ex);
                     restoreProblemEntryPanelWithError("Could not fetch that problem.");
                     JOptionPane.showMessageDialog(
                             null,

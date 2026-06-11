@@ -281,6 +281,7 @@ final class LatexImageRenderer {
             String selectedKey = baseKey + (wantLight ? "|light" : "|dark");
             return latexImageCache.getOrDefault(selectedKey, "");
         } catch (Exception e) {
+            DiagnosticLogger.error("Failed to render LaTeX: " + expression, e);
             return "";
         }
     }

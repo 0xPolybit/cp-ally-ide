@@ -425,21 +425,29 @@ class ProblemHtmlRenderer {
             return iconSourceCache.get(cacheKey);
         }
 
-        Path iconPath = resolveInlineIconPath(iconFile);
-        if (!Files.exists(iconPath)) {
+        String themedFileName = UiIconLoader.themedAssetPath(iconFile, appTheme);
+        java.net.URL iconUrl = ProblemHtmlRenderer.class.getResource(themedFileName);
+
+        if (iconUrl == null) {
+            int dot = iconFile.lastIndexOf('.');
+            String base = dot >= 0 ? iconFile.substring(0, dot) : iconFile;
+            String ext = dot >= 0 ? iconFile.substring(dot) : "";
+            iconUrl = ProblemHtmlRenderer.class.getResource("/assets/" + base + "@2x" + ext);
+            if (iconUrl == null) {
+                iconUrl = ProblemHtmlRenderer.class.getResource("/assets/" + iconFile);
+            }
+        }
+
+        if (iconUrl == null) {
+            DiagnosticLogger.warn("[ProblemHtmlRenderer] Icon resource not found: " + iconFile);
             return "";
         }
 
         try {
-            BufferedImage source = ImageIO.read(iconPath.toFile());
+            BufferedImage source = ImageIO.read(iconUrl);
             if (source == null || source.getWidth() <= 0 || source.getHeight() <= 0) {
+                DiagnosticLogger.warn("[ProblemHtmlRenderer] Failed to decode image: " + iconUrl);
                 return "";
-            }
-
-            if (source.getWidth() == INLINE_ICON_SIZE && source.getHeight() == INLINE_ICON_SIZE) {
-                String src = iconPath.toAbsolutePath().toUri().toString();
-                iconSourceCache.put(cacheKey, src);
-                return src;
             }
 
             BufferedImage target = new BufferedImage(INLINE_ICON_SIZE, INLINE_ICON_SIZE, BufferedImage.TYPE_INT_ARGB_PRE);
@@ -461,26 +469,9 @@ class ProblemHtmlRenderer {
             iconSourceCache.put(cacheKey, src);
             return src;
         } catch (IOException e) {
+            DiagnosticLogger.error("[ProblemHtmlRenderer] Failed to load icon: " + iconFile, e);
             return "";
         }
-    }
-
-    private Path resolveInlineIconPath(String iconFile) {
-        String themedFileName = UiIconLoader.themedAssetPath(iconFile, appTheme);
-        Path themedPath = Path.of(themedFileName.replaceFirst("^/", ""));
-        if (Files.exists(themedPath)) {
-            return themedPath;
-        }
-
-        int dot = iconFile.lastIndexOf('.');
-        String base = dot >= 0 ? iconFile.substring(0, dot) : iconFile;
-        String ext = dot >= 0 ? iconFile.substring(dot) : "";
-
-        Path hiDpiPath = Path.of("assets", base + "@2x" + ext);
-        if (Files.exists(hiDpiPath)) {
-            return hiDpiPath;
-        }
-        return Path.of("assets", iconFile);
     }
 
     private String metricValueOnly(String text, String... prefixes) {
