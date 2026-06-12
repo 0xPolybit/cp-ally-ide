@@ -450,8 +450,11 @@ class ProblemHtmlRenderer {
                 return "";
             }
 
-            BufferedImage target = new BufferedImage(INLINE_ICON_SIZE, INLINE_ICON_SIZE, BufferedImage.TYPE_INT_ARGB_PRE);
+            BufferedImage target = new BufferedImage(INLINE_ICON_SIZE, INLINE_ICON_SIZE, BufferedImage.TYPE_INT_ARGB);
             java.awt.Graphics2D g2 = target.createGraphics();
+            g2.setComposite(java.awt.AlphaComposite.Clear);
+            g2.fillRect(0, 0, INLINE_ICON_SIZE, INLINE_ICON_SIZE);
+            g2.setComposite(java.awt.AlphaComposite.SrcOver);
             g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
             g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -462,7 +465,8 @@ class ProblemHtmlRenderer {
             Path iconCacheDir = appDataDirectory.resolve("cache").resolve("icons");
             Files.createDirectories(iconCacheDir);
             String sanitized = iconFile.replace('.', '_');
-            Path scaledFile = iconCacheDir.resolve(sanitized + "_" + INLINE_ICON_SIZE + "px.png");
+            String themeVariant = (appTheme != null && appTheme.lightTheme()) ? "light" : "dark";
+            Path scaledFile = iconCacheDir.resolve(sanitized + "_" + INLINE_ICON_SIZE + "px_" + themeVariant + ".png");
             ImageIO.write(target, "png", scaledFile.toFile());
 
             String src = scaledFile.toUri().toString();

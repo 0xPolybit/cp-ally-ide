@@ -8,10 +8,12 @@ import javax.swing.JPanel;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.imageio.ImageIO;
+import java.awt.AlphaComposite;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
-import java.awt.Image;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.Toolkit;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -114,8 +116,18 @@ final class SplashScreenWindow {
             }
 
             Dimension targetSize = getTargetSize(logoImage.getWidth(), logoImage.getHeight());
-            Image scaledImage = logoImage.getScaledInstance(targetSize.width, targetSize.height, Image.SCALE_SMOOTH);
-            return new ImageIcon(scaledImage);
+            BufferedImage scaled = new BufferedImage(targetSize.width, targetSize.height, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g2 = scaled.createGraphics();
+            g2.setComposite(AlphaComposite.Clear);
+            g2.fillRect(0, 0, targetSize.width, targetSize.height);
+            g2.setComposite(AlphaComposite.SrcOver);
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
+            g2.drawImage(logoImage, 0, 0, targetSize.width, targetSize.height, null);
+            g2.dispose();
+            return new ImageIcon(scaled);
         } catch (IOException ignored) {
             return new ImageIcon();
         }

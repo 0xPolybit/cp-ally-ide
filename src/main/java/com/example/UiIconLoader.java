@@ -2,7 +2,11 @@ package com.example;
 
 import javax.swing.ImageIcon;
 import javax.swing.JFrame;
-import java.awt.Image;
+import javax.imageio.ImageIO;
+import java.awt.AlphaComposite;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
 import java.net.URL;
 
 final class UiIconLoader {
@@ -16,29 +20,44 @@ final class UiIconLoader {
             if (iconUrl == null) {
                 return null;
             }
-
-            ImageIcon icon = new ImageIcon(iconUrl);
-            if (icon.getIconWidth() <= 0 || icon.getIconHeight() <= 0) {
+            BufferedImage img = ImageIO.read(iconUrl);
+            if (img == null || img.getWidth() <= 0 || img.getHeight() <= 0) {
                 return null;
             }
-            return icon;
+            return new ImageIcon(img);
         } catch (Exception ignored) {
             return null;
         }
     }
 
     static ImageIcon loadScaledClasspathIcon(String resourcePath, int width, int height) {
-        ImageIcon icon = loadClasspathIcon(resourcePath);
-        if (icon == null) {
+        try {
+            URL iconUrl = UiIconLoader.class.getResource(resourcePath);
+            if (iconUrl == null) {
+                return null;
+            }
+            BufferedImage source = ImageIO.read(iconUrl);
+            if (source == null || source.getWidth() <= 0 || source.getHeight() <= 0) {
+                return null;
+            }
+            if (source.getWidth() == width && source.getHeight() == height) {
+                return new ImageIcon(source);
+            }
+            BufferedImage target = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g2 = target.createGraphics();
+            g2.setComposite(AlphaComposite.Clear);
+            g2.fillRect(0, 0, width, height);
+            g2.setComposite(AlphaComposite.SrcOver);
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
+            g2.drawImage(source, 0, 0, width, height, null);
+            g2.dispose();
+            return new ImageIcon(target);
+        } catch (Exception ignored) {
             return null;
         }
-
-        if (icon.getIconWidth() == width && icon.getIconHeight() == height) {
-            return icon;
-        }
-
-        Image scaled = icon.getImage().getScaledInstance(width, height, Image.SCALE_SMOOTH);
-        return new ImageIcon(scaled);
     }
 
     static ImageIcon loadThemedClasspathIcon(String assetBaseName, AppThemePalette theme) {
