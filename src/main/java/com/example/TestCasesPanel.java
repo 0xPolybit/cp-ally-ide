@@ -38,15 +38,22 @@ final class TestCasesPanel {
         testCasesTabs.setBackground(this.theme.panelBackground());
         testCasesTabs.setForeground(this.theme.textColor());
 
-        JButton addTestCaseButton = new JButton("Add Test Case");
+        JButton addTestCaseButton = new JButton();
+        javax.swing.ImageIcon addIcon = UiIconLoader.loadThemedClasspathIcon("add.png", this.theme, 16, 16);
+        if (addIcon != null) {
+            addTestCaseButton.setIcon(addIcon);
+        } else {
+            addTestCaseButton.setText("+");
+        }
+        addTestCaseButton.setToolTipText("Add Test Case (Ctrl+Shift+T)");
         addTestCaseButton.setFocusable(false);
         addTestCaseButton.setRequestFocusEnabled(false);
-        addTestCaseButton.setPreferredSize(new Dimension(160, 32));
+        addTestCaseButton.setPreferredSize(new Dimension(32, 28));
         addTestCaseButton.addActionListener(e -> showAddCustomTestCaseDialog());
 
         JLabel sectionLabel = new JLabel("Test Cases");
         sectionLabel.setForeground(this.theme.textColor());
-        sectionLabel.setFont(sectionLabel.getFont().deriveFont(Font.BOLD));
+        sectionLabel.setFont(sectionLabel.getFont().deriveFont(Font.BOLD, 15f));
 
         JPanel topBar = new JPanel(new BorderLayout());
         topBar.setOpaque(false);
@@ -266,6 +273,10 @@ final class TestCasesPanel {
         dialog.setSize(640, 560);
         dialog.setLocationRelativeTo(owner);
         dialog.setVisible(true);
+    }
+
+    void addCustomTestCase() {
+        showAddCustomTestCaseDialog();
     }
 
     private String ensureTrailingNewline(String value) {

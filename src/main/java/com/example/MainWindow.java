@@ -119,6 +119,7 @@ public class MainWindow {
     private JScrollPane problemScrollPane;
     private TestCasesPanel testCasesPanel;
     private JMenuItem refreshProblemItem;
+    private JMenuItem addTestCaseItem;
     private boolean problemStatementLoaded;
     private boolean currentProblemIsEmpty;
     private String currentProblemCode;
@@ -405,7 +406,13 @@ public class MainWindow {
         JMenuItem runCodeItem = new JMenuItem("Run Code");
         runCodeItem.addActionListener(e -> onRunButtonClicked());
         runCodeItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_R, java.awt.event.InputEvent.CTRL_DOWN_MASK));
+        addTestCaseItem = new JMenuItem("Add Test Case");
+        addTestCaseItem.addActionListener(e -> { if (testCasesPanel != null) testCasesPanel.addCustomTestCase(); });
+        addTestCaseItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_T, java.awt.event.InputEvent.CTRL_DOWN_MASK | java.awt.event.InputEvent.SHIFT_DOWN_MASK));
+        addTestCaseItem.setEnabled(false);
         runMenu.add(runCodeItem);
+        runMenu.addSeparator();
+        runMenu.add(addTestCaseItem);
         titleBar.add(runMenu);
 
         // Help Menu
@@ -1438,6 +1445,10 @@ public class MainWindow {
             refreshProblemItem.setEnabled(false);
         }
 
+        if (addTestCaseItem != null) {
+            addTestCaseItem.setEnabled(false);
+        }
+
         leftPanelContainer.removeAll();
         leftPanelContainer.add(problemEntryPanel, BorderLayout.CENTER);
         leftPanelContainer.revalidate();
@@ -1592,6 +1603,10 @@ public class MainWindow {
 
         if (refreshProblemItem != null) {
             refreshProblemItem.setEnabled(!currentProblemIsEmpty);
+        }
+
+        if (addTestCaseItem != null) {
+            addTestCaseItem.setEnabled(true);
         }
 
         applyLanguageTemplateOrCachedProgram();
