@@ -44,18 +44,18 @@ class CodeforcesService {
             if (!looksLikeBotCheckHtml(cached.problemHtml())) {
                 return cached;
             }
-            System.err.println("[CodeforcesService] Cached HTML for " + problemCode + " looks like a bot-check page, re-fetching");
+            DiagnosticLogger.info("[CodeforcesService] Cached HTML for " + problemCode + " looks like a bot-check page, re-fetching");
         }
 
         IOException lastError = null;
         for (String host : PROBLEM_HOSTS) {
             try {
-                System.err.println("[CodeforcesService] Fetching " + problemCode + " from " + host);
+                DiagnosticLogger.info("[CodeforcesService] Fetching " + problemCode + " from " + host);
                 ProblemDetails fetched = fetchProblemDetailsFromHost(host, contestId, index);
                 problemCache.save(fetched);
                 return fetched;
             } catch (IOException ex) {
-                System.err.println("[CodeforcesService] Failed from " + host + ": " + ex.getMessage());
+                DiagnosticLogger.error("[CodeforcesService] Failed from " + host, ex);
                 lastError = ex;
             }
         }
@@ -127,7 +127,7 @@ class CodeforcesService {
         try {
             return fetchDocumentWithCurl(url);
         } catch (IOException curlError) {
-            System.err.println("[CodeforcesService] curl fetch failed for " + url + ": " + curlError.getMessage());
+            DiagnosticLogger.error("[CodeforcesService] curl fetch failed for " + url, curlError);
         }
 
         return Jsoup.connect(url)
