@@ -1476,9 +1476,17 @@ public class MainWindow {
             return;
         }
         String rawCode = url.trim().substring(prefix.length()).trim();
-        if (!rawCode.isEmpty()) {
-            fetchProblemByCode(rawCode, false);
+        if (rawCode.isEmpty()) return;
+        if (mainFrame != null) {
+            int state = mainFrame.getExtendedState();
+            if ((state & JFrame.ICONIFIED) != 0) {
+                mainFrame.setExtendedState(state & ~JFrame.ICONIFIED);
+            }
+            mainFrame.setVisible(true);
+            mainFrame.toFront();
+            mainFrame.requestFocus();
         }
+        fetchProblemByCode(rawCode, false);
     }
 
     private void showEmptyProblemView() {
