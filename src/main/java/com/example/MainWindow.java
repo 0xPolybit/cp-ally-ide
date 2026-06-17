@@ -1468,6 +1468,19 @@ public class MainWindow {
         fetchProblemByCode(code, true);
     }
 
+    public void openFromUrl(String url) {
+        if (url == null || url.isBlank()) return;
+        String prefix = "cpally://problem/";
+        if (!url.trim().toLowerCase().startsWith(prefix)) {
+            DiagnosticLogger.warn("[MainWindow] Unrecognized cpally URL: " + url);
+            return;
+        }
+        String rawCode = url.trim().substring(prefix.length()).trim();
+        if (!rawCode.isEmpty()) {
+            fetchProblemByCode(rawCode, false);
+        }
+    }
+
     private void showEmptyProblemView() {
         saveCurrentProgramToCache();
         currentProblemDetails = null;
