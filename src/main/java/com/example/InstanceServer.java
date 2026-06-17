@@ -44,6 +44,11 @@ final class InstanceServer {
         } catch (IOException e) {
             DiagnosticLogger.warn("[InstanceServer] Could not bind port " + PORT + ": " + e.getMessage());
             return false;
+        } catch (Error e) {
+            // Catches InternalError from a broken/incomplete bundled JRE (missing java.security).
+            // Degrade gracefully: single-instance IPC is disabled but the app still starts.
+            DiagnosticLogger.warn("[InstanceServer] Networking unavailable, IPC disabled: " + e.getMessage());
+            return true;
         }
     }
 
@@ -98,7 +103,7 @@ final class InstanceServer {
                 writer.flush();
             }
             return true;
-        } catch (IOException e) {
+        } catch (IOException | Error e) {
             DiagnosticLogger.warn("[InstanceServer] Forward failed: " + e.getMessage());
             return false;
         }
