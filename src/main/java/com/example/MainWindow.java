@@ -1470,13 +1470,21 @@ public class MainWindow {
 
     public void openFromUrl(String url) {
         if (url == null || url.isBlank()) return;
+        DiagnosticLogger.info("[MainWindow] openFromUrl: " + url);
         String prefix = "cpally://problem/";
         if (!url.trim().toLowerCase().startsWith(prefix)) {
             DiagnosticLogger.warn("[MainWindow] Unrecognized cpally URL: " + url);
             return;
         }
+        // Strip prefix (case-insensitive match already confirmed above).
         String rawCode = url.trim().substring(prefix.length()).trim();
-        if (rawCode.isEmpty()) return;
+        // Strip any trailing slashes browsers may append.
+        while (rawCode.endsWith("/")) rawCode = rawCode.substring(0, rawCode.length() - 1).trim();
+        if (rawCode.isEmpty()) {
+            DiagnosticLogger.warn("[MainWindow] cpally URL had empty problem code: " + url);
+            return;
+        }
+        DiagnosticLogger.info("[MainWindow] Opening problem: " + rawCode);
         if (mainFrame != null) {
             int state = mainFrame.getExtendedState();
             if ((state & JFrame.ICONIFIED) != 0) {
