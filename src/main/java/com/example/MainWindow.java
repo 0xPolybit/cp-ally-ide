@@ -96,6 +96,7 @@ public class MainWindow {
             DEFAULT_LANGUAGE);
         private final ProgramCacheRepository programCacheRepository = new ProgramCacheRepository(settingsRepository.getAppDataDirectory());
     private CodeforcesService codeforcesService;
+    private ProblemSheetsService problemSheetsService;
     private final CodeExecutionService codeExecutionService = new CodeExecutionService();
 
     private ProblemHtmlRenderer problemHtmlRenderer;
@@ -151,6 +152,7 @@ public class MainWindow {
         problemHtmlRenderer = new ProblemHtmlRenderer(appDataDir);
         problemHtmlRenderer.setTheme(appThemePalette);
         codeforcesService = new CodeforcesService(appDataDir);
+        problemSheetsService = new ProblemSheetsService();
 
         JFrame frame = new JFrame(APP_NAME + " v" + CURRENT_APP_VERSION);
         UiIconLoader.applyWindowIcon(frame, "/assets/logo.png");
@@ -1354,8 +1356,14 @@ public class MainWindow {
             protected RenderedProblemView[] doInBackground() throws Exception {
                 ProblemDetails details = codeforcesService.fetchProblemDetails(contestId, index);
                 fetched[0] = details;
+                List<SheetInfo> sheets = problemSheetsService.fetchSheets(contestId + index);
                 RenderedProblemView full = problemHtmlRenderer.render(details);
                 RenderedProblemView statementOnly = problemHtmlRenderer.renderStatementOnly(details);
+                if (!sheets.isEmpty()) {
+                    String sheetHtml = buildSheetInfoHtml(sheets, appThemePalette);
+                    full = injectSheetInfo(full, sheetHtml);
+                    statementOnly = injectSheetInfo(statementOnly, sheetHtml);
+                }
                 return new RenderedProblemView[]{statementOnly, full};
             }
 
@@ -1495,6 +1503,41 @@ public class MainWindow {
             mainFrame.requestFocus();
         }
         fetchProblemByCode(rawCode, false);
+    }
+
+    private static RenderedProblemView injectSheetInfo(RenderedProblemView view, String sheetHtml) {
+        String html = view.html().replace("</body>", sheetHtml + "</body>");
+        return new RenderedProblemView(html, view.copyPayloads());
+    }
+
+    private static String buildSheetInfoHtml(List<SheetInfo> sheets, AppThemePalette theme) {
+        String border  = toHex(theme.borderColor());
+        String surface = toHex(theme.surfaceBackground());
+        String muted   = toHex(theme.mutedTextColor());
+        String accent  = toHex(theme.accentColor());
+        String text    = toHex(theme.textColor());
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("<div style='margin:20px 4px 8px 4px; padding:10px 14px;")
+          .append(" background-color:").append(surface).append(";")
+          .append(" border:1px solid ").append(border).append(";'>")
+          .append("<div style='font-size:11px; font-weight:bold; color:").append(muted).append(";")
+          .append(" margin-bottom:6px;'>FOUND IN PRACTICE SHEETS</div>");
+
+        for (SheetInfo sheet : sheets) {
+            sb.append("<div style='font-size:13px; color:").append(text).append("; margin:3px 0;'>")
+              .append("&#8227;&nbsp;<a href='").append(sheet.url()).append("'")
+              .append(" style='color:").append(accent).append(";'>")
+              .append(escapeHtml(sheet.name()))
+              .append("</a></div>");
+        }
+        sb.append("</div>");
+        return sb.toString();
+    }
+
+    private static String escapeHtml(String text) {
+        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                   .replace("\"", "&quot;");
     }
 
     private void showEmptyProblemView() {
@@ -2207,6 +2250,14 @@ public class MainWindow {
             if (currentProblemDetails != null) {
                 RenderedProblemView full = problemHtmlRenderer.render(currentProblemDetails);
                 RenderedProblemView statementOnly = problemHtmlRenderer.renderStatementOnly(currentProblemDetails);
+                if (problemSheetsService != null && currentProblemCode != null) {
+                    List<SheetInfo> sheets = problemSheetsService.getCached(currentProblemCode);
+                    if (!sheets.isEmpty()) {
+                        String sheetHtml = buildSheetInfoHtml(sheets, appThemePalette);
+                        full = injectSheetInfo(full, sheetHtml);
+                        statementOnly = injectSheetInfo(statementOnly, sheetHtml);
+                    }
+                }
                 copyPayloads.clear();
                 copyPayloads.putAll(full.copyPayloads());
                 if (testCasesPanel != null) {
