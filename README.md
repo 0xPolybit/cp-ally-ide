@@ -1,103 +1,251 @@
 <p align="center">
-    <img src="https://raw.githubusercontent.com/0xPolybit/cp-ally-ide/main/assets/logo.png" alt="cp-ally-ide logo" style="display: block; margin-left: auto; margin-right: auto;margin-top: 15px; margin-bottom: 20px; height: 150px;">
+  <img src="https://raw.githubusercontent.com/0xPolybit/cp-ally-ide/main/assets/logo.png" alt="CP Ally IDE" height="120">
 </p>
 
-<h1 align="center" style="text-align: center; font-size: 35px; font-weight: 700;">CP Ally IDE</h1>
+<h1 align="center">CP Ally IDE</h1>
 
-<p align="center" style="text-align: center; font-size: 16px;">Unofficial partner code editor for competitive programming, in CodeForces.</p>
+<p align="center">
+  A focused code editor for competitive programming on Codeforces — fetch problems, write solutions, and test locally, all in one window.
+</p>
+
+<p align="center">
+  <a href="https://github.com/0xPolybit/cp-ally-ide/releases"><img src="https://img.shields.io/badge/version-0.2.2-4A90D9?style=flat-square" alt="Version"></a>
+  <a href="https://www.oracle.com/java/technologies/javase/jdk17-archive-downloads.html"><img src="https://img.shields.io/badge/Java-17%2B-f89820?style=flat-square&logo=openjdk&logoColor=white" alt="Java 17+"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-4caf50?style=flat-square" alt="Apache 2.0"></a>
+  <a href="https://github.com/0xPolybit/cp-ally-ide/releases"><img src="https://img.shields.io/badge/platform-Windows-0078D6?style=flat-square&logo=windows&logoColor=white" alt="Windows"></a>
+  <a href="https://github.com/0xPolybit/cp-ally-ide/issues"><img src="https://img.shields.io/github/issues/0xPolybit/cp-ally-ide?style=flat-square&color=e05d5d" alt="Issues"></a>
+  <a href="https://github.com/0xPolybit/cp-ally-ide/stargazers"><img src="https://img.shields.io/github/stars/0xPolybit/cp-ally-ide?style=flat-square&color=f5c518" alt="Stars"></a>
+</p>
 
 > [!IMPORTANT]
-> This application is currently in beta. It is prone to bugs and crashes.
+> CP Ally IDE is currently in beta. Expect occasional bugs and rough edges.
 
-
+---
 
 ## Table of Contents
+
 - [Why CP Ally IDE?](#why-cp-ally-ide)
-- [List of Features](#list-of-features)
+- [Demo](#demo)
+- [Features](#features)
+- [Installation](#installation)
+  - [Windows Installer](#windows-installer-recommended)
+  - [Run the JAR Directly](#run-the-jar-directly)
+- [Building from Source](#building-from-source)
+- [Deep Link Protocol](#deep-link-protocol)
+- [Keyboard Shortcuts](#keyboard-shortcuts)
 - [Contributing](#contributing)
 - [License](#license)
-- [List of Contributors](#list-of-contributors)
+- [Contributors](#contributors)
+
+---
 
 ## Why CP Ally IDE?
-CP Ally IDE is built for competitive programming workflows where speed matters more than general-purpose IDE features. It combines problem fetching, local execution, cached problem content, and a code editor in one window so you can move from a problem code to a working solution without switching tools.
 
-[![Reddit Video Creator Screenshot](screenshot.png)](https://www.youtube.com/watch?v=-CCY-HImmHk)
+Most IDE setups for competitive programming require switching between a browser for the problem statement, a text editor for code, and a terminal for testing. CP Ally IDE puts all three in a single window so you can stay focused on the problem.
 
-<p align="center" style="text-align: center;">Click the image above to view the v0.1.3 beta demo video.</p>
+It is built specifically for Codeforces workflows: type a problem code, read the statement, write a solution, and run it against the sample tests — without touching a browser or a separate terminal.
 
-Use it when you want to:
-- open a Codeforces problem directly from its contest code, such as `2208A`
-- keep the problem statement and test cases visible while editing code
-- run solutions locally against sample and custom test cases
-- reuse cached problem statements and source code when you return to the same task
+---
 
-The application is intentionally focused on the parts of competitive programming that cost time during a contest or practice session: fetching the statement, reading samples, editing quickly, testing locally, and keeping your work available when you revisit a problem.
+## Demo
 
-## List of Features
+[![CP Ally IDE Demo](screenshot.png)](https://www.youtube.com/watch?v=-CCY-HImmHk)
 
-### Problem fetching and viewing
-- Fetches Codeforces problems by contest code and index, for example `2208A`.
-- Supports Enter-to-fetch from the problem code input field.
-- Displays the fetched problem statement in the left panel and keeps the editor visible on the right.
-- Renders problem content with HTML, icons, and LaTeX support.
-- Includes a statement-only view and a full view with sample tests.
+<p align="center"><em>Click the image above to watch the demo video (v0.1.3 beta).</em></p>
 
-### Local editing and execution
-- Uses a syntax-highlighted code editor for writing solutions.
-- Supports common competitive programming languages through the language dropdown.
-- Preserves code when switching between problems or languages using programming cache.
-- Runs the current solution locally against available test cases.
+---
 
-### Test case handling
-- Shows Codeforces sample tests extracted from the statement.
-- Supports custom test cases for manual checking.
-- Handles `YES`/`NO` judging case-insensitively when the expected output only contains those tokens.
-- Displays execution feedback and notes directly in the result output.
+## Features
+
+### Problem Fetching
+- Fetch any Codeforces problem by its contest code and index (e.g. `2208A`).
+- Renders the full problem statement with HTML, inline icons, and LaTeX math.
+- Shows a statement-only view alongside a full view that includes sample test cases.
+- Detects and discards bot-check pages — re-fetches automatically when the cached page is invalid.
+- One-click **Refresh Problem** to re-fetch without clearing your editor.
+
+### Deep Link Protocol
+- Open problems from anywhere with `cpally://problem/2208A` links.
+- If the app is already running, the link is forwarded to it instantly — no second window opens.
+- If the app is closed, it starts and loads the problem automatically.
+- Registered by the Windows installer; removed cleanly on uninstall.
+
+### Practice Sheet Discovery
+- When a problem is loaded, the app automatically checks the CP Ally practice sheet index.
+- If the problem belongs to any sheets, they are listed at the bottom of the problem statement as clickable links.
+
+### Code Editor
+- Syntax-highlighted editor powered by RSyntaxTextArea.
+- Supports C++, Java, Python 3, and other common languages via a language dropdown.
+- Bracket auto-pairing with selection-wrapping support.
+- Independent zoom control for the editor and the problem pane.
+- Autosave with configurable interval.
+
+### Test Cases
+- Extracts sample test cases from the problem statement automatically.
+- Add custom test cases with your own input and expected output (`Ctrl+Shift+T`).
+- `YES`/`NO` outputs are judged case-insensitively.
+- Displays execution time, memory usage, and detailed comparison results.
 
 ### Caching
-- Caches fetched problem statements so previously opened problems load faster.
-- Caches user code by problem code and language so solution work is restored when you return to a problem.
-- Includes menu actions to clear problem cache or programming cache when you want a fresh start.
+- Problem statements are cached locally — previously opened problems load instantly.
+- Source code is cached per problem code and language — your work is restored when you return.
+- Separate menu actions to clear the problem cache or the code cache.
 
-### Interface and usability
-- Uses a dark Swing-based interface with a compact contest-friendly layout.
-- Includes a splash screen on startup.
-- Provides a help menu with release and project information.
-- Persists window state, divider positions, and the last selected language.
+### Interface
+- Multiple themes: **Dark**, **Ultra Dark**, and **Light**, switchable from Preferences.
+- Persistent window state: size, divider positions, last-used language, and zoom levels.
+- Splash screen on startup.
+- Diagnostic log written to `%APPDATA%\CompetitiveProgrammingAlly\diagnostics.log`.
 
-### Supported workflow
-1. Enter a Codeforces problem code such as `2208A`.
-2. Press Enter or click `Fetch from CodeForces`.
-3. Read the statement and sample tests in the left panel.
-4. Select a language and write the solution in the editor.
-5. Add or review custom test cases if needed.
-6. Run the solution locally and inspect the result output.
+---
+
+## Installation
+
+### Windows Installer (Recommended)
+
+1. Go to the [Releases page](https://github.com/0xPolybit/cp-ally-ide/releases).
+2. Download `mysetup.exe` from the latest release.
+3. Run the installer and follow the prompts.
+4. The app is added to the Start Menu and optionally to the Desktop.
+5. The `cpally://` URL protocol is registered automatically.
+
+**Minimum requirement:** Windows 10 or later. A Java runtime is bundled — you do not need to install Java separately.
+
+### Run the JAR Directly
+
+If you have Java 17 or later installed:
+
+```bash
+java -jar cp-ally-ide-0.2.2.jar
+```
+
+Download the JAR from the [Releases page](https://github.com/0xPolybit/cp-ally-ide/releases). The `cpally://` protocol handler is not set up automatically when running the JAR directly.
+
+---
+
+## Building from Source
+
+**Prerequisites**
+
+| Tool | Version |
+|------|---------|
+| Java JDK | 17 or later |
+| Maven | 3.8 or later |
+
+**Steps**
+
+```bash
+# Clone the repository
+git clone https://github.com/0xPolybit/cp-ally-ide.git
+cd cp-ally-ide
+
+# Build the fat JAR (includes all dependencies)
+mvn package
+
+# Run directly
+java -jar target/cp-ally-ide-0.2.2.jar
+```
+
+The build produces a single self-contained JAR at `target/cp-ally-ide-0.2.2.jar`.
+
+**Packaging for Windows**
+
+To produce a distributable Windows installer:
+1. Wrap the JAR with [Launch4j](https://launch4j.sourceforge.net/) to create an EXE.
+2. Build the installer with [Inno Setup](https://jrsoftware.org/isinfo.php) using the `.iss` script in the project.
+
+The Inno Setup script handles bundling the JRE, registering the `cpally://` URL protocol, and creating Start Menu/Desktop shortcuts.
+
+---
+
+## Deep Link Protocol
+
+CP Ally IDE registers the `cpally://` URL scheme on installation. Use it to open problems directly from any browser, markdown file, or launcher.
+
+**URL format**
+
+```
+cpally://problem/<code>
+```
+
+**Examples**
+
+```
+cpally://problem/1A
+cpally://problem/2208A
+cpally://problem/1900F
+```
+
+**How it works**
+
+| Scenario | Behaviour |
+|----------|-----------|
+| App is closed | Launches the app, shows splash, then loads the problem |
+| App is running | Forwards the URL to the running instance; no second window opens |
+| App is minimized | Restores and brings the window to front, then loads the problem |
+
+You can also trigger a link from the command line:
+
+```bat
+start cpally://problem/2208A
+```
+
+---
+
+## Keyboard Shortcuts
+
+| Action | Shortcut |
+|--------|----------|
+| Choose Problem | `Ctrl+N` |
+| Open Empty Editor | `Ctrl+E` |
+| Run Code | `Ctrl+R` |
+| Preferences | `Ctrl+P` |
+| Add Test Case | `Ctrl+Shift+T` |
+| Zoom In | `Ctrl+=` |
+| Zoom Out | `Ctrl+-` |
+| Reset Zoom | `Ctrl+0` |
+
+---
 
 ## Contributing
-Contributions should keep the app focused on fast competitive programming workflows. If you submit changes, keep the UI practical, avoid adding unrelated general-purpose IDE features, and preserve the current behavior of problem fetching, local execution, caching, and rendering.
 
-Recommended contribution flow:
-1. Fork the repository and create a feature branch.
-2. Make a small, focused change.
-3. Build the project locally with Maven and verify the app still starts.
-4. If the change affects UI or rendering, test the affected path in the app.
-5. Open a pull request with a clear description of what changed and why.
+Contributions are welcome. Keep changes focused on the competitive programming workflow — fast problem fetching, local execution, and a minimal interface.
 
-When contributing code, keep these expectations in mind:
-- Preserve existing contest-focused shortcuts and flows.
-- Avoid introducing breaking changes to cache files unless migration is handled.
-- Prefer targeted fixes over broad refactors.
-- Update the README if the change affects setup or user-facing behavior.
+**Guidelines**
+
+- Keep the UI practical and contest-friendly.
+- Do not introduce breaking changes to the cache file format without handling migration.
+- Prefer targeted, small changes over broad refactors.
+- If the change affects UI layout or rendering, test it in the running app.
+- Update this README if the change affects setup or user-facing behavior.
+
+**Workflow**
+
+1. Fork the repository and create a feature branch from `main`.
+2. Make your change and build locally with `mvn package`.
+3. Verify the app starts and the affected feature works.
+4. Open a pull request with a clear description of what changed and why.
+
+**Reporting bugs**
+
+Open an issue at [github.com/0xPolybit/cp-ally-ide/issues](https://github.com/0xPolybit/cp-ally-ide/issues). Include the problem code you were using (if relevant), the contents of `%APPDATA%\CompetitiveProgrammingAlly\diagnostics.log`, and a description of what you expected vs. what happened.
+
+---
 
 ## License
-This project is licensed under the Apache License 2.0.
 
-You may use, modify, and redistribute the code under the terms of that license. If you distribute a modified version, keep the required license notices and attribution intact.
+Licensed under the [Apache License 2.0](LICENSE).
 
-The full license text is available in the repository’s [LICENSE](LICENSE) file.
+You may use, modify, and redistribute this software under the terms of that license. Distributed copies must retain the license notice and attribution.
 
-## List of Contributors
-- [Swastik Biswas (Owner)](https://github.com/0xPolybit)
-- [Himanshi Saxena](https://github.com/Hima-11-works)
+---
 
-If you contribute to the project, add your name here in a future update once your contribution is merged.
+## Contributors
+
+| | Name | Role |
+|-|------|------|
+| [![0xPolybit](https://github.com/0xPolybit.png?size=32)](https://github.com/0xPolybit) | [Swastik Biswas](https://github.com/0xPolybit) | Owner & maintainer |
+| [![Hima-11-works](https://github.com/Hima-11-works.png?size=32)](https://github.com/Hima-11-works) | [Himanshi Saxena](https://github.com/Hima-11-works) | Contributor |
+
+If your contribution is merged, add your name to this table in the same pull request.
