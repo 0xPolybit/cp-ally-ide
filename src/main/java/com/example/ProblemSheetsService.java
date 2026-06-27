@@ -35,9 +35,10 @@ class ProblemSheetsService {
             return cache.get(problemCode);
         }
         List<SheetInfo> result = List.of();
+        HttpURLConnection conn = null;
         try {
             URL url = URI.create(API_BASE + problemCode).toURL();
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn = (HttpURLConnection) url.openConnection();
             conn.setConnectTimeout(TIMEOUT_MS);
             conn.setReadTimeout(TIMEOUT_MS);
             conn.setRequestMethod("GET");
@@ -51,6 +52,8 @@ class ProblemSheetsService {
         } catch (Exception e) {
             DiagnosticLogger.warn("[ProblemSheetsService] Could not fetch sheets for "
                     + problemCode + ": " + e.getMessage());
+        } finally {
+            if (conn != null) conn.disconnect();
         }
         cache.put(problemCode, result);
         return result;
@@ -68,8 +71,17 @@ class ProblemSheetsService {
         int sheetsIdx = json.indexOf("\"sheets\"");
         if (sheetsIdx < 0) return List.of();
         int arrStart = json.indexOf('[', sheetsIdx);
-        int arrEnd   = json.lastIndexOf(']');
-        if (arrStart < 0 || arrEnd <= arrStart) return List.of();
+        if (arrStart < 0) return List.of();
+        int depth = 0;
+        int arrEnd = -1;
+        for (int i = arrStart; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (c == '[') depth++;
+            else if (c == ']') {
+                if (--depth == 0) { arrEnd = i; break; }
+            }
+        }
+        if (arrEnd <= arrStart) return List.of();
 
         String arr = json.substring(arrStart + 1, arrEnd);
         List<SheetInfo> result = new ArrayList<>();

@@ -238,13 +238,13 @@ final class PreferencesDialog {
         String normalized = scheme.trim();
         if (isLightTheme(appTheme)) {
             if (normalized.endsWith(" Dark")) {
-                normalized = normalized.substring(0, normalized.length() - 5) + " Light";
+                normalized = normalized.substring(0, normalized.length() - " Dark".length()) + " Light";
             } else if (!normalized.endsWith(" Light")) {
                 normalized = normalized + " Light";
             }
         } else {
             if (normalized.endsWith(" Light")) {
-                normalized = normalized.substring(0, normalized.length() - 6) + " Dark";
+                normalized = normalized.substring(0, normalized.length() - " Light".length()) + " Dark";
             } else if (!normalized.endsWith(" Dark")) {
                 normalized = normalized + " Dark";
             }

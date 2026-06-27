@@ -50,6 +50,7 @@ public class App {
         }
 
         DiagnosticLogger.info("[App] This is the primary instance. Starting UI.");
+        Runtime.getRuntime().addShutdownHook(new Thread(instanceServer::close, "cpally-shutdown"));
 
         final InstanceServer primaryServer = instanceServer;
         final String urlToOpen = pendingUrl;
@@ -60,10 +61,7 @@ public class App {
 
             Thread startupThread = new Thread(() -> {
                 try {
-                    SettingsRepository tempSettings = new SettingsRepository(
-                            "CompetitiveProgrammingAlly", "settings.properties", "Python 3");
-                    DiagnosticLogger.initialize(tempSettings.getAppDataDirectory());
-                    DiagnosticLogger.info("[App] Startup thread running. Version: MainWindow.CURRENT_APP_VERSION");
+                    DiagnosticLogger.info("[App] Startup thread running.");
 
                     MainWindow mainWindow = new MainWindow();
 

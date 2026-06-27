@@ -183,6 +183,7 @@ class CodeforcesService {
             return Jsoup.parse(html, url);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            process.destroy();
             throw new IOException("Interrupted while fetching " + url, e);
         }
     }
@@ -273,9 +274,10 @@ class CodeforcesService {
     }
 
     private boolean isHttpResponsive() {
+        HttpURLConnection connection = null;
         try {
             URL url = URI.create("https://codeforces.com/").toURL();
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection = (HttpURLConnection) url.openConnection();
             connection.setRequestMethod("HEAD");
             connection.setConnectTimeout(3000);
             connection.setReadTimeout(3000);
@@ -283,6 +285,8 @@ class CodeforcesService {
             return code >= 200 && code < 500;
         } catch (IOException e) {
             return false;
+        } finally {
+            if (connection != null) connection.disconnect();
         }
     }
 }
