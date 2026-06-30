@@ -14,6 +14,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 class CodeExecutionService {
 
@@ -414,6 +415,7 @@ class CodeExecutionService {
         builder.directory(workDir.toFile());
         builder.redirectErrorStream(false);
         Process process = builder.start();
+
         ExecutorService executor = Executors.newFixedThreadPool(2);
         Future<String> stdoutFuture = executor.submit(() -> readStream(process.getInputStream()));
         Future<String> stderrFuture = executor.submit(() -> readStream(process.getErrorStream()));
@@ -423,35 +425,50 @@ class CodeExecutionService {
             stdin.flush();
         }
 
-        long peakMemoryKb = Math.max(0L, readMemoryUsageKb(process.pid()));
+        // Memory sampler runs on its own daemon thread so OS queries do not
+        // inflate the wall-clock time measured in the loop below.
+        AtomicLong peakMemoryKb = new AtomicLong(0L);
+        long pid = process.pid();
+        Thread memSampler = new Thread(() -> {
+            while (!Thread.currentThread().isInterrupted()) {
+                long mem = readMemoryUsageKb(pid);
+                if (mem > 0) peakMemoryKb.updateAndGet(cur -> Math.max(cur, mem));
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }, "mem-sampler");
+        memSampler.setDaemon(true);
+        memSampler.start();
+
         long start = System.nanoTime();
+        long endNano = start;
         boolean timedOut = false;
         while (true) {
             if (process.waitFor(50, TimeUnit.MILLISECONDS)) {
+                endNano = System.nanoTime(); // captured before stdout/stderr drain
                 break;
             }
-            peakMemoryKb = Math.max(peakMemoryKb, readMemoryUsageKb(process.pid()));
-            long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
-            if (elapsedMillis >= timeoutMillis) {
+            if (TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) >= timeoutMillis) {
                 timedOut = true;
                 process.destroyForcibly();
                 process.waitFor(250, TimeUnit.MILLISECONDS);
+                endNano = System.nanoTime();
                 break;
             }
         }
+        long durationMillis = TimeUnit.NANOSECONDS.toMillis(endNano - start);
+
+        memSampler.interrupt();
 
         String stdout = readFuture(stdoutFuture);
         String stderr = readFuture(stderrFuture);
         executor.shutdownNow();
 
-        int exitCode;
-        if (timedOut) {
-            exitCode = -1;
-        } else {
-            exitCode = process.exitValue();
-        }
-
-        return new ProcessResult(exitCode, stdout, stderr, peakMemoryKb, timedOut, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
+        int exitCode = timedOut ? -1 : process.exitValue();
+        return new ProcessResult(exitCode, stdout, stderr, peakMemoryKb.get(), timedOut, durationMillis);
     }
 
     private String readFuture(Future<String> future) {
@@ -488,13 +505,17 @@ class CodeExecutionService {
                 return -1L;
             }
 
-            Process process = new ProcessBuilder("sh", "-lc", "ps -o rss= -p " + pid).start();
-            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
-            process.waitFor(2, TimeUnit.SECONDS);
-            if (output.isBlank()) {
-                return -1L;
+            // Linux/macOS: read /proc/<pid>/status directly — no subprocess needed
+            Path statusFile = Path.of("/proc/" + pid + "/status");
+            if (Files.notExists(statusFile)) return -1L;
+            for (String line : Files.readAllLines(statusFile, StandardCharsets.UTF_8)) {
+                if (line.startsWith("VmRSS:")) {
+                    // Format: "VmRSS:   12345 kB"
+                    String[] parts = line.trim().split("\\s+");
+                    if (parts.length >= 2) return Long.parseLong(parts[1]);
+                }
             }
-            return Long.parseLong(output.split("\\s+")[0]);
+            return -1L;
         } catch (Exception e) {
             return -1L;
         }

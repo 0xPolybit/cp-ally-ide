@@ -57,7 +57,7 @@ final class ExecutionResultFormatter {
             html.append("<div class='meta'>Status: <span class='").append(statusClass).append("'>").append(statusText)
                     .append("</span> | Time: ").append(result.durationMillis()).append(" ms")
                     .append(" | Memory: ")
-                    .append(result.peakMemoryKb() >= 0 ? result.peakMemoryKb() + " KB" : "N/A")
+                    .append(result.peakMemoryKb() >= 0 ? formatMemory(result.peakMemoryKb()) : "N/A")
                     .append("</div>");
 
             html.append("<div class='section'>Input</div>");
@@ -95,6 +95,13 @@ final class ExecutionResultFormatter {
                 .replace("&", "&amp;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;");
+    }
+
+    private static String formatMemory(long kb) {
+        if (kb >= 1024) {
+            return String.format("%.1f MB", kb / 1024.0);
+        }
+        return kb + " KB";
     }
 
     private static String toHex(Color color) {
