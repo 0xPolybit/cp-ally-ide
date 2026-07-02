@@ -137,6 +137,11 @@ public class MainWindow {
     private javax.swing.JLabel zoomPercentLabel;
     private enum ZoomTarget { EDITOR, PROBLEM }
     private ZoomTarget activeZoomTarget = ZoomTarget.EDITOR;
+    private JMenuItem userMenuItem;
+    private JLabel loggedInLabel;
+    private JLabel submissionStatusLabel;
+    private CodeforcesUserService cfUserService;
+    private String codeforcesUsername = "";
 
     public void showWindow() {
         appSettings = settingsRepository.load();
@@ -153,6 +158,8 @@ public class MainWindow {
         problemHtmlRenderer.setTheme(appThemePalette);
         codeforcesService = new CodeforcesService(appDataDir);
         problemSheetsService = new ProblemSheetsService();
+        cfUserService = new CodeforcesUserService();
+        codeforcesUsername = appSettings != null ? appSettings.codeforcesUsername() : "";
 
         JFrame frame = new JFrame(APP_NAME + " v" + CURRENT_APP_VERSION);
         UiIconLoader.applyWindowIcon(frame, "/assets/logo.png");
@@ -383,6 +390,9 @@ public class MainWindow {
         JMenuItem exitItem = new JMenuItem("Exit");
         exitItem.addActionListener(e -> System.exit(0));
         fileMenu.add(preferencesItem);
+        userMenuItem = new JMenuItem(codeforcesUsername.isEmpty() ? "Add User" : "Logout User");
+        userMenuItem.addActionListener(e -> onUserMenuClicked());
+        fileMenu.add(userMenuItem);
         fileMenu.addSeparator();
         fileMenu.add(chooseDifferentProblemItem);
         fileMenu.add(openEmptyProblemItem);
@@ -689,6 +699,16 @@ public class MainWindow {
         form.add(connectivityLabel);
         form.add(Box.createRigidArea(new Dimension(0, 8)));
         form.add(fetchStatusLabel);
+        form.add(Box.createRigidArea(new Dimension(0, 12)));
+        loggedInLabel = new JLabel();
+        loggedInLabel.setFont(loggedInLabel.getFont().deriveFont(Font.PLAIN, 11f));
+        loggedInLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        loggedInLabel.setForeground(palette.mutedTextColor());
+        loggedInLabel.setVisible(!codeforcesUsername.isEmpty());
+        if (!codeforcesUsername.isEmpty()) {
+            loggedInLabel.setText("Logged in as " + codeforcesUsername);
+        }
+        form.add(loggedInLabel);
 
         checkCodeforcesStatusAsync(connectivityLabel);
 
@@ -1017,7 +1037,7 @@ public class MainWindow {
 
     private AppSettings replaceEditorPreferences(AppSettings current, int editorFontSize, String editorColorScheme, String appTheme, boolean useTabsAsSpaces, int tabSpacing, boolean autosaveEnabled, int autosaveIntervalSeconds) {
         if (current == null) {
-            return new AppSettings(-1, -1, 1200, 760, 420, 420, false, DEFAULT_LANGUAGE, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveIntervalSeconds);
+            return new AppSettings(-1, -1, 1200, 760, 420, 420, false, DEFAULT_LANGUAGE, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveIntervalSeconds, "");
         }
         return new AppSettings(
                 current.x(),
@@ -1034,7 +1054,8 @@ public class MainWindow {
                 useTabsAsSpaces,
                 tabSpacing,
                 autosaveEnabled,
-                autosaveIntervalSeconds);
+                autosaveIntervalSeconds,
+                current.codeforcesUsername());
     }
 
     private record EditorTheme(
@@ -1465,6 +1486,7 @@ public class MainWindow {
 
     private void showCodeforcesProblemView(String problemCode, RenderedProblemView statementOnly, RenderedProblemView full) {
         renderProblemView(problemCode, statementOnly, full, false);
+        refreshSubmissionStatus();
     }
 
     private void refreshCurrentProblem() {
@@ -1616,6 +1638,12 @@ public class MainWindow {
             JPanel topBar = new JPanel(new BorderLayout());
             topBar.setOpaque(false);
             topBar.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
+
+            submissionStatusLabel = new JLabel("");
+            submissionStatusLabel.setFont(submissionStatusLabel.getFont().deriveFont(Font.BOLD, 12f));
+            submissionStatusLabel.setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 4));
+            submissionStatusLabel.setVisible(false);
+            topBar.add(submissionStatusLabel, BorderLayout.EAST);
 
             JPanel statementPanel = new JPanel(new BorderLayout());
             statementPanel.setOpaque(false);
@@ -2161,6 +2189,86 @@ public class MainWindow {
         return "// code goes here...\n";
     }
 
+    private void onUserMenuClicked() {
+        if (codeforcesUsername.isEmpty()) {
+            String input = (String) JOptionPane.showInputDialog(
+                    mainFrame, "Enter your Codeforces username:", "Add User",
+                    JOptionPane.PLAIN_MESSAGE, null, null, "");
+            if (input != null && !input.isBlank()) {
+                saveUsername(input.trim());
+            }
+        } else {
+            int confirm = JOptionPane.showConfirmDialog(
+                    mainFrame, "Log out " + codeforcesUsername + "?",
+                    "Logout User", JOptionPane.YES_NO_OPTION);
+            if (confirm == JOptionPane.YES_OPTION) {
+                saveUsername("");
+            }
+        }
+    }
+
+    private void saveUsername(String username) {
+        codeforcesUsername = username;
+        if (cfUserService != null) cfUserService.clearCache();
+        if (mainFrame != null) persistSettings(mainFrame);
+        if (userMenuItem != null)
+            userMenuItem.setText(username.isEmpty() ? "Add User" : "Logout User");
+        updateLoggedInLabel();
+        refreshSubmissionStatus();
+    }
+
+    private void updateLoggedInLabel() {
+        if (loggedInLabel == null) return;
+        if (codeforcesUsername.isEmpty()) {
+            loggedInLabel.setVisible(false);
+        } else {
+            loggedInLabel.setText("Logged in as " + codeforcesUsername);
+            loggedInLabel.setForeground(appThemePalette != null ? appThemePalette.mutedTextColor() : Color.GRAY);
+            loggedInLabel.setVisible(true);
+        }
+    }
+
+    private void refreshSubmissionStatus() {
+        if (submissionStatusLabel == null) return;
+        if (codeforcesUsername.isEmpty() || currentProblemCode == null || !problemStatementLoaded) {
+            submissionStatusLabel.setText("");
+            submissionStatusLabel.setVisible(false);
+            return;
+        }
+        submissionStatusLabel.setText("Checking...");
+        submissionStatusLabel.setForeground(appThemePalette != null ? appThemePalette.mutedTextColor() : Color.GRAY);
+        submissionStatusLabel.setVisible(true);
+
+        String handle = codeforcesUsername;
+        String code = currentProblemCode;
+        new javax.swing.SwingWorker<String, Void>() {
+            @Override protected String doInBackground() {
+                return cfUserService.fetchBestVerdictDisplay(handle, code);
+            }
+            @Override protected void done() {
+                try {
+                    String verdict = get();
+                    if (submissionStatusLabel == null) return;
+                    if (verdict == null || verdict.isEmpty()) {
+                        submissionStatusLabel.setText("");
+                        submissionStatusLabel.setVisible(false);
+                        return;
+                    }
+                    Color color = switch (verdict) {
+                        case "Accepted"     -> appThemePalette != null ? appThemePalette.successColor() : new Color(97, 214, 110);
+                        case "Wrong Answer" -> appThemePalette != null ? appThemePalette.warningColor() : new Color(246, 198, 67);
+                        default             -> appThemePalette != null ? appThemePalette.errorColor()   : new Color(246, 86, 86);
+                    };
+                    submissionStatusLabel.setText("● " + verdict);
+                    submissionStatusLabel.setForeground(color);
+                    submissionStatusLabel.setVisible(true);
+                } catch (Exception ignored) {
+                    if (submissionStatusLabel != null) submissionStatusLabel.setVisible(false);
+                }
+            }
+        }.execute();
+    }
+
     private void persistSettings(JFrame frame) {
         int state = frame.getExtendedState();
         boolean maximized = (state & JFrame.MAXIMIZED_BOTH) == JFrame.MAXIMIZED_BOTH;
@@ -2188,7 +2296,8 @@ public class MainWindow {
             appSettings != null && appSettings.useTabsAsSpaces(),
             appSettings != null ? appSettings.tabSpacing() : 4,
             appSettings != null ? appSettings.autosaveEnabled() : true,
-            appSettings != null ? appSettings.autosaveIntervalSeconds() : 10);
+            appSettings != null ? appSettings.autosaveIntervalSeconds() : 10,
+            codeforcesUsername);
 
         settingsRepository.save(settings);
     }

@@ -51,8 +51,9 @@ class SettingsRepository {
             int tabSpacing = parseInt(properties.getProperty("editor.tabSpacing"), 4);
             boolean autosaveEnabled = Boolean.parseBoolean(properties.getProperty("autosave.enabled", "true"));
             int autosaveInterval = parseInt(properties.getProperty("autosave.intervalSeconds"), 10);
+            String codeforcesUsername = properties.getProperty("codeforces.username", "");
 
-            return new AppSettings(x, y, width, height, divider, testCasesDivider, maximized, language, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveInterval);
+            return new AppSettings(x, y, width, height, divider, testCasesDivider, maximized, language, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveInterval, codeforcesUsername);
         } catch (IOException e) {
             return AppSettings.defaults(defaultLanguage);
         }
@@ -78,6 +79,7 @@ class SettingsRepository {
             properties.setProperty("editor.tabSpacing", Integer.toString(settings.tabSpacing()));
             properties.setProperty("autosave.enabled", Boolean.toString(settings.autosaveEnabled()));
             properties.setProperty("autosave.intervalSeconds", Integer.toString(settings.autosaveIntervalSeconds()));
+            properties.setProperty("codeforces.username", settings.codeforcesUsername());
 
             try (OutputStream output = new BufferedOutputStream(Files.newOutputStream(settingsFile))) {
                 properties.store(output, "Competitive Programming Ally settings");
