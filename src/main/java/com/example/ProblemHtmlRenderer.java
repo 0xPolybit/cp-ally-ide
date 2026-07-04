@@ -9,7 +9,6 @@ import org.jsoup.parser.Tag;
 
 import javax.imageio.ImageIO;
 import java.awt.Color;
-import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -19,7 +18,9 @@ import java.util.Map;
 
 class ProblemHtmlRenderer {
 
-    private static final int INLINE_ICON_SIZE = 16;
+    // Logical (1x zoom) display size for inline icons; actual pixels come from
+    // the native-resolution asset scaled smoothly by the editor pane.
+    private static final int INLINE_ICON_DISPLAY_SIZE = 14;
 
     private final Path appDataDirectory;
     private final Map<String, String> iconSourceCache = new HashMap<>();
@@ -88,7 +89,7 @@ class ProblemHtmlRenderer {
         Document doc = Jsoup.parseBodyFragment(rawProblemHtml);
         Element root = doc.body().children().isEmpty() ? doc.body() : doc.body().child(0);
 
-        latexImageRenderer.renderLatexNodes(root, appTheme);
+        latexImageRenderer.renderLatexNodes(root, appTheme, zoomFactor);
         enhanceHeaderMetrics(root);
         insertLatexWarningBox(root, problemCode);
         enhanceSampleTestsWithCopy(root, copyPayloads);
@@ -141,7 +142,7 @@ class ProblemHtmlRenderer {
             + ".metrics-row { margin-top:4px; margin-bottom:12px; }"
             + ".metrics-table { border-collapse:collapse; }"
             + ".metric-item { font-size:" + captionPx + "px; color:" + toHex(muted) + "; white-space:nowrap; vertical-align:middle; line-height:1.4; }"
-            + ".metric-icon { width:14px; height:14px; vertical-align:middle; image-rendering:auto; }"
+            + ".metric-icon { vertical-align:middle; }"
             + ".latex-inline { vertical-align:middle; }"
             + ".latex-inline-fallback { vertical-align:middle; }"
             + ".sample-tests .input, .sample-tests .output { margin-top:8px; }"
@@ -151,7 +152,7 @@ class ProblemHtmlRenderer {
             + ".io-copy-cell { text-align:right; vertical-align:middle; width:20px; }"
             + ".io-label { font-size:" + h2 + "px; font-weight:600; line-height:1.6; }"
             + ".copy-btn { text-decoration:none; border:none; outline:none; }"
-            + ".copy-btn img { width:14px; height:14px; vertical-align:middle; opacity:0.85; border:none; image-rendering:auto; }"
+            + ".copy-btn img { vertical-align:middle; border:none; }"
             + "pre { background:" + toHex(surface) + "; color:" + toHex(text) + "; border:1px solid " + toHex(border) + "; border-radius:6px; padding:10px; white-space:pre-wrap; font-size:" + prePx + "px; }"
             + "p { color:" + toHex(text) + "; line-height:1.5; margin:6px 0; }"
             + ".tex-font-style-bf { font-weight:bold; }"
@@ -256,6 +257,9 @@ class ProblemHtmlRenderer {
             icon.addClass("metric-icon");
             icon.attr("src", iconSrc);
             icon.attr("alt", "");
+            String size = Integer.toString(scaledIconSize());
+            icon.attr("width", size);
+            icon.attr("height", size);
             item.appendChild(icon);
             item.append("&nbsp;");
         }
@@ -400,10 +404,15 @@ class ProblemHtmlRenderer {
     }
 
     private String createCopyHeaderHtml(String label, String key, String copyIconDataUri) {
+        int size = scaledIconSize();
         return "<table class='io-table'><tr>"
                 + "<td class='io-label-cell'><span class='io-label'>" + label + "</span></td>"
-                + "<td class='io-copy-cell'><a class='copy-btn' href='copy:" + key + "'><img src='" + copyIconDataUri + "' alt='' border='0' hspace='0' vspace='0'/></a></td>"
+                + "<td class='io-copy-cell'><a class='copy-btn' href='copy:" + key + "'><img src='" + copyIconDataUri + "' alt='' width='" + size + "' height='" + size + "' border='0' hspace='0' vspace='0'/></a></td>"
                 + "</tr></table>";
+    }
+
+    private int scaledIconSize() {
+        return Math.max(8, (int) Math.round(INLINE_ICON_DISPLAY_SIZE * zoomFactor));
     }
 
     private String combineInputOutputMetric(String inputText, String outputText) {
@@ -450,28 +459,18 @@ class ProblemHtmlRenderer {
                 return "";
             }
 
-            BufferedImage target = new BufferedImage(INLINE_ICON_SIZE, INLINE_ICON_SIZE, BufferedImage.TYPE_INT_ARGB);
-            java.awt.Graphics2D g2 = target.createGraphics();
-            g2.setComposite(java.awt.AlphaComposite.Clear);
-            g2.fillRect(0, 0, INLINE_ICON_SIZE, INLINE_ICON_SIZE);
-            g2.setComposite(java.awt.AlphaComposite.SrcOver);
-            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-            g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
-            g2.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
-            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-            g2.drawImage(source, 0, 0, INLINE_ICON_SIZE, INLINE_ICON_SIZE, null);
-            g2.dispose();
-
+            // Cache the icon at its native resolution; display size is set via
+            // <img width/height> so the editor pane scales it smoothly.
             Path iconCacheDir = appDataDirectory.resolve("cache").resolve("icons");
             Files.createDirectories(iconCacheDir);
             String sanitized = iconFile.replace('.', '_');
             String themeVariant = (appTheme != null && appTheme.lightTheme()) ? "light" : "dark";
-            Path scaledFile = iconCacheDir.resolve(sanitized + "_" + INLINE_ICON_SIZE + "px_" + themeVariant + ".png");
-            ImageIO.write(target, "png", scaledFile.toFile());
+            Path cachedFile = iconCacheDir.resolve(sanitized + "_native_" + themeVariant + ".png");
+            if (!Files.exists(cachedFile)) {
+                ImageIO.write(source, "png", cachedFile.toFile());
+            }
 
-            String src = scaledFile.toUri().toString();
+            String src = cachedFile.toUri().toString();
             iconSourceCache.put(cacheKey, src);
             return src;
         } catch (IOException e) {

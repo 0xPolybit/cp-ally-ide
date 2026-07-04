@@ -1587,7 +1587,26 @@ public class MainWindow {
 
         // Create or reuse persistent problemPane so we can re-render on zoom changes without rebuilding UI
         if (problemPane == null) {
-            problemPane = new JEditorPane();
+            // Paint with high-quality interpolation so scaled images (LaTeX
+            // formulas, icons, statement illustrations) render smoothly.
+            problemPane = new JEditorPane() {
+                @Override
+                protected void paintComponent(java.awt.Graphics g) {
+                    if (g instanceof java.awt.Graphics2D g2) {
+                        g2.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
+                                java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+                        g2.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING,
+                                java.awt.RenderingHints.VALUE_RENDER_QUALITY);
+                        g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING,
+                                java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+                        g2.setRenderingHint(java.awt.RenderingHints.KEY_TEXT_ANTIALIASING,
+                                java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+                        g2.setRenderingHint(java.awt.RenderingHints.KEY_ALPHA_INTERPOLATION,
+                                java.awt.RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
+                    }
+                    super.paintComponent(g);
+                }
+            };
             problemPane.setContentType("text/html");
             problemPane.setEditable(false);
             problemPane.setFocusable(false);

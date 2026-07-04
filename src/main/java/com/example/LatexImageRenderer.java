@@ -25,23 +25,31 @@ final class LatexImageRenderer {
     private static final String LATEX_PROCESSED_ATTR = "data-cpa-latex-processed";
     private static final String LATEX_FALLBACK_COLOR = "#dfe1e5";
 
+    // Formulas are rasterized at SUPERSAMPLE x the logical size and displayed
+    // scaled down via <img width/height>, so they stay sharp on HiDPI displays
+    // and at any zoom level up to SUPERSAMPLE x.
+    private static final int SUPERSAMPLE = 3;
+
     private final Path appDataDirectory;
-    private final Map<String, String> latexImageCache = new HashMap<>();
+    private final Map<String, LatexImage> latexImageCache = new HashMap<>();
     private static final Pattern LATEX_COLOR_CMD = Pattern.compile("\\\\(textcolor|color)\\b");
     private static final Pattern LATEX_COLOR_WRAP = Pattern.compile("\\\\(textcolor|color)\\s*\\{\\s*([^}]+)\\s*\\}\\s*(?:\\{([^}]*)\\})?");
     private static final Pattern CSS_COLOR_DECL = Pattern.compile("color\\s*:\\s*([^;]+)", Pattern.CASE_INSENSITIVE);
+
+    /** A rendered formula: file URI plus its logical (1x) display size in px. */
+    private record LatexImage(String src, int logicalWidth, int logicalHeight) {}
 
     LatexImageRenderer(Path appDataDirectory) {
         this.appDataDirectory = appDataDirectory;
     }
 
-    void renderLatexNodes(Element root, AppThemePalette activePalette) {
+    void renderLatexNodes(Element root, AppThemePalette activePalette, double zoomFactor) {
         for (Element script : root.select("script[type^=math/tex]")) {
             String type = script.attr("type");
             boolean display = type != null && type.contains("mode=display");
             String expression = normalizeLatexExpression(script.data().isBlank() ? script.html() : script.data());
-            String src = renderLatexToImageSource(expression, display, activePalette, script);
-            if (src.isBlank()) {
+            LatexImage image = renderLatexToImage(expression, display, activePalette, script);
+            if (image == null) {
                 Element fallback = new Element(Tag.valueOf("span"), "");
                 fallback.attr("style", "color:" + LATEX_FALLBACK_COLOR + ";");
                 fallback.addClass("latex-inline-fallback");
@@ -50,37 +58,42 @@ final class LatexImageRenderer {
                 script.replaceWith(fallback);
                 continue;
             }
-
-            Element img = new Element(Tag.valueOf("img"), "");
-            img.attr("src", src);
-            img.attr("alt", "");
-            if (display) {
-                img.attr("style", "display:block; margin:8px 0;");
-            } else {
-                img.addClass("latex-inline");
-            }
-            script.replaceWith(img);
+            script.replaceWith(createLatexImg(image, display, zoomFactor));
         }
 
         for (Element texSpan : root.select("span.tex-span, div.tex-span")) {
             String expression = normalizeLatexExpression(texSpan.text());
-            String src = renderLatexToImageSource(expression, false, activePalette, texSpan);
-            if (src.isBlank()) {
+            LatexImage image = renderLatexToImage(expression, false, activePalette, texSpan);
+            if (image == null) {
                 texSpan.addClass("latex-inline-fallback");
                 texSpan.attr(LATEX_PROCESSED_ATTR, "1");
                 continue;
             }
-            Element img = new Element(Tag.valueOf("img"), "");
-            img.attr("src", src);
-            img.attr("alt", "");
-            img.addClass("latex-inline");
-            texSpan.replaceWith(img);
+            texSpan.replaceWith(createLatexImg(image, false, zoomFactor));
         }
 
-        renderLatexInTextNodes(root, activePalette);
+        renderLatexInTextNodes(root, activePalette, zoomFactor);
     }
 
-    private void renderLatexInTextNodes(Element root, AppThemePalette activePalette) {
+    private Element createLatexImg(LatexImage image, boolean display, double zoomFactor) {
+        double zoom = zoomFactor > 0 ? zoomFactor : 1.0;
+        int w = Math.max(1, (int) Math.round(image.logicalWidth() * zoom));
+        int h = Math.max(1, (int) Math.round(image.logicalHeight() * zoom));
+
+        Element img = new Element(Tag.valueOf("img"), "");
+        img.attr("src", image.src());
+        img.attr("alt", "");
+        img.attr("width", Integer.toString(w));
+        img.attr("height", Integer.toString(h));
+        if (display) {
+            img.attr("style", "display:block; margin:8px 0;");
+        } else {
+            img.addClass("latex-inline");
+        }
+        return img;
+    }
+
+    private void renderLatexInTextNodes(Element root, AppThemePalette activePalette, double zoomFactor) {
         for (TextNode textNode : root.textNodes()) {
             String text = textNode.getWholeText();
             if (text == null || text.isBlank() || text.indexOf('$') < 0) {
@@ -99,7 +112,7 @@ final class LatexImageRenderer {
                 continue;
             }
 
-            List<Element> rendered = renderTextWithLatex(text, activePalette, (Element) parentNode);
+            List<Element> rendered = renderTextWithLatex(text, activePalette, (Element) parentNode, zoomFactor);
             if (rendered.isEmpty()) {
                 continue;
             }
@@ -115,11 +128,11 @@ final class LatexImageRenderer {
             if ("pre".equals(tag) || "code".equals(tag) || "script".equals(tag) || "style".equals(tag)) {
                 continue;
             }
-            renderLatexInTextNodes(child, activePalette);
+            renderLatexInTextNodes(child, activePalette, zoomFactor);
         }
     }
 
-    private List<Element> renderTextWithLatex(String text, AppThemePalette activePalette, Element contextElement) {
+    private List<Element> renderTextWithLatex(String text, AppThemePalette activePalette, Element contextElement, double zoomFactor) {
         List<Element> nodes = new ArrayList<>();
         int cursor = 0;
 
@@ -149,22 +162,14 @@ final class LatexImageRenderer {
 
             String expression = text.substring(start + delimiterLength, end).trim();
             boolean display = delimiterLength >= 2;
-            String src = renderLatexToImageSource(expression, display, activePalette, contextElement);
-            if (src.isBlank()) {
+            LatexImage image = renderLatexToImage(expression, display, activePalette, contextElement);
+            if (image == null) {
                 Element fallback = createProcessedTextSpan(text.substring(start, end + delimiterLength));
                 fallback.attr("style", "color:" + LATEX_FALLBACK_COLOR + ";");
                 fallback.addClass("latex-inline-fallback");
                 nodes.add(fallback);
             } else {
-                Element img = new Element(Tag.valueOf("img"), "");
-                img.attr("src", src);
-                img.attr("alt", "");
-                if (display) {
-                    img.attr("style", "display:block; margin:8px 0;");
-                } else {
-                    img.addClass("latex-inline");
-                }
-                nodes.add(img);
+                nodes.add(createLatexImg(image, display, zoomFactor));
             }
 
             cursor = end + delimiterLength;
@@ -193,12 +198,13 @@ final class LatexImageRenderer {
         return text.indexOf(delimiter, from);
     }
 
-    private String renderLatexToImageSource(String expression, boolean display, AppThemePalette activePalette, Element contextElement) {
+    private LatexImage renderLatexToImage(String expression, boolean display, AppThemePalette activePalette, Element contextElement) {
         if (expression == null || expression.isBlank()) {
-            return "";
+            return null;
         }
         String normalized = normalizeLatexExpression(expression);
-        String baseKey = (display ? "d:" : "i:") + normalized;
+        // SUPERSAMPLE in the key invalidates stale low-resolution cache files
+        String baseKey = (display ? "d:" : "i:") + "x" + SUPERSAMPLE + ":" + normalized;
 
         try {
             Path latexCacheDir = appDataDirectory.resolve("cache").resolve("latex");
@@ -215,89 +221,93 @@ final class LatexImageRenderer {
             if (explicitCssColor != null) {
                 // Generate a single color-specific image (explicit HTML color)
                 String colorKey = baseKey + "|c:" + explicitCssColor;
-                if (!latexImageCache.containsKey(colorKey)) {
-                    String fileName = Integer.toHexString(colorKey.hashCode()) + ".png";
-                    Path file = latexCacheDir.resolve(fileName);
-                    if (!Files.exists(file)) {
+                LatexImage cached = latexImageCache.get(colorKey);
+                if (cached == null) {
+                    Path file = latexCacheDir.resolve(Integer.toHexString(colorKey.hashCode()) + ".png");
+                    if (Files.exists(file)) {
+                        cached = fromExistingFile(file);
+                    } else {
                         java.awt.Color fg = parseCssColor(explicitCssColor);
-                        generateLatexPng(normalized, display, fg, file);
+                        cached = generateLatexPng(normalized, display, fg, file);
                     }
-                    latexImageCache.put(colorKey, file.toUri().toString());
+                    latexImageCache.put(colorKey, cached);
                 }
-                return latexImageCache.getOrDefault(colorKey, "");
+                return cached;
             }
 
             if (hasLatexColorCmd) {
                 // Formula contains its own LaTeX color commands — render mixed segments and produce themed variants
-                String mixedLightKey = baseKey + "|mixed|light";
-                if (!latexImageCache.containsKey(mixedLightKey)) {
-                    String fileName = Integer.toHexString(mixedLightKey.hashCode()) + "-light.png";
-                    Path file = latexCacheDir.resolve(fileName);
-                    if (!Files.exists(file)) {
+                boolean wantLight = activePalette != null && activePalette.lightTheme();
+                String mixedKey = baseKey + "|mixed|" + (wantLight ? "light" : "dark");
+                LatexImage cached = latexImageCache.get(mixedKey);
+                if (cached == null) {
+                    Path file = latexCacheDir.resolve(Integer.toHexString(mixedKey.hashCode()) + (wantLight ? "-light.png" : "-dark.png"));
+                    if (Files.exists(file)) {
+                        cached = fromExistingFile(file);
+                    } else {
                         List<Segment> segments = splitIntoColorSegments(normalized);
-                        generateCompositeLatexPng(segments, display, AppThemePalette.light().textColor(), file);
+                        java.awt.Color plainFg = (wantLight ? AppThemePalette.light() : AppThemePalette.dark()).textColor();
+                        cached = generateCompositeLatexPng(segments, display, plainFg, file);
                     }
-                    latexImageCache.put(mixedLightKey, file.toUri().toString());
+                    latexImageCache.put(mixedKey, cached);
                 }
-
-                String mixedDarkKey = baseKey + "|mixed|dark";
-                if (!latexImageCache.containsKey(mixedDarkKey)) {
-                    String fileName = Integer.toHexString(mixedDarkKey.hashCode()) + "-dark.png";
-                    Path file = latexCacheDir.resolve(fileName);
-                    if (!Files.exists(file)) {
-                        List<Segment> segments = splitIntoColorSegments(normalized);
-                        generateCompositeLatexPng(segments, display, AppThemePalette.dark().textColor(), file);
-                    }
-                    latexImageCache.put(mixedDarkKey, file.toUri().toString());
-                }
-
-                boolean wantLightMixed = activePalette != null && activePalette.lightTheme();
-                String selectedMixedKey = baseKey + (wantLightMixed ? "|mixed|light" : "|mixed|dark");
-                return latexImageCache.getOrDefault(selectedMixedKey, "");
+                return cached;
             }
 
-            // No explicit colors — generate light & dark variants based on palette text color
-            String lightKey = baseKey + "|light";
-            if (!latexImageCache.containsKey(lightKey)) {
-                String lightFileName = Integer.toHexString(lightKey.hashCode()) + "-light.png";
-                Path lightFile = latexCacheDir.resolve(lightFileName);
-                if (!Files.exists(lightFile)) {
-                    generateLatexPng(normalized, display, AppThemePalette.light().textColor(), lightFile);
-                }
-                latexImageCache.put(lightKey, lightFile.toUri().toString());
-            }
-
-            String darkKey = baseKey + "|dark";
-            if (!latexImageCache.containsKey(darkKey)) {
-                String darkFileName = Integer.toHexString(darkKey.hashCode()) + "-dark.png";
-                Path darkFile = latexCacheDir.resolve(darkFileName);
-                if (!Files.exists(darkFile)) {
-                    generateLatexPng(normalized, display, AppThemePalette.dark().textColor(), darkFile);
-                }
-                latexImageCache.put(darkKey, darkFile.toUri().toString());
-            }
-
+            // No explicit colors — themed variant based on palette text color
             boolean wantLight = activePalette != null && activePalette.lightTheme();
-            String selectedKey = baseKey + (wantLight ? "|light" : "|dark");
-            return latexImageCache.getOrDefault(selectedKey, "");
+            String themedKey = baseKey + (wantLight ? "|light" : "|dark");
+            LatexImage cached = latexImageCache.get(themedKey);
+            if (cached == null) {
+                Path file = latexCacheDir.resolve(Integer.toHexString(themedKey.hashCode()) + (wantLight ? "-light.png" : "-dark.png"));
+                if (Files.exists(file)) {
+                    cached = fromExistingFile(file);
+                } else {
+                    java.awt.Color fg = (wantLight ? AppThemePalette.light() : AppThemePalette.dark()).textColor();
+                    cached = generateLatexPng(normalized, display, fg, file);
+                }
+                latexImageCache.put(themedKey, cached);
+            }
+            return cached;
         } catch (Exception e) {
             DiagnosticLogger.error("Failed to render LaTeX: " + expression, e);
-            return "";
+            return null;
         }
     }
 
-    private void generateLatexPng(String normalized, boolean display, java.awt.Color fg, Path outFile) throws Exception {
+    private LatexImage fromExistingFile(Path file) throws Exception {
+        BufferedImage img = ImageIO.read(file.toFile());
+        if (img == null) {
+            throw new java.io.IOException("Could not decode cached LaTeX image: " + file);
+        }
+        return new LatexImage(file.toUri().toString(),
+                logicalSize(img.getWidth()), logicalSize(img.getHeight()));
+    }
+
+    private static int logicalSize(int supersampledPixels) {
+        return Math.max(1, (int) Math.round(supersampledPixels / (double) SUPERSAMPLE));
+    }
+
+    private LatexImage generateLatexPng(String normalized, boolean display, java.awt.Color fg, Path outFile) throws Exception {
         TeXFormula formula = new TeXFormula(normalized);
-        float size = display ? 18f : 16f;
+        BufferedImage image = rasterizeFormula(formula, display, fg);
+        ImageIO.write(image, "png", outFile.toFile());
+        return new LatexImage(outFile.toUri().toString(),
+                logicalSize(image.getWidth()), logicalSize(image.getHeight()));
+    }
+
+    private BufferedImage rasterizeFormula(TeXFormula formula, boolean display, java.awt.Color fg) {
+        float size = (display ? 18f : 16f) * SUPERSAMPLE;
         int style = display ? TeXConstants.STYLE_DISPLAY : TeXConstants.STYLE_TEXT;
         TeXIcon icon = formula.createTeXIcon(style, size);
         if (fg != null) {
             icon.setForeground(fg);
         }
 
-        int fullWidth = icon.getIconWidth();
-        int fullHeight = icon.getIconHeight();
-        int croppedHeight = Math.max((int) (fullHeight * 0.75f), fullHeight - 6);
+        int fullWidth = Math.max(1, icon.getIconWidth());
+        int fullHeight = Math.max(1, icon.getIconHeight());
+        // Trim the excess vertical padding JLaTeXMath adds (scaled to supersampled px)
+        int croppedHeight = Math.max((int) (fullHeight * 0.75f), fullHeight - 6 * SUPERSAMPLE);
 
         BufferedImage image = new BufferedImage(fullWidth, croppedHeight, BufferedImage.TYPE_INT_ARGB);
         java.awt.Graphics2D g2 = image.createGraphics();
@@ -305,11 +315,10 @@ final class LatexImageRenderer {
         g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
         g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         g2.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
-        g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-        icon.paintIcon(null, g2, 0, -2);
+        g2.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+        icon.paintIcon(null, g2, 0, -2 * SUPERSAMPLE);
         g2.dispose();
-
-        ImageIO.write(image, "png", outFile.toFile());
+        return image;
     }
 
     // Segment model for composite rendering
@@ -343,7 +352,7 @@ final class LatexImageRenderer {
         return out;
     }
 
-    private void generateCompositeLatexPng(List<Segment> segments, boolean display, java.awt.Color plainFg, Path outFile) throws Exception {
+    private LatexImage generateCompositeLatexPng(List<Segment> segments, boolean display, java.awt.Color plainFg, Path outFile) throws Exception {
         List<BufferedImage> imgs = new ArrayList<>();
         int totalWidth = 0;
         int maxHeight = 0;
@@ -351,27 +360,8 @@ final class LatexImageRenderer {
         for (Segment s : segments) {
             String tex = s.latex.isBlank() ? "" : s.latex;
             TeXFormula formula = new TeXFormula(tex.isEmpty() ? "\\text{ }" : tex);
-            float size = display ? 18f : 16f;
-            int style = display ? TeXConstants.STYLE_DISPLAY : TeXConstants.STYLE_TEXT;
-            TeXIcon icon = formula.createTeXIcon(style, size);
-            if (s.colorRaw != null) {
-                icon.setForeground(parseCssColor(s.colorRaw));
-            } else if (plainFg != null) {
-                icon.setForeground(plainFg);
-            }
-
-            int w = icon.getIconWidth();
-            int h = icon.getIconHeight();
-            int croppedH = Math.max((int) (h * 0.75f), h - 6);
-            BufferedImage img = new BufferedImage(w, croppedH, BufferedImage.TYPE_INT_ARGB);
-            java.awt.Graphics2D g2 = img.createGraphics();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-            g2.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
-            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-            icon.paintIcon(null, g2, 0, -2);
-            g2.dispose();
+            java.awt.Color fg = s.colorRaw != null ? parseCssColor(s.colorRaw) : plainFg;
+            BufferedImage img = rasterizeFormula(formula, display, fg);
 
             imgs.add(img);
             totalWidth += img.getWidth();
@@ -380,10 +370,6 @@ final class LatexImageRenderer {
 
         BufferedImage out = new BufferedImage(Math.max(1, totalWidth), Math.max(1, maxHeight), BufferedImage.TYPE_INT_ARGB);
         java.awt.Graphics2D g = out.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-        g.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
         int x = 0;
         for (BufferedImage bi : imgs) {
             g.drawImage(bi, x, 0, null);
@@ -392,6 +378,8 @@ final class LatexImageRenderer {
         g.dispose();
 
         ImageIO.write(out, "png", outFile.toFile());
+        return new LatexImage(outFile.toUri().toString(),
+                logicalSize(out.getWidth()), logicalSize(out.getHeight()));
     }
 
     private static boolean containsLatexColorCommand(String normalized) {
