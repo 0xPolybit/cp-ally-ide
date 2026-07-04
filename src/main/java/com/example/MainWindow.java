@@ -138,9 +138,11 @@ public class MainWindow {
     private enum ZoomTarget { EDITOR, PROBLEM }
     private ZoomTarget activeZoomTarget = ZoomTarget.EDITOR;
     private JMenuItem userMenuItem;
+    private JMenuItem showProfileMenuItem;
     private JLabel loggedInLabel;
     private JLabel submissionStatusLabel;
     private CodeforcesUserService cfUserService;
+    private CodeforcesProfileService cfProfileService;
     private String codeforcesUsername = "";
 
     public void showWindow() {
@@ -159,6 +161,7 @@ public class MainWindow {
         codeforcesService = new CodeforcesService(appDataDir);
         problemSheetsService = new ProblemSheetsService();
         cfUserService = new CodeforcesUserService();
+        cfProfileService = new CodeforcesProfileService();
         codeforcesUsername = appSettings != null ? appSettings.codeforcesUsername() : "";
 
         JFrame frame = new JFrame(APP_NAME + " v" + CURRENT_APP_VERSION);
@@ -393,6 +396,10 @@ public class MainWindow {
         userMenuItem = new JMenuItem(codeforcesUsername.isEmpty() ? "Add User" : "Logout User");
         userMenuItem.addActionListener(e -> onUserMenuClicked());
         fileMenu.add(userMenuItem);
+        showProfileMenuItem = new JMenuItem("Show Profile");
+        showProfileMenuItem.addActionListener(e -> onShowProfileClicked());
+        showProfileMenuItem.setEnabled(!codeforcesUsername.isEmpty());
+        fileMenu.add(showProfileMenuItem);
         fileMenu.addSeparator();
         fileMenu.add(chooseDifferentProblemItem);
         fileMenu.add(openEmptyProblemItem);
@@ -2213,8 +2220,15 @@ public class MainWindow {
         if (mainFrame != null) persistSettings(mainFrame);
         if (userMenuItem != null)
             userMenuItem.setText(username.isEmpty() ? "Add User" : "Logout User");
+        if (showProfileMenuItem != null)
+            showProfileMenuItem.setEnabled(!username.isEmpty());
         updateLoggedInLabel();
         refreshSubmissionStatus();
+    }
+
+    private void onShowProfileClicked() {
+        if (codeforcesUsername.isEmpty() || cfProfileService == null) return;
+        UserProfileDialog.show(mainFrame, codeforcesUsername, cfProfileService, appThemePalette);
     }
 
     private void updateLoggedInLabel() {
