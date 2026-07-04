@@ -44,6 +44,12 @@ class ProblemHtmlRenderer {
         this.iconSourceCache.clear();
     }
 
+    /** Drops in-memory pointers to cached files; call after the disk cache is deleted. */
+    void clearMemoryCaches() {
+        iconSourceCache.clear();
+        latexImageRenderer.clearMemoryCache();
+    }
+
     RenderedProblemView render(ProblemDetails details) {
         Map<String, String> copyPayloads = new HashMap<>();
         String problemHtml = prepareProblemHtml(details.problemHtml(), copyPayloads, details.code());

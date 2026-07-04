@@ -391,7 +391,7 @@ public class MainWindow {
         refreshProblemItem.addActionListener(e -> refreshCurrentProblem());
         refreshProblemItem.setEnabled(false);
         JMenuItem exitItem = new JMenuItem("Exit");
-        exitItem.addActionListener(e -> System.exit(0));
+        exitItem.addActionListener(e -> shutdownAndExit());
         fileMenu.add(preferencesItem);
         userMenuItem = new JMenuItem(codeforcesUsername.isEmpty() ? "Add User" : "Logout User");
         userMenuItem.addActionListener(e -> onUserMenuClicked());
@@ -478,6 +478,15 @@ public class MainWindow {
         if (response == JOptionPane.YES_OPTION) {
             programCacheRepository.clearAll();
             codeforcesService.clearProblemCache();
+            if (problemHtmlRenderer != null) {
+                // Cached LaTeX/icon files were just deleted from disk; drop the
+                // in-memory URIs so re-renders regenerate them instead of
+                // pointing at missing files.
+                problemHtmlRenderer.clearMemoryCaches();
+            }
+            if (cfUserService != null) {
+                cfUserService.clearCache();
+            }
             JOptionPane.showMessageDialog(
                     mainFrame,
                     "All cache cleared successfully.",
@@ -542,10 +551,7 @@ public class MainWindow {
                             "The app theme has been updated. Please reopen the program to reflect all changes.",
                             APP_NAME,
                             JOptionPane.INFORMATION_MESSAGE);
-                    if (mainFrame != null) {
-                        mainFrame.dispose();
-                    }
-                    System.exit(0);
+                    shutdownAndExit();
                     return;
                 }
                 if (codeEditor != null) {
@@ -1405,7 +1411,7 @@ public class MainWindow {
                     DiagnosticLogger.error("[MainWindow] Failed to fetch CodeForces problem " + rawCode, ex);
                     restoreProblemEntryPanelWithError("Could not fetch that problem.");
                     JOptionPane.showMessageDialog(
-                            null,
+                            mainFrame,
                             "Could not fetch the specified CodeForces problem. Please verify the code and try again.",
                             APP_NAME,
                             JOptionPane.WARNING_MESSAGE);
@@ -1447,7 +1453,7 @@ public class MainWindow {
     private void showFetchWarning(String message) {
         fetchStatusLabel.setForeground(currentThemePalette().errorColor());
         fetchStatusLabel.setText(message);
-        JOptionPane.showMessageDialog(null, message, APP_NAME, JOptionPane.WARNING_MESSAGE);
+        JOptionPane.showMessageDialog(mainFrame, message, APP_NAME, JOptionPane.WARNING_MESSAGE);
     }
 
     private JLabel createLoadingLabel(String text) {
@@ -1712,8 +1718,7 @@ public class MainWindow {
             return;
         }
 
-        saveCurrentProgramToCache();
-        showEmptyProblemView();
+        showEmptyProblemView(); // saves the current program before switching
     }
 
     private void copyToClipboard(String text) {
@@ -2220,9 +2225,20 @@ public class MainWindow {
             String input = (String) JOptionPane.showInputDialog(
                     mainFrame, "Enter your Codeforces username:", "Add User",
                     JOptionPane.PLAIN_MESSAGE, null, null, "");
-            if (input != null && !input.isBlank()) {
-                saveUsername(input.trim());
+            if (input == null || input.isBlank()) {
+                return;
             }
+            String handle = input.trim();
+            if (!handle.matches("[A-Za-z0-9_.-]{1,24}")) {
+                JOptionPane.showMessageDialog(
+                        mainFrame,
+                        "That does not look like a valid Codeforces handle.\n"
+                                + "Handles may only contain letters, digits, '_', '.' and '-'.",
+                        "Invalid Handle",
+                        JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            saveUsername(handle);
         } else {
             int confirm = JOptionPane.showConfirmDialog(
                     mainFrame, "Log out " + codeforcesUsername + "?",
@@ -2282,6 +2298,8 @@ public class MainWindow {
                 try {
                     String verdict = get();
                     if (submissionStatusLabel == null) return;
+                    // A newer problem (or logout) may have superseded this request.
+                    if (!code.equals(currentProblemCode) || !handle.equals(codeforcesUsername)) return;
                     if (verdict == null || verdict.isEmpty()) {
                         submissionStatusLabel.setText("");
                         submissionStatusLabel.setVisible(false);
@@ -2300,6 +2318,20 @@ public class MainWindow {
                 }
             }
         }.execute();
+    }
+
+    /** Saves the current code and settings before terminating, mirroring the window-close path. */
+    private void shutdownAndExit() {
+        try {
+            stopAutosave();
+            saveCurrentProgramToCache();
+            if (mainFrame != null) {
+                persistSettings(mainFrame);
+            }
+        } catch (Exception e) {
+            DiagnosticLogger.error("[MainWindow] Failed to persist state on exit", e);
+        }
+        System.exit(0);
     }
 
     private void persistSettings(JFrame frame) {

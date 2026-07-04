@@ -43,6 +43,11 @@ final class LatexImageRenderer {
         this.appDataDirectory = appDataDirectory;
     }
 
+    /** Drops in-memory pointers to cached files; call after the disk cache is deleted. */
+    void clearMemoryCache() {
+        latexImageCache.clear();
+    }
+
     void renderLatexNodes(Element root, AppThemePalette activePalette, double zoomFactor) {
         for (Element script : root.select("script[type^=math/tex]")) {
             String type = script.attr("type");
@@ -161,7 +166,8 @@ final class LatexImageRenderer {
             }
 
             String expression = text.substring(start + delimiterLength, end).trim();
-            boolean display = delimiterLength >= 2;
+            // $...$ and Codeforces' $$$...$$$ are inline; only $$...$$ is display math.
+            boolean display = delimiterLength == 2;
             LatexImage image = renderLatexToImage(expression, display, activePalette, contextElement);
             if (image == null) {
                 Element fallback = createProcessedTextSpan(text.substring(start, end + delimiterLength));

@@ -22,6 +22,7 @@ final class ProgramCacheRepository {
     private static final String KEY_LANGUAGE = "language";
     private static final String KEY_SOURCE_CODE = "source";
     private static final String KEY_SAVED_AT = "savedAt";
+    private static final int MAX_ENTRIES_PER_KEY = 3;
 
     private final Path cacheDirectory;
 
@@ -57,8 +58,36 @@ final class ProgramCacheRepository {
             try (OutputStream output = new BufferedOutputStream(Files.newOutputStream(cacheFile))) {
                 properties.store(output, "Competitive Programming Ally cache");
             }
+
+            pruneOldEntries(problemCode, language);
         } catch (IOException ignored) {
             // Cache persistence is best-effort only.
+        }
+    }
+
+    /**
+     * Autosave writes a new file every interval; without pruning the cache
+     * directory grows without bound. Keep only the newest few snapshots per
+     * problem + language.
+     */
+    private void pruneOldEntries(String problemCode, String language) {
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(cacheDirectory, "*" + FILE_EXTENSION)) {
+            java.util.List<CacheEntry> entries = java.util.stream.StreamSupport.stream(stream.spliterator(), false)
+                    .map(this::readCacheEntry)
+                    .flatMap(Optional::stream)
+                    .filter(entry -> Objects.equals(problemCode, entry.problemCode()) && Objects.equals(language, entry.language()))
+                    .sorted(Comparator.comparingLong(CacheEntry::savedAt).thenComparing(CacheEntry::fileName).reversed())
+                    .toList();
+
+            for (int i = MAX_ENTRIES_PER_KEY; i < entries.size(); i++) {
+                try {
+                    Files.deleteIfExists(cacheDirectory.resolve(entries.get(i).fileName()));
+                } catch (IOException ignored) {
+                    // Best-effort cleanup.
+                }
+            }
+        } catch (IOException ignored) {
+            // Best-effort cleanup.
         }
     }
 

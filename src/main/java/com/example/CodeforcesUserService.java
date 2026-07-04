@@ -49,7 +49,8 @@ class CodeforcesUserService {
         String result = "";
         HttpURLConnection conn = null;
         try {
-            URL url = URI.create(String.format(API_BASE, handle)).toURL();
+            URL url = URI.create(String.format(API_BASE,
+                    java.net.URLEncoder.encode(handle, StandardCharsets.UTF_8))).toURL();
             conn = (HttpURLConnection) url.openConnection();
             conn.setConnectTimeout(TIMEOUT_MS);
             conn.setReadTimeout(TIMEOUT_MS);

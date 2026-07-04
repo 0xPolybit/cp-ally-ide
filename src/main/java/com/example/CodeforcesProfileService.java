@@ -35,7 +35,8 @@ class CodeforcesProfileService {
     private static final Pattern CREATION_PAT    = Pattern.compile("\"creationTimeSeconds\"\\s*:\\s*(\\d+)");
 
     UserProfile fetchProfile(String handle) throws Exception {
-        String infoJson = httpGet(String.format(USER_INFO_URL, handle));
+        String encodedHandle = java.net.URLEncoder.encode(handle, StandardCharsets.UTF_8);
+        String infoJson = httpGet(String.format(USER_INFO_URL, encodedHandle));
         if (infoJson == null)
             throw new IOException("No response from Codeforces API");
         if (infoJson.contains("\"status\":\"FAILED\"")) {
@@ -75,7 +76,7 @@ class CodeforcesProfileService {
 
         int problemsSolved = 0, totalSubmissions = 0, currentStreak = 0, longestStreak = 0;
         try {
-            String statusJson = httpGet(String.format(USER_STATUS_URL, handle));
+            String statusJson = httpGet(String.format(USER_STATUS_URL, encodedHandle));
             if (statusJson != null && !statusJson.contains("\"status\":\"FAILED\"")) {
                 int[] stats  = parseSubmissionStats(statusJson);
                 problemsSolved   = stats[0];

@@ -106,7 +106,14 @@ final class TestCasesPanel {
         for (int i = 0; i < customTestCases.size(); i++) {
             int customIndex = i;
             String title = "Custom Test Case " + (i + 1);
-            testCasesTabs.addTab(title, createTestCasePanel(customTestCases.get(i)));
+            // Renumber the spec so results dialogs match the tab title after deletions.
+            CodeExecutionService.TestCaseSpec spec = customTestCases.get(i);
+            if (!title.equals(spec.displayName())) {
+                spec = new CodeExecutionService.TestCaseSpec(
+                        spec.input(), spec.expectedOutput(), spec.custom(), spec.expectedOutputProvided(), title);
+                customTestCases.set(i, spec);
+            }
+            testCasesTabs.addTab(title, createTestCasePanel(spec));
             testCasesTabs.setTabComponentAt(sampleTestCases.size() + i, createClosableTabHeader(title, () -> {
                 if (customIndex >= 0 && customIndex < customTestCases.size()) {
                     customTestCases.remove(customIndex);

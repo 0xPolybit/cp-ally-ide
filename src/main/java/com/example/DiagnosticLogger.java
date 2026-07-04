@@ -17,13 +17,30 @@ public final class DiagnosticLogger {
     private DiagnosticLogger() {
     }
 
+    private static final long MAX_LOG_SIZE_BYTES = 1_000_000L;
+
     public static void initialize(Path appDataDirectory) {
         try {
             Files.createDirectories(appDataDirectory);
-            logFile = appDataDirectory.resolve("diagnostics.log");
+            Path candidate = appDataDirectory.resolve("diagnostics.log");
+            rotateIfOversized(candidate);
+            logFile = candidate;
             info("Diagnostic logger initialized. Log file: " + logFile.toAbsolutePath());
         } catch (Exception e) {
             System.err.println("Failed to initialize DiagnosticLogger: " + e.getMessage());
+        }
+    }
+
+    /** Keeps the log bounded: when it grows past the limit, roll it to *.old (replacing any previous roll). */
+    private static void rotateIfOversized(Path candidate) {
+        try {
+            if (Files.exists(candidate) && Files.size(candidate) > MAX_LOG_SIZE_BYTES) {
+                Path rolled = candidate.resolveSibling("diagnostics.log.old");
+                Files.deleteIfExists(rolled);
+                Files.move(candidate, rolled);
+            }
+        } catch (IOException ignored) {
+            // Rotation is best-effort; logging continues on the existing file.
         }
     }
 

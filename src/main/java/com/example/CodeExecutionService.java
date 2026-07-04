@@ -21,6 +21,13 @@ class CodeExecutionService {
     private static final long COMPILE_TIMEOUT_MILLIS = 60_000L;
     private static final long RUN_TIMEOUT_MILLIS = 2_000L;
 
+    // Toolchain lookups spawn `where`/`command -v` subprocesses (up to 3s each)
+    // and are triggered from the EDT on every language change — memoize them.
+    // Installed toolchains rarely change while the app is running.
+    private final java.util.concurrent.ConcurrentHashMap<String, Boolean> commandAvailabilityCache =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private volatile String cachedPythonCommand;
+
     LanguageSupport detectSupport(String language) {
         LanguagePlan plan = resolvePlan(language);
         if (plan == null) {
@@ -265,12 +272,13 @@ class CodeExecutionService {
 
         String normalized = language.trim();
         if (normalized.startsWith("Python") || normalized.startsWith("PyPy")) {
+            String pythonCommand = resolvePythonCommand();
             return new LanguagePlan(
                     "Main.py",
-                    List.of(resolvePythonCommand()),
+                    List.of(pythonCommand),
                     true,
                     (sourceFile, workDir) -> List.of(),
-                    (sourceFile, workDir) -> List.of(resolvePythonCommand(), sourceFile.toString()));
+                    (sourceFile, workDir) -> List.of(pythonCommand, sourceFile.toString()));
         }
         if (normalized.startsWith("GNU G++17")) {
             return compiledCppPlan("Main.cpp", "g++", "-std=c++17");
@@ -370,12 +378,14 @@ class CodeExecutionService {
                     (sourceFile, workDir) -> List.of(workDir.resolve(executableName()).toAbsolutePath().toString()));
         }
         if (normalized.startsWith("Scala")) {
+            // `scala Main.scala` compiles and runs the file's main object directly;
+            // running `scala -cp <dir> Main` would require a separate compile step.
             return new LanguagePlan(
                     "Main.scala",
-                    List.of("scalac", "scala"),
+                    List.of("scala"),
                     true,
                     (sourceFile, workDir) -> List.of(),
-                    (sourceFile, workDir) -> List.of("scala", "-cp", workDir.toAbsolutePath().toString(), "Main"));
+                    (sourceFile, workDir) -> List.of("scala", sourceFile.getFileName().toString()));
         }
         if (normalized.startsWith("Pascal")) {
             return new LanguagePlan(
@@ -416,14 +426,22 @@ class CodeExecutionService {
         builder.redirectErrorStream(false);
         Process process = builder.start();
 
-        ExecutorService executor = Executors.newFixedThreadPool(2);
+        ExecutorService executor = Executors.newFixedThreadPool(3);
         Future<String> stdoutFuture = executor.submit(() -> readStream(process.getInputStream()));
         Future<String> stderrFuture = executor.submit(() -> readStream(process.getErrorStream()));
 
-        try (OutputStream stdin = process.getOutputStream()) {
-            stdin.write(input.getBytes(StandardCharsets.UTF_8));
-            stdin.flush();
-        }
+        // Feed stdin on its own thread: a large input can exceed the pipe buffer
+        // and block, and a program that exits without reading everything causes
+        // a broken-pipe IOException — neither should stall or abort the run.
+        executor.submit(() -> {
+            try (OutputStream stdin = process.getOutputStream()) {
+                stdin.write(input.getBytes(StandardCharsets.UTF_8));
+                stdin.flush();
+            } catch (IOException ignored) {
+                // Process exited without consuming its input.
+            }
+            return null;
+        });
 
         // Memory sampler runs on its own daemon thread so OS queries do not
         // inflate the wall-clock time measured in the loop below.
@@ -543,6 +561,10 @@ class CodeExecutionService {
     }
 
     private boolean isCommandAvailable(String command) {
+        return commandAvailabilityCache.computeIfAbsent(command, this::probeCommandAvailable);
+    }
+
+    private boolean probeCommandAvailable(String command) {
         try {
             ProcessBuilder builder;
             if (isWindows()) {
@@ -567,13 +589,20 @@ class CodeExecutionService {
     }
 
     private String resolvePythonCommand() {
+        String cached = cachedPythonCommand;
+        if (cached != null) {
+            return cached;
+        }
+        String resolved;
         if (isCommandAvailable("py")) {
-            return "py";
+            resolved = "py";
+        } else if (isCommandAvailable("python3")) {
+            resolved = "python3";
+        } else {
+            resolved = "python";
         }
-        if (isCommandAvailable("python3")) {
-            return "python3";
-        }
-        return "python";
+        cachedPythonCommand = resolved;
+        return resolved;
     }
 
     private String normalizeOutput(String text) {
