@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel in-progress runs for the same branch when a new commit is pushed.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Build on both Linux and Windows so cross-platform regressions
+        # (e.g. file separators, shell quoting in the curl subprocess)
+        # are caught even though the shipping target is Windows.
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Show build environment
+        run: |
+          java -version
+          mvn -v
+          echo "OS: ${{ matrix.os }}"
+
+      - name: Compile
+        # Catch syntax / API errors first; faster than full package.
+        run: mvn -B -ntp -DskipTests clean compile
+
+      - name: Package (fat JAR)
+        # Produces the self-contained JAR the installer wraps. `-DskipTests`
+        # is used because the project has no test suite yet (per HANDOFF.md).
+        run: mvn -B -ntp -DskipTests clean package
+
+      - name: Verify shaded JAR was produced
+        shell: bash
+        run: |
+          set -e
+          ls -lh target/cp-ally-ide-*.jar
+          # Sanity-check that the JAR is a valid, runnable fat JAR
+          # by listing its main class in the manifest.
+          if command -v unzip >/dev/null 2>&1; then
+            unzip -p target/cp-ally-ide-*.jar META-INF/MANIFEST.MF | grep -i 'Main-Class'
+          fi
+
+      - name: Upload fat JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: cp-ally-ide-${{ matrix.os }}
+          path: target/cp-ally-ide-*.jar
+          if-no-files-found: error
+          retention-days: 14
