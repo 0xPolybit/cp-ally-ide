@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - "dependencies"
+    # Group multiple patch/minor updates into a single PR to keep
+    # the noise level manageable; majors still get their own PR.
+    groups:
+      flatlaf-and-rsyntaxtextarea:
+        patterns:
+          - "com.formdev:flatlaf"
+          - "com.fifesoft:rsyntaxtextarea"
+      jsoup-and-jlatexmath:
+        patterns:
+          - "org.jsoup:jsoup"
+          - "org.scilab.forge:jlatexmath*"
+      maven-plugins:
+        patterns:
+          - "org.apache.maven.plugins:*"
+          - "org.codehaus.mojo:*"
