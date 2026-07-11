@@ -1409,10 +1409,15 @@ public class MainWindow {
                     showCodeforcesProblemView(contestId + index, renders[0], renders[1]);
                 } catch (Exception ex) {
                     DiagnosticLogger.error("[MainWindow] Failed to fetch CodeForces problem " + rawCode, ex);
+                    // Surface the underlying cause (network, bot-check, missing markup, etc.)
+                    // instead of a generic message so the user can tell what actually went wrong.
+                    String cause = ex.getMessage() != null && !ex.getMessage().isBlank()
+                            ? ex.getMessage()
+                            : ex.getClass().getSimpleName();
                     restoreProblemEntryPanelWithError("Could not fetch that problem.");
                     JOptionPane.showMessageDialog(
                             mainFrame,
-                            "Could not fetch the specified CodeForces problem. Please verify the code and try again.",
+                            "Could not fetch the specified CodeForces problem.\n\nDetails: " + cause,
                             APP_NAME,
                             JOptionPane.WARNING_MESSAGE);
                 }
