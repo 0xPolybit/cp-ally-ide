@@ -43,3 +43,6 @@ buildNumber.properties
 !.vscode/*.code-snippets
 # Local handoff / agent notes
 HANDOFF.md
+
+# Throwaway scratch / smoke tests (not part of the build)
+/.scratch/
