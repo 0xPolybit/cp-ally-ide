@@ -15,7 +15,9 @@ import java.net.URI;
 import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 class CodeforcesService {
@@ -67,6 +69,10 @@ class CodeforcesService {
     }
 
     private ProblemDetails fetchProblemDetailsFromHost(String host, String contestId, String index) throws IOException {
+        // Cookie bootstrap is best-effort: a transient 4xx/5xx or network blip on the
+        // root should NOT abort the whole fetch — the problem page can still be tried
+        // with empty cookies. This was previously the single biggest point of failure
+        // (PROBLEM_HOSTS has only one entry, so a hard fail here short-circuited everything).
         Map<String, String> cookies = bootstrapCookies(host);
         IOException lastError = null;
 
@@ -80,10 +86,13 @@ class CodeforcesService {
                 }
 
                 Element statementRoot = extractStatementRoot(document, host);
-                if (statementRoot == null) {
+                if (!looksLikeValidProblem(statementRoot)) {
                     int statusCode = responseStatusCode(document);
                     String statusSuffix = statusCode > 0 ? " (HTTP " + statusCode + ")" : "";
-                    throw new IOException("Missing problem statement from " + url + statusSuffix);
+                    String detail = statementRoot == null
+                            ? "Missing problem statement from " + url + statusSuffix
+                            : "Problem markup at " + url + statusSuffix + " lacked a problem header";
+                    throw new IOException(detail);
                 }
 
                 Element titleElement = statementRoot.selectFirst("div.header div.title");
@@ -104,37 +113,74 @@ class CodeforcesService {
         throw new IOException("Could not fetch problem statement from " + host);
     }
 
-    private Map<String, String> bootstrapCookies(String host) throws IOException {
-        Connection.Response response = Jsoup.connect(host)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-                .referrer("https://codeforces.com/")
-                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-                .header("Accept-Language", "en-US,en;q=0.9")
-                .followRedirects(true)
-                .ignoreHttpErrors(true)
-                .maxBodySize(0)
-                .timeout(FETCH_TIMEOUT_MS)
-                .execute();
+    /**
+     * Best-effort session cookie bootstrap. Returns an empty map on any failure
+     * (network error, non-2xx response, bot-check page) so the caller can still
+     * try the actual problem page.
+     */
+    private Map<String, String> bootstrapCookies(String host) {
+        try {
+            Connection.Response response = Jsoup.connect(host)
+                    .userAgent(BROWSER_USER_AGENT)
+                    .referrer("https://codeforces.com/")
+                    .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                    .header("Accept-Language", "en-US,en;q=0.9")
+                    .header("DNT", "1")
+                    .header("Sec-CH-UA", SEC_CH_UA)
+                    .header("Sec-CH-UA-Mobile", SEC_CH_UA_MOBILE)
+                    .header("Sec-CH-UA-Platform", SEC_CH_UA_PLATFORM)
+                    .header("Sec-Fetch-Dest", "document")
+                    .header("Sec-Fetch-Mode", "navigate")
+                    .header("Sec-Fetch-Site", "none")
+                    .header("Sec-Fetch-User", "?1")
+                    .header("Upgrade-Insecure-Requests", "1")
+                    .followRedirects(true)
+                    .ignoreHttpErrors(true)
+                    .maxBodySize(0)
+                    .timeout(FETCH_TIMEOUT_MS)
+                    .execute();
 
-        if (response.statusCode() >= 400) {
-            throw new IOException("Failed to bootstrap Codeforces cookies from " + host + " (HTTP " + response.statusCode() + ")");
+            if (response.statusCode() >= 400) {
+                DiagnosticLogger.warn("[CodeforcesService] Cookie bootstrap returned HTTP "
+                        + response.statusCode() + " from " + host + " — continuing without session cookies");
+                return Map.of();
+            }
+
+            String body = response.body();
+            if (looksLikeBotCheckHtml(body)) {
+                DiagnosticLogger.warn("[CodeforcesService] Cookie bootstrap got a bot-check page from "
+                        + host + " — continuing without session cookies");
+                return Map.of();
+            }
+
+            return new HashMap<>(response.cookies());
+        } catch (IOException e) {
+            DiagnosticLogger.warn("[CodeforcesService] Cookie bootstrap failed for " + host
+                    + " — continuing without session cookies: " + e.getMessage());
+            return Map.of();
         }
-
-        return new HashMap<>(response.cookies());
     }
 
     private Document fetchDocument(String url, Map<String, String> cookies) throws IOException {
         try {
-            return fetchDocumentWithCurl(url);
+            return fetchDocumentWithCurl(url, cookies);
         } catch (IOException curlError) {
             DiagnosticLogger.error("[CodeforcesService] curl fetch failed for " + url, curlError);
         }
 
         return Jsoup.connect(url)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+                .userAgent(BROWSER_USER_AGENT)
                 .referrer("https://codeforces.com/")
                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
                 .header("Accept-Language", "en-US,en;q=0.9")
+                .header("DNT", "1")
+                .header("Sec-CH-UA", SEC_CH_UA)
+                .header("Sec-CH-UA-Mobile", SEC_CH_UA_MOBILE)
+                .header("Sec-CH-UA-Platform", SEC_CH_UA_PLATFORM)
+                .header("Sec-Fetch-Dest", "document")
+                .header("Sec-Fetch-Mode", "navigate")
+                .header("Sec-Fetch-Site", "none")
+                .header("Sec-Fetch-User", "?1")
                 .header("Upgrade-Insecure-Requests", "1")
                 .cookies(cookies)
                 .followRedirects(true)
@@ -144,25 +190,63 @@ class CodeforcesService {
                 .get();
     }
 
-    private Document fetchDocumentWithCurl(String url) throws IOException {
+    private static final String BROWSER_USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+    // User-Agent Client Hints (UA-CH). Codeforces sits behind Cloudflare and now
+    // gates requests on these — without them Cloudflare returns HTTP 403 to every
+    // request, regardless of User-Agent. Values mirror a real Chrome 124 on Windows.
+    private static final String SEC_CH_UA =
+            "\"Chromium\";v=\"124\", \"Google Chrome\";v=\"124\", \"Not-A.Brand\";v=\"99\"";
+    private static final String SEC_CH_UA_MOBILE = "?0";
+    private static final String SEC_CH_UA_PLATFORM = "\"Windows\"";
+
+    private Document fetchDocumentWithCurl(String url, Map<String, String> cookies) throws IOException {
         String curlCommand = isWindows() ? "curl.exe" : "curl";
-        Process process = new ProcessBuilder(
-                curlCommand,
-                "--silent",
-                "--show-error",
-                "--location",
-                "--compressed",
-                "--user-agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                "--referer",
-                "https://codeforces.com/",
-                "--header",
-                "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "--header",
-                "Accept-Language: en-US,en;q=0.9",
-                "--header",
-                "Upgrade-Insecure-Requests: 1",
-                url)
+        List<String> command = new ArrayList<>();
+        command.add(curlCommand);
+        command.add("--silent");
+        command.add("--show-error");
+        command.add("--location");
+        command.add("--compressed");
+        command.add("--user-agent");
+        command.add(BROWSER_USER_AGENT);
+        command.add("--referer");
+        command.add("https://codeforces.com/");
+        command.add("--header");
+        command.add("Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+        command.add("--header");
+        command.add("Accept-Language: en-US,en;q=0.9");
+        // Note: do NOT pass an explicit Accept-Encoding here — let curl's
+        // --compressed flag advertise only the encodings the bundled curl
+        // can actually decode. Listing "br" breaks against curl builds that
+        // don't ship brotli (exit code 61, "Unrecognized content encoding").
+        command.add("--header");
+        command.add("DNT: 1");
+        command.add("--header");
+        command.add("Sec-CH-UA: " + SEC_CH_UA);
+        command.add("--header");
+        command.add("Sec-CH-UA-Mobile: " + SEC_CH_UA_MOBILE);
+        command.add("--header");
+        command.add("Sec-CH-UA-Platform: " + SEC_CH_UA_PLATFORM);
+        command.add("--header");
+        command.add("Sec-Fetch-Dest: document");
+        command.add("--header");
+        command.add("Sec-Fetch-Mode: navigate");
+        command.add("--header");
+        command.add("Sec-Fetch-Site: none");
+        command.add("--header");
+        command.add("Sec-Fetch-User: ?1");
+        command.add("--header");
+        command.add("Upgrade-Insecure-Requests: 1");
+        String cookieHeader = formatCookieHeader(cookies);
+        if (cookieHeader != null) {
+            command.add("--cookie");
+            command.add(cookieHeader);
+        }
+        command.add(url);
+
+        Process process = new ProcessBuilder(command)
                 .redirectErrorStream(true)
                 .start();
 
@@ -186,6 +270,32 @@ class CodeforcesService {
             process.destroy();
             throw new IOException("Interrupted while fetching " + url, e);
         }
+    }
+
+    /**
+     * Renders the cookie map as a single {@code "name=value; name2=value2"} string
+     * suitable for {@code curl --cookie}. Returns {@code null} if there are no usable
+     * cookies (so the caller can skip the flag entirely).
+     */
+    private static String formatCookieHeader(Map<String, String> cookies) {
+        if (cookies == null || cookies.isEmpty()) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder();
+        boolean first = true;
+        for (Map.Entry<String, String> entry : cookies.entrySet()) {
+            String name = entry.getKey();
+            String value = entry.getValue();
+            if (name == null || name.isEmpty() || value == null) {
+                continue;
+            }
+            if (!first) {
+                sb.append("; ");
+            }
+            sb.append(name).append('=').append(value);
+            first = false;
+        }
+        return sb.length() == 0 ? null : sb.toString();
     }
 
     private boolean isWindows() {
@@ -223,17 +333,58 @@ class CodeforcesService {
     }
 
     private boolean looksLikeBotCheck(Document document) {
-        return looksLikeBotCheckHtml(document.text());
+        if (document == null) {
+            return false;
+        }
+        // Check the visible text (what the user would see) AND the raw HTML
+        // (some Cloudflare challenge pages put the markers in <script> blocks
+        // or attributes that .text() strips out).
+        if (looksLikeBotCheckHtml(document.text())) {
+            return true;
+        }
+        Element head = document.head();
+        String outerHtml = head != null ? head.outerHtml() : "";
+        return looksLikeBotCheckHtml(outerHtml);
     }
 
     private boolean looksLikeBotCheckHtml(String html) {
-        if (html == null) {
+        if (html == null || html.isEmpty()) {
             return false;
         }
         String lowered = html.toLowerCase();
-        return lowered.contains("browser is being checked")
+        // Legacy Codeforces anti-bot markers
+        if (lowered.contains("browser is being checked")
                 || lowered.contains("please wait")
-                || lowered.contains("security check");
+                || lowered.contains("security check")) {
+            return true;
+        }
+        // Cloudflare challenge markers (modern UA-gated challenges)
+        if (lowered.contains("cf-mitigated")
+                || lowered.contains("cf-chl")
+                || lowered.contains("challenge-running")
+                || lowered.contains("challenge-stage")
+                || lowered.contains("cf_chl_opt")
+                || lowered.contains("just a moment")
+                || lowered.contains("checking your browser before accessing")
+                || lowered.contains("attention required")
+                || lowered.contains("access denied")
+                || lowered.contains("verify you are human")) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * A real Codeforces problem statement always contains a {@code div.header} block
+     * with the title, time/memory limits, etc. If our heuristic-matched root element
+     * lacks it (e.g. we matched a generic {@code div#pageContent} on an error page
+     * or a redirect), treat the response as a failed fetch and try the next template.
+     */
+    private boolean looksLikeValidProblem(Element statementRoot) {
+        if (statementRoot == null) {
+            return false;
+        }
+        return statementRoot.selectFirst("div.header") != null;
     }
 
     private int responseStatusCode(Document document) {
