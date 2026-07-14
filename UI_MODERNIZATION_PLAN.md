@@ -1214,7 +1214,7 @@ After Slice 00 merges, complete Slice 01 so CI protects existing pure behavior. 
 ## 15. Slice tracking checklist
 
 - [x] Slice 00 — Capture the baseline
-- [ ] Slice 01 — Add UI-logic test foundations
+- [x] Slice 01 — Add UI-logic test foundations
 - [ ] Slice 02 — Introduce UI tokens and repair color semantics
 - [ ] Slice 03 — Centralize FlatLaf and theme application
 - [ ] Slice 04 — Build reusable UI primitives

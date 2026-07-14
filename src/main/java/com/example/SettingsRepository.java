@@ -14,11 +14,24 @@ class SettingsRepository {
     private final String settingsDirName;
     private final String settingsFileName;
     private final String defaultLanguage;
+    private final Path explicitSettingsFile;
 
     SettingsRepository(String settingsDirName, String settingsFileName, String defaultLanguage) {
         this.settingsDirName = settingsDirName;
         this.settingsFileName = settingsFileName;
         this.defaultLanguage = defaultLanguage;
+        this.explicitSettingsFile = null;
+    }
+
+    /**
+     * Test-friendly constructor that keeps production storage behavior intact
+     * while allowing settings persistence to be exercised in a temporary folder.
+     */
+    SettingsRepository(Path settingsFile, String defaultLanguage) {
+        this.settingsDirName = null;
+        this.settingsFileName = null;
+        this.defaultLanguage = defaultLanguage;
+        this.explicitSettingsFile = settingsFile;
     }
 
     AppSettings load() {
@@ -94,6 +107,10 @@ class SettingsRepository {
     }
 
     private Path getSettingsFilePath() {
+        if (explicitSettingsFile != null) {
+            return explicitSettingsFile;
+        }
+
         String appData = System.getenv("APPDATA");
         Path basePath;
         if (appData != null && !appData.isBlank()) {
