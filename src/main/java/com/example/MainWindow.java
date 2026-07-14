@@ -121,6 +121,11 @@ public class MainWindow {
     private boolean problemStatementLoaded;
     private boolean currentProblemIsEmpty;
     private String currentProblemCode;
+    private ProblemViewState problemViewState = ProblemViewState.empty();
+    private RuntimeViewState runtimeViewState = RuntimeViewState.checking(DEFAULT_LANGUAGE);
+    private ExecutionViewState executionViewState = ExecutionViewState.idle(DEFAULT_LANGUAGE);
+    private SaveState saveState = SaveState.DISABLED;
+    private long problemRequestSequence;
     private AppThemePalette appThemePalette = AppThemePalette.dark();
     private final ThemeManager themeManager = new ThemeManager();
     private final ActionRegistry actionRegistry = new ActionRegistry();
@@ -143,6 +148,7 @@ public class MainWindow {
     private CodeforcesUserService cfUserService;
     private CodeforcesProfileService cfProfileService;
     private String codeforcesUsername = "";
+    private boolean updatingEditorContent;
 
     public void showWindow() {
         appSettings = settingsRepository.load();
@@ -827,7 +833,23 @@ public class MainWindow {
             appSettings != null && appSettings.useTabsAsSpaces(),
             appSettings != null ? appSettings.tabSpacing() : 4);
         installEditorAutoPairs(codeEditor);
-        codeEditor.setText("Select a problem to get started...");
+        codeEditor.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            @Override
+            public void insertUpdate(javax.swing.event.DocumentEvent event) {
+                markEditorDirty();
+            }
+
+            @Override
+            public void removeUpdate(javax.swing.event.DocumentEvent event) {
+                markEditorDirty();
+            }
+
+            @Override
+            public void changedUpdate(javax.swing.event.DocumentEvent event) {
+                markEditorDirty();
+            }
+        });
+        replaceEditorText("Select a problem to get started...");
         codeEditor.setCaretPosition(0);
         codeEditor.addMouseListener(new MouseAdapter() {
             @Override
@@ -1358,8 +1380,11 @@ public class MainWindow {
 
         String contestId = matcher.group(1);
         String index = matcher.group(2).toUpperCase();
+        String requestedProblemCode = contestId + index;
+        long requestId = ++problemRequestSequence;
 
-        showLeftPanelLoading(contestId + index);
+        problemViewState = ProblemViewState.loading(requestedProblemCode);
+        showLeftPanelLoading(requestedProblemCode);
 
         final ProblemDetails[] fetched = new ProblemDetails[1];
         SwingWorker<RenderedProblemView[], Void> worker = new SwingWorker<>() {
@@ -1380,12 +1405,20 @@ public class MainWindow {
 
             @Override
             protected void done() {
+                // A newer fetch may have replaced this request while the network
+                // worker was running. Its result must not overwrite the newer view.
+                if (requestId != problemRequestSequence) {
+                    return;
+                }
                 try {
                     RenderedProblemView[] renders = get();
                     currentProblemDetails = fetched[0];
                     showCodeforcesProblemView(contestId + index, renders[0], renders[1]);
                 } catch (Exception ex) {
                     DiagnosticLogger.error("[MainWindow] Failed to fetch CodeForces problem " + rawCode, ex);
+                    problemViewState = ProblemViewState.error(
+                            requestedProblemCode,
+                            ex.getMessage() == null ? "Could not fetch that problem." : ex.getMessage());
                     restoreProblemEntryPanelWithError("Could not fetch that problem.");
                     JOptionPane.showMessageDialog(
                             mainFrame,
@@ -1441,6 +1474,7 @@ public class MainWindow {
     }
 
     private void showLeftPanelLoading(String problemCode) {
+        problemViewState = ProblemViewState.loading(problemCode);
         actionRegistry.setEnabled(ActionRegistry.Id.FETCH_PROBLEM, false);
         fetchProblemButton.setEnabled(false);
         fetchStatusLabel.setForeground(currentThemePalette().mutedTextColor());
@@ -1683,6 +1717,9 @@ public class MainWindow {
 
         currentProblemCode = problemCode;
         problemStatementLoaded = true;
+        problemViewState = emptyProblem
+                ? ProblemViewState.empty()
+                : ProblemViewState.loaded(problemCode, currentProblemDetails);
         enableEditorForProblem();
     }
 
@@ -1711,13 +1748,11 @@ public class MainWindow {
             codeEditor.setRequestFocusEnabled(true);
         }
 
-        if (refreshProblemItem != null) {
-            actionRegistry.setEnabled(ActionRegistry.Id.REFRESH_PROBLEM, !currentProblemIsEmpty);
-        }
-
-        if (addTestCaseItem != null) {
-            actionRegistry.setEnabled(ActionRegistry.Id.ADD_TEST_CASE, true);
-        }
+        boolean problemUsable = problemViewState.usable();
+        actionRegistry.setEnabled(
+                ActionRegistry.Id.REFRESH_PROBLEM,
+                problemUsable && !currentProblemIsEmpty);
+        actionRegistry.setEnabled(ActionRegistry.Id.ADD_TEST_CASE, problemUsable);
 
         applyLanguageTemplateOrCachedProgram();
         updateExecutionAvailability();
@@ -1742,9 +1777,10 @@ public class MainWindow {
 
         if (cachedProgram != null) {
             codeEditor.setSyntaxEditingStyle(resolveSyntaxStyle(language));
-            codeEditor.setText(cachedProgram);
+            replaceEditorText(cachedProgram);
             codeEditor.setCaretPosition(Math.min(codeEditor.getText().length(), cachedProgram.length()));
             lastAutosavedSource = codeEditor.getText();
+            setSaveState(SaveState.CLEAN);
             applyZoomToEditor();
             return;
         }
@@ -1760,7 +1796,7 @@ public class MainWindow {
         String language = languageDropdown.getSelectedItem().toString();
         codeEditor.setSyntaxEditingStyle(resolveSyntaxStyle(language));
         String boilerplate = boilerplateFor(language);
-        codeEditor.setText(boilerplate);
+        replaceEditorText(boilerplate);
 
         int cursor = boilerplate.indexOf("// code goes here...");
         if (cursor < 0) {
@@ -1768,7 +1804,30 @@ public class MainWindow {
         }
         codeEditor.setCaretPosition(Math.max(0, cursor));
         lastAutosavedSource = codeEditor.getText();
+        setSaveState(SaveState.CLEAN);
         applyZoomToEditor();
+    }
+
+    private void replaceEditorText(String text) {
+        if (codeEditor == null) {
+            return;
+        }
+        updatingEditorContent = true;
+        try {
+            codeEditor.setText(text == null ? "" : text);
+        } finally {
+            updatingEditorContent = false;
+        }
+    }
+
+    private void markEditorDirty() {
+        if (codeEditor != null && codeEditor.isEditable() && !updatingEditorContent) {
+            setSaveState(SaveState.DIRTY);
+        }
+    }
+
+    private void setSaveState(SaveState state) {
+        saveState = state == null ? SaveState.DISABLED : state;
     }
 
     private void saveCurrentProgramToCache() {
@@ -1794,7 +1853,9 @@ public class MainWindow {
             return;
         }
 
+        setSaveState(SaveState.SAVING);
         programCacheRepository.save(currentProblemCode, language, sourceCode);
+        setSaveState(SaveState.CLEAN);
     }
 
     private void updateExecutionAvailability() {
@@ -1804,8 +1865,12 @@ public class MainWindow {
 
         String language = selectedLanguage();
         CodeExecutionService.LanguageSupport support = codeExecutionService.detectSupport(language);
+        runtimeViewState = RuntimeViewState.fromSupport(language, support);
         boolean hasTestCases = testCasesPanel != null && !testCasesPanel.getExecutionTestCases().isEmpty();
-        boolean ready = problemStatementLoaded && support.supported() && (hasTestCases || currentProblemIsEmpty);
+        boolean ready = problemViewState.usable()
+                && runtimeViewState.ready()
+                && (hasTestCases || currentProblemIsEmpty)
+                && !executionViewState.running();
 
         AppThemePalette palette = currentThemePalette();
         Color supportColor = support.supported() ? palette.successColor() : palette.errorColor();
@@ -1874,11 +1939,14 @@ public class MainWindow {
 
             @Override
             protected void done() {
-                setExecutionRunningState(false);
-                updateExecutionAvailability();
                 try {
-                    showExecutionResultsDialog(language, get());
+                    CodeExecutionService.ExecutionReport report = get();
+                    setExecutionState(ExecutionState.COMPLETE, language);
+                    updateExecutionAvailability();
+                    showExecutionResultsDialog(language, report);
                 } catch (Exception ex) {
+                    setExecutionState(ExecutionState.FAILED, language);
+                    updateExecutionAvailability();
                     JOptionPane.showMessageDialog(
                             mainFrame,
                             "Failed to run the selected language locally.\n\n" + ex.getMessage(),
@@ -1891,16 +1959,40 @@ public class MainWindow {
     }
 
     private void setExecutionRunningState(boolean running) {
+        setExecutionState(
+                running ? ExecutionState.RUNNING : ExecutionState.IDLE,
+                selectedLanguage());
+    }
+
+    private void setExecutionState(ExecutionState state, String language) {
+        executionViewState = switch (state) {
+            case RUNNING -> ExecutionViewState.running(language);
+            case COMPLETE -> ExecutionViewState.complete(language);
+            case FAILED -> ExecutionViewState.failed(language);
+            case IDLE -> ExecutionViewState.idle(language);
+        };
+        actionRegistry.setEnabled(ActionRegistry.Id.RUN_CODE, state != ExecutionState.RUNNING);
         if (executionStateLabel == null) {
             return;
         }
 
-        if (running) {
-            executionStateLabel.setText("Status: Running");
-            executionStateLabel.setForeground(currentThemePalette().warningColor());
-        } else {
-            executionStateLabel.setText("Status: Idle");
-            executionStateLabel.setForeground(currentThemePalette().mutedTextColor());
+        switch (state) {
+            case RUNNING -> {
+                executionStateLabel.setText("Status: Running");
+                executionStateLabel.setForeground(currentThemePalette().warningColor());
+            }
+            case COMPLETE -> {
+                executionStateLabel.setText("Status: Complete");
+                executionStateLabel.setForeground(currentThemePalette().successColor());
+            }
+            case FAILED -> {
+                executionStateLabel.setText("Status: Failed");
+                executionStateLabel.setForeground(currentThemePalette().errorColor());
+            }
+            case IDLE -> {
+                executionStateLabel.setText("Status: Idle");
+                executionStateLabel.setForeground(currentThemePalette().mutedTextColor());
+            }
         }
     }
 
