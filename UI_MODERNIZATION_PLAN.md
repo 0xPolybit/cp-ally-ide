@@ -563,159 +563,508 @@ Expose only theme variants that are intentionally supported. `AppThemePalette` c
 
 ---
 
-## 9. Phased implementation plan
+## 9. Sequential implementation slices
 
-Each phase should be its own reviewable PR. Do not combine fetch-service changes with visual refactors.
+The modernization is divided into small, dependency-ordered slices. **Implement and merge one slice before starting the next.** Each slice should be one branch and normally one PR. A slice must leave the application releasable; no PR may depend on unmerged code from a later slice.
 
-### Phase 0 — Baseline and guardrails
+### Slice rules
 
-**Files:** documentation/tests only.
+1. Branch from the latest `main` after the previous slice is merged.
+2. Keep service behavior, caches, deep links, and language names unchanged unless the slice explicitly says otherwise.
+3. Include before/after screenshots for visible changes.
+4. Run `mvn test` and `mvn -DskipTests clean package`.
+5. Complete the listed manual checks.
+6. Update the tracking checklist in this document.
+7. Do not mix opportunistic cleanup into a slice.
 
-Tasks:
+### Slice map
 
-1. Capture screenshots for empty, loaded, running, successful results, compile failure, preferences, profile, Light, Dark, and Ultra Dark states.
-2. Add `docs/ui-verification-checklist.md`.
-3. Add unit tests for pure functions already adjacent to the UI:
-   - `SampleTestCaseCollector`,
-   - editor theme/name mapping after extraction,
-   - zoom clamp logic after extraction,
-   - settings defaults/migration.
-4. Ensure GitHub Actions runs `mvn test` once tests exist.
+| Slice | Branch suggestion | Main outcome | Depends on | Risk |
+|---:|---|---|---|---|
+| 00 | `docs/ui-baseline` | Baseline screenshots and verification checklist | none | Low |
+| 01 | `test/ui-logic-baseline` | JUnit setup and tests for existing pure UI-adjacent logic | 00 | Low |
+| 02 | `feat/ui-tokens-palette` | Shared spacing/type/color tokens | 01 | Low |
+| 03 | `refactor/ui-theme-manager` | Central FlatLaf/theme application | 02 | Medium |
+| 04 | `feat/ui-primitives` | Reusable badges, notices, headers, buttons, empty states | 03 | Low |
+| 05 | `refactor/ui-actions` | Shared Swing actions for menu/button/shortcut parity | 04 | Medium |
+| 06 | `refactor/ui-view-state` | Explicit problem/runtime/execution/save states | 05 | Medium |
+| 07 | `feat/ui-workspace-status-bars` | Workspace bar and application status bar | 06 | Medium |
+| 08 | `refactor/ui-editor-panel` | Extract and modernize editor surface | 07 | Medium |
+| 09 | `refactor/ui-problem-panel` | Extract stable problem/empty/loading/error surface | 08 | High |
+| 10 | `feat/ui-shell-polish` | Integrate headers, dividers, stable shell, faster splash | 09 | Medium |
+| 11 | `feat/ui-statement-modernization` | Native metadata, notice, CSS, scroll preservation | 10 | Medium |
+| 12 | `refactor/ui-test-cases` | Test-case model plus native master/detail view | 11 | Medium |
+| 13 | `feat/ui-native-results` | Native non-modal execution results view | 12 | High |
+| 14 | `feat/ui-bottom-tool-window` | Collapsible Tests/Results tool window and persistence | 13 | High |
+| 15 | `feat/ui-dialog-shell` | Shared responsive dialog infrastructure | 14 | Low |
+| 16 | `feat/ui-preferences` | Categorized preferences and theme behavior | 15 | Medium |
+| 17 | `refactor/ui-secondary-dialogs` | Profile, support, About, update, test-entry migration | 16 | Medium |
+| 18 | `feat/ui-accessibility-polish` | Keyboard, scaling, contrast, docs, final screenshots | 17 | Medium |
 
-**Exit criteria:** repeatable baseline and no application behavior changes.
+---
 
-### Phase 1 — Design system foundation
+### Slice 00 — Capture the baseline
 
-**New files:**
+**Purpose:** establish what must remain working before source changes begin.
 
-- `UiTokens.java`
-- `ThemeManager.java`
+**Add:**
+
+- `docs/ui-verification-checklist.md`
+- `docs/ui-baseline/README.md`
+- baseline screenshots, or links to release artifacts if binary images should stay out of Git
+
+**Work:**
+
+1. Record empty, loaded, running, pass, compile-error, preferences, profile, Light, Dark, and Ultra Dark states.
+2. Record current focus order and all documented shortcuts.
+3. Document minimum-window and maximized behavior.
+4. Record cached fetch, uncached fetch, empty editor, language switch, custom test, and deep-link scenarios.
+
+**Do not:** modify Java source or visual styling.
+
+**Validation:** execute the checklist once against the current build.
+
+**Done when:** reviewers can compare every later visual PR against an explicit behavioral and screenshot baseline.
+
+---
+
+### Slice 01 — Add UI-logic test foundations
+
+**Purpose:** protect pure behavior before extracting it from `MainWindow`.
+
+**Modify:** `pom.xml`, `.github/workflows/ci.yml` if the CI branch has been merged.
+
+**Add tests for:**
+
+- `SampleTestCaseCollector`,
+- `AppSettings.defaults`,
+- settings load fallback/default behavior,
+- output summary/format helpers that can run headlessly.
+
+**Work:**
+
+1. Add JUnit 5 and Surefire.
+2. Change CI from skipped tests to `mvn test`/`mvn verify`.
+3. Keep all tests headless; do not open Swing windows in CI.
+
+**Do not:** refactor production UI merely to increase coverage.
+
+**Validation:** tests pass on Windows and Linux; shaded JAR still builds.
+
+**Done when:** the repository has a reliable test command used by CI.
+
+---
+
+### Slice 02 — Introduce UI tokens and repair color semantics
+
+**Purpose:** remove arbitrary visual constants before building components.
+
+**Add:** `UiTokens.java`.
+
+**Modify:** `AppThemePalette.java` and only the smallest number of consumers needed to compile.
+
+**Work:**
+
+1. Define spacing, control heights, icon sizes, divider size, and typography roles.
+2. Separate general accent from semantic success.
+3. Add explicit info/link/disabled/focus/subtle-border colors if required.
+4. Keep `Light`, `Dark`, and `Ultra Dark`; decide whether unused variants are exposed or deferred.
+5. Add palette selection/contrast-oriented unit tests where practical.
+
+**Do not:** change the main layout or introduce reusable widgets yet.
+
+**Manual checks:** all themes launch; editor syntax themes remain unchanged; accepted/passed still read as success.
+
+**Done when:** new UI code can avoid raw spacing and semantic color constants.
+
+---
+
+### Slice 03 — Centralize FlatLaf and theme application
+
+**Purpose:** create one authoritative path for applying and refreshing application themes.
+
+**Add:** `ThemeManager.java`.
+
+**Modify:** `MainWindow.java`, `App.java` only if startup ownership needs adjustment.
+
+**Work:**
+
+1. Move `MainWindow.applyAppTheme()` UIManager configuration into `ThemeManager`.
+2. Expose current palette and a single EDT-safe refresh method.
+3. Replace hard-coded execution-state colors with palette semantics.
+4. Define how long-lived components subscribe to or receive theme updates.
+5. Keep editor syntax theme application separate but explicitly coordinated.
+
+**Do not:** promise live theme switching yet; establish the mechanism first.
+
+**Manual checks:** launch in each theme, menus/dialog controls/scrollbars render correctly, startup order is unchanged.
+
+**Done when:** `MainWindow` no longer owns global Look and Feel configuration.
+
+---
+
+### Slice 04 — Build reusable UI primitives
+
+**Purpose:** encode repeated visual patterns before modernizing real surfaces.
+
+**Add:**
+
 - `StatusBadge.java`
 - `InlineNotice.java`
 - `SectionHeader.java`
-- focused component styling helpers
+- `EmptyStatePanel.java`
+- focused button/style helpers
 
-**Modified files:**
+**Work:**
 
-- `AppThemePalette.java`
-- `UiIconLoader.java`
-- `MainWindow.java` only to consume the theme manager
+1. Support info/success/warning/error/neutral badge variants with text.
+2. Support notice title/body, optional details, and optional action.
+3. Support section title/subtitle/right-side actions.
+4. Standardize primary, secondary, quiet, destructive, and icon-only buttons.
+5. Give icon-only controls tooltips and accessible names by construction.
 
-Tasks:
+**Adopt narrowly in:** one low-risk dialog or status area to prove reuse.
 
-1. Separate accent from success colors.
-2. Centralize spacing, dimensions, typography, and icon sizing.
-3. Centralize FlatLaf/UIManager setup.
-4. Replace hard-coded execution colors.
-5. Establish visible focus and hover behavior.
+**Do not:** convert every screen in this slice.
 
-**Exit criteria:** no major layout change; primary controls and statuses use shared tokens/components in all themes.
+**Manual checks:** all variants in Light/Dark/Ultra Dark; keyboard focus visible.
 
-### Phase 2 — Action and state extraction
+**Done when:** primitives are reused and require no service knowledge.
 
-**New files:**
+---
 
-- `ActionRegistry.java`
-- UI state enums/records
+### Slice 05 — Create a shared action registry
 
-Tasks:
+**Purpose:** ensure menus, buttons, and keyboard shortcuts use the same enabled state and behavior.
 
-1. Convert menu items, buttons, and shortcuts to shared Swing actions.
-2. Make action enabled state derive from explicit problem/execution/runtime state.
-3. Add stale-request protection for problem fetch completion.
-4. Preserve all shortcuts and deep-link behavior.
+**Add:** `ActionRegistry.java` or small domain-specific action classes.
 
-**Exit criteria:** behavior remains identical, but labels/listeners no longer encode state ad hoc.
+**Modify:** `MainWindow.java` menu/button/keybinding construction.
 
-### Phase 3 — Extract workspace components
+**Convert:** choose problem, open empty, refresh, run, add test, preferences, zoom, cache clearing, user/profile, exit.
 
-**New files:**
+**Work:**
 
-- `WorkspaceBar.java`
-- `ProblemViewPanel.java`
-- `EditorPanel.java`
-- `ApplicationStatusBar.java`
+1. Use Swing `Action` instances for visible buttons and menu items.
+2. Preserve every current accelerator.
+3. Centralize action enabled-state updates.
+4. Keep action callbacks delegated to existing orchestration methods.
 
-Tasks:
+**Do not:** redesign controls or move panels.
 
-1. Move widget construction out of `MainWindow`.
-2. Keep existing horizontal and vertical splits during extraction.
-3. Give statement and editor explicit local headers.
-4. Move zoom and connection/autosave state to the status bar.
-5. Replace initial placeholder source text with proper empty states.
+**Manual checks:** invoke every action from menu, button where present, and shortcut; deep-link opening still works.
 
-**Exit criteria:** `MainWindow` primarily coordinates components/services and is substantially smaller; existing workflows remain intact.
+**Done when:** there is one implementation and one enabled state per user action.
 
-### Phase 4 — Shell visual modernization
+---
 
-Tasks:
+### Slice 06 — Introduce explicit view state
 
-1. Add the workspace bar below the menu.
-2. Redesign pane headers and primary Run action.
-3. Reduce divider weight and normalize spacing.
-4. Replace cryptic status labels with badges/text.
-5. Make the initial/loaded layout stable instead of replacing the entire left panel.
-6. Remove the forced splash delay.
+**Purpose:** stop deriving state from label text, booleans, and which component is installed.
 
-**Exit criteria:** the main window matches the target hierarchy and works at minimum size and common scaling factors.
+**Add:** problem, runtime, execution, save, and connectivity state enums/records.
 
-### Phase 5 — Statement and error-state modernization
+**Modify:** `MainWindow.java` state transitions and action enablement.
 
-Tasks:
+**Work:**
 
-1. Add native statement metadata header.
-2. Convert LaTeX warning into `InlineNotice`.
-3. Add inline loading/error/retry states.
-4. Improve statement CSS and link/copy affordances.
-5. Preserve scroll position during zoom and refresh.
-6. Present sheet links consistently.
+1. Model empty/loading/loaded/error problem states.
+2. Model checking/ready/missing/unsupported runtime states.
+3. Model idle/running/completed/failed execution states.
+4. Model clean/dirty/saving/disabled save states.
+5. Add a request identity so stale problem-fetch completions cannot replace newer selections.
+6. Map state to existing labels/components without changing layout.
 
-**Exit criteria:** fetching and reading do not cause disruptive layout swaps or generic modal errors.
+**Do not:** move network or execution logic into state classes.
 
-### Phase 6 — Tests and results tool window
+**Automated checks:** state-to-action enablement and state transition tests.
 
-**New/refactored files:**
+**Done when:** UI state is explicit, typed, and independent of displayed strings.
 
-- `BottomToolWindow.java`
-- `TestCasesView.java`
-- `ExecutionResultsView.java`
+---
 
-Tasks:
+### Slice 07 — Add workspace and application status bars
 
-1. Refactor `TestCasesPanel` into data/state plus master/detail view.
-2. Build native results components from `ExecutionReport`.
-3. Open Results automatically after execution.
-4. Focus the first failure.
-5. Retain optional detach/open-in-dialog action.
-6. Persist bottom tool-window size/open state with new settings keys.
+**Purpose:** establish clear global context without moving the main content.
 
-**Exit criteria:** edit → run → inspect → edit requires no mandatory modal dialog.
+**Add:** `WorkspaceBar.java`, `ApplicationStatusBar.java`.
 
-### Phase 7 — Dialog consolidation and live theming
+**Work:**
 
-Tasks:
+1. Workspace bar: problem chooser/current code, fetch/refresh, empty action, user/profile, preferences.
+2. Status bar: Codeforces connectivity, autosave state, operation state, editor/problem zoom.
+3. Bind controls to `ActionRegistry` and typed view state.
+4. Remove zoom controls and scattered global status from the embedded menu bar after parity is verified.
 
-1. Introduce and adopt `DialogShell`.
-2. Rebuild Preferences into categories.
-3. Migrate execution fallback dialog, test editor dialog, support, profile, About, and update dialogs.
-4. Implement live theme refresh where reliable.
-5. Ensure default buttons, Escape behavior, focus order, and responsive sizing.
+**Do not:** extract the editor/problem panes yet.
 
-**Exit criteria:** all dialogs share styling and keyboard behavior; theme changes do not leave stale components.
+**Manual checks:** empty and loaded states, signed in/out, zoom changes, online/offline, autosave on/off, minimum width.
 
-### Phase 8 — Accessibility and release polish
+**Done when:** global actions and status have stable, readable locations.
 
-Tasks:
+---
 
-1. Audit keyboard traversal and focus rings.
-2. Add accessible names/descriptions to icon-only controls.
-3. Ensure statuses include text, not color alone.
+### Slice 08 — Extract and modernize the editor panel
+
+**Purpose:** remove editor widget construction from `MainWindow` and clarify its controls.
+
+**Add:** `EditorPanel.java`; optionally extract editor-theme mapping to its own class.
+
+**Move without behavior change:**
+
+- `RSyntaxTextArea` creation,
+- scroll pane/gutter setup,
+- editor zoom application,
+- syntax/theme application,
+- language selector,
+- runtime badge,
+- Run button and local header.
+
+**Work:**
+
+1. Use a labelled primary `Run` button.
+2. Replace `Yes/No` with `Ready`, `<tool> missing`, or `Unsupported`.
+3. Show save state near source identity.
+4. Replace placeholder source text with a real empty-state overlay.
+5. Keep templates, cached source restoration, bracket pairing, and wheel behavior identical.
+
+**Do not:** change `CodeExecutionService` or language display strings.
+
+**Manual checks:** every language family, cached source, empty workspace, zoom, typing/pairs, missing runtime, Ctrl+R.
+
+**Done when:** editor construction and editor-local state are owned by `EditorPanel`.
+
+---
+
+### Slice 09 — Extract a stable problem panel
+
+**Purpose:** stop replacing the entire left container during fetch transitions.
+
+**Add:** `ProblemViewPanel.java`.
+
+**Move:** problem entry/empty/loading/error/loaded presentation, statement scroll pane, submission status placement.
+
+**Work:**
+
+1. Use a stable card/state layout for EMPTY, LOADING, LOADED, and ERROR.
+2. Show fetch errors inline with Retry and Details.
+3. Keep `JEditorPane`, hyperlink handling, copy payloads, and scroll behavior intact.
+4. Keep test cases in their existing location for this slice.
+5. Expose narrow methods/view-state setters instead of raw widget access.
+
+**Do not:** rewrite `ProblemHtmlRenderer` or move the test panel yet.
+
+**Manual checks:** cached/uncached fetch, invalid code, bot-check/network failure, refresh, rapid problem switching, external/copy links.
+
+**Done when:** problem state changes no longer rebuild the main left-side hierarchy.
+
+---
+
+### Slice 10 — Integrate and polish the main shell
+
+**Purpose:** complete the new visual hierarchy after component extraction.
+
+**Modify:** `MainWindow.java`, extracted workspace components, `SplashScreenWindow.java`, `App.java` startup timing.
+
+**Work:**
+
+1. Add statement and editor section headers.
+2. Normalize outer padding and control gaps with tokens.
+3. Reduce split divider size/visual weight.
+4. Keep sensible minimum widths and resize clamping.
+5. Remove the forced three-second splash delay; show it only during actual startup.
+6. Ensure initial and loaded layouts occupy the same stable frame.
+
+**Do not:** move tests/results or alter statement HTML yet.
+
+**Manual checks:** first launch, warm launch, cold/hot deep links, minimum/maximized window, resize during fetch.
+
+**Done when:** the shell matches the target hierarchy while preserving the existing content arrangement.
+
+---
+
+### Slice 11 — Modernize statement presentation
+
+**Purpose:** improve reading and make metadata/notices native and consistent.
+
+**Modify:** `ProblemViewPanel.java`, `ProblemHtmlRenderer.java`, possibly `RenderedProblemView.java` if structured metadata is needed.
+
+**Work:**
+
+1. Place title/code, limits, verdict, refresh, and external link in a native header.
+2. Convert the large LaTeX warning into `InlineNotice`.
+3. Improve HTML typography, code blocks, samples, links, and copy affordances.
+4. Present practice-sheet links consistently.
+5. Preserve scrollbar position during zoom/re-render.
+6. Keep LaTeX image caching/rendering behavior intact.
+
+**Do not:** modify Codeforces transport/fetch validation in this UI slice.
+
+**Manual checks:** short/long/image-heavy/LaTeX-heavy statements, all themes, all zoom ranges, copy links, sheet links.
+
+**Done when:** the problem document is easier to read and native app status is outside generated HTML.
+
+---
+
+### Slice 12 — Separate test-case data from its view
+
+**Purpose:** prepare test cases for reuse in a bottom tool window and result integration.
+
+**Add:** a small `TestCaseModel`/controller and `TestCasesView.java`.
+
+**Refactor:** `TestCasesPanel.java` and custom-test dialog invocation.
+
+**Work:**
+
+1. Preserve sample collection and custom ordering.
+2. Create master/detail case navigation.
+3. Standardize input/expected code areas.
+4. Add copy, add, and remove actions.
+5. Identify Sample versus Custom with text/badge.
+6. Keep execution-spec generation behavior identical.
+
+**Do not:** move the component or show result statuses yet.
+
+**Automated checks:** ordering, renumbering, expected-output optionality, delete behavior.
+
+**Done when:** test data can be displayed independently of its current parent split pane.
+
+---
+
+### Slice 13 — Build native execution results
+
+**Purpose:** replace HTML-only modal results with a reusable native view.
+
+**Add:** `ExecutionResultsView.java` and result view-model mapping if useful.
+
+**Refactor:** `ExecutionResultsDialog.java`, `ExecutionResultFormatter.java`.
+
+**Work:**
+
+1. Add summary counts.
+2. Add result master list with status text, time, and memory.
+3. Add detail sections for input, expected, actual, stderr, and note.
+4. Focus/select the first failed case.
+5. Use `NO EXPECTED OUTPUT` instead of `IDK BRUH`.
+6. Keep a dialog wrapper temporarily so behavior remains available before Slice 14.
+
+**Do not:** change execution comparison or process behavior.
+
+**Automated checks:** mapping for pass, wrong answer, timeout, runtime error, compile error, unknown expected output.
+
+**Done when:** one native component renders every `ExecutionReport` state.
+
+---
+
+### Slice 14 — Add the Tests/Results bottom tool window
+
+**Purpose:** eliminate mandatory modal interruption from the edit/run/inspect loop.
+
+**Add:** `BottomToolWindow.java`.
+
+**Modify:** main shell composition, `AppSettings`, `SettingsRepository`, run-completion handling.
+
+**Work:**
+
+1. Add collapsible `Tests` and `Results` tabs spanning the workspace.
+2. Move `TestCasesView` into Tests.
+3. Show `ExecutionResultsView` after execution and select first failure.
+4. Add collapse/expand and optional detach action.
+5. Persist open state, selected tab, and height using new keys with defaults.
+6. Preserve old divider settings and migrate safely.
+
+**Do not:** remove the optional result dialog until the tool window is proven stable.
+
+**Manual checks:** run repeatedly, edit after result, collapse/expand, restart persistence, minimum window, large test data.
+
+**Done when:** edit → run → inspect → edit works without a required modal dialog.
+
+---
+
+### Slice 15 — Introduce a shared dialog shell
+
+**Purpose:** standardize secondary windows before migrating their content.
+
+**Add:** `DialogShell.java`.
+
+**Work:**
+
+1. Standard header/content/footer spacing.
+2. Default button and Escape-to-close behavior.
+3. Responsive preferred/minimum sizing and screen bounds.
+4. Theme refresh support.
+5. Optional modal/modeless configuration.
+6. Adopt it in one low-risk dialog, such as runtime support.
+
+**Do not:** redesign all dialog contents in one PR.
+
+**Manual checks:** keyboard behavior, resizing, multi-monitor positioning, all themes.
+
+**Done when:** the shell is proven reusable without content-specific assumptions.
+
+---
+
+### Slice 16 — Rebuild Preferences
+
+**Purpose:** make configuration understandable and prepare reliable theme changes.
+
+**Modify:** `PreferencesDialog.java`, theme/settings integration.
+
+**Work:**
+
+1. Categorize Appearance, Editor, and Saving settings.
+2. Add descriptions and Reset/Cancel/Apply behavior.
+3. Clarify exposed application themes and editor-scheme compatibility.
+4. Implement live preview if stable; otherwise explicitly require restart.
+5. Preserve every existing setting and default.
+
+**Do not:** add unrelated new preferences beyond optional UI density if it is already needed.
+
+**Manual checks:** save/cancel/reset, each theme and editor scheme, invalid bounds, restart/persistence.
+
+**Done when:** settings are grouped, understandable, keyboard accessible, and backward compatible.
+
+---
+
+### Slice 17 — Migrate secondary dialogs
+
+**Purpose:** finish visual consistency outside the main workspace.
+
+**Modify:** `SupportDialogs.java`, `UserProfileDialog.java`, `ExecutionResultsDialog.java`, custom-test entry, About/update/error flows.
+
+**Work:**
+
+1. Adopt `DialogShell` incrementally.
+2. Add profile progress state and responsive sizing.
+3. Consolidate Credits into About.
+4. Standardize confirmations and error-details disclosure.
+5. Ensure compiler logs and runtime details are selectable/copyable.
+6. Remove obsolete result-dialog code only after the bottom tool window has parity.
+
+**Manual checks:** loading/error/success for each dialog, Enter/Escape, screen bounds, all themes.
+
+**Done when:** all secondary surfaces share layout, styling, sizing, and keyboard conventions.
+
+---
+
+### Slice 18 — Accessibility, scaling, and release polish
+
+**Purpose:** close the modernization with systematic quality checks.
+
+**Work:**
+
+1. Audit Tab/Shift+Tab order and restore focusability where disabled unnecessarily.
+2. Add accessible names/descriptions to icons and custom components.
+3. Verify every semantic status includes text and not only color.
 4. Test 100%, 125%, 150%, and 200% scaling.
-5. Test minimum, maximized, and multi-monitor placement.
-6. Update README screenshots and shortcuts.
-7. Run the complete manual verification matrix.
+5. Test minimum/maximized/multi-monitor placement.
+6. Run the full UI verification checklist.
+7. Update README screenshots, feature descriptions, and shortcuts.
+8. Remove compatibility UI paths and dead styles confirmed unused.
 
-**Exit criteria:** UI modernization release candidate is stable, documented, and passes CI/manual checks.
+**Do not:** introduce a new visual direction in the polish slice.
+
+**Done when:** all acceptance criteria in Section 11 pass and the modernization is ready for release.
 
 ---
 
@@ -817,77 +1166,72 @@ The existing branches are separate concerns:
 
 - `fix/codeforces-fetch-resilience`
 - `ci/github-actions-setup`
+- `docs/ui-modernization-plan` (this document)
 
-Do not implement UI modernization directly on either branch. After they are merged, branch from updated `main`.
+Do not implement modernization on those branches. Merge prerequisite work, update local `main`, then create the branch listed for the next incomplete slice in Section 9.
 
-Recommended sequence:
+### Sequential merge policy
 
-1. `docs/ui-baseline-and-checklist`
-2. `feat/ui-design-system`
-3. `refactor/ui-actions-and-state`
-4. `refactor/ui-workspace-components`
-5. `feat/ui-shell-modernization`
-6. `feat/ui-statement-states`
-7. `feat/ui-tests-results-tool-window`
-8. `feat/ui-dialogs-accessibility`
+1. Only one modernization slice should be active unless a second branch is documentation-only.
+2. Every implementation branch starts from `main` after the previous slice merges.
+3. Avoid stacked PRs; they obscure regressions and complicate visual review.
+4. If a slice grows beyond its declared scope, split it before review rather than expanding the PR.
+5. Fix defects introduced by a slice on that slice's branch before moving forward.
+6. Update this plan in the implementation PR by checking the slice and recording material decisions.
 
-Each PR should:
+### Required PR content
 
-- contain one coherent surface or architectural step,
-- include before/after screenshots for visual changes,
-- list manual test cases performed,
-- preserve keyboard shortcuts,
-- avoid unrelated service/repository changes,
-- update this plan's status/checklist.
+Each slice PR should include:
 
----
-
-## 14. Recommended first implementation PR
-
-Create `feat/ui-design-system` after the CI and Codeforces branches are merged.
-
-### Scope
-
-1. Add `UiTokens`.
-2. Add `ThemeManager` and move `MainWindow.applyAppTheme()` logic into it.
-3. Separate accent and success colors in `AppThemePalette`.
-4. Add `StatusBadge`, `InlineNotice`, and `SectionHeader`.
-5. Replace hard-coded execution colors and the most repeated border/padding values.
-6. Standardize primary/secondary/icon button styling.
-7. Add tests for theme selection and any extracted pure mappings.
-8. Capture screenshots in all exposed themes.
-
-### Explicitly defer
-
-- No split-pane relocation.
-- No bottom tool window yet.
-- No result-dialog replacement yet.
-- No service changes.
-- No settings format change.
-
-### Definition of done
-
-- Application behavior is unchanged.
-- Light, Dark, and Ultra Dark render consistently.
-- Accent, success, warning, and error are visually distinct.
-- Focus states are visible.
-- New components are demonstrably reused rather than being speculative abstractions.
-- Maven build/tests pass on Windows and Linux.
-- This plan is updated with completed items and any changed decisions.
+- slice number and title,
+- exact scope and explicit exclusions,
+- screenshots for every affected theme/state,
+- automated checks run,
+- manual checklist cases run,
+- settings/cache compatibility statement,
+- keyboard/accessibility impact,
+- follow-up items deferred to later slices.
 
 ---
 
-## 15. Plan tracking checklist
+## 14. Recommended next work
 
-- [ ] Phase 0: Baseline and guardrails
-- [ ] Phase 1: Design system foundation
-- [ ] Phase 2: Action and state extraction
-- [ ] Phase 3: Workspace component extraction
-- [ ] Phase 4: Shell visual modernization
-- [ ] Phase 5: Statement and error states
-- [ ] Phase 6: Tests/results bottom tool window
-- [ ] Phase 7: Dialog consolidation and live theming
-- [ ] Phase 8: Accessibility and release polish
+Start with **Slice 00 (`docs/ui-baseline`)**, not the design system. The baseline is required before judging later visual work.
+
+After Slice 00 merges, complete Slice 01 so CI protects existing pure behavior. Only then begin visual source changes in Slice 02.
+
+### Slice 00 immediate actions
+
+1. Build the current shaded JAR.
+2. Capture the states listed in Slice 00 using the existing UI.
+3. Add `docs/ui-verification-checklist.md`.
+4. Record current shortcuts, focus behavior, window sizes, and divider defaults.
+5. Perform the checklist once and record known pre-existing defects separately from modernization regressions.
+6. Mark Slice 00 complete below and merge before creating Slice 01.
+
+---
+
+## 15. Slice tracking checklist
+
+- [ ] Slice 00 — Capture the baseline
+- [ ] Slice 01 — Add UI-logic test foundations
+- [ ] Slice 02 — Introduce UI tokens and repair color semantics
+- [ ] Slice 03 — Centralize FlatLaf and theme application
+- [ ] Slice 04 — Build reusable UI primitives
+- [ ] Slice 05 — Create a shared action registry
+- [ ] Slice 06 — Introduce explicit view state
+- [ ] Slice 07 — Add workspace and application status bars
+- [ ] Slice 08 — Extract and modernize the editor panel
+- [ ] Slice 09 — Extract a stable problem panel
+- [ ] Slice 10 — Integrate and polish the main shell
+- [ ] Slice 11 — Modernize statement presentation
+- [ ] Slice 12 — Separate test-case data from its view
+- [ ] Slice 13 — Build native execution results
+- [ ] Slice 14 — Add the Tests/Results bottom tool window
+- [ ] Slice 15 — Introduce a shared dialog shell
+- [ ] Slice 16 — Rebuild Preferences
+- [ ] Slice 17 — Migrate secondary dialogs
+- [ ] Slice 18 — Accessibility, scaling, and release polish
 
 ### Decisions locked for the first cycle
 
