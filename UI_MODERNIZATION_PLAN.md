@@ -1202,18 +1202,18 @@ After Slice 00 merges, complete Slice 01 so CI protects existing pure behavior. 
 
 ### Slice 00 immediate actions
 
-1. Build the current shaded JAR.
-2. Capture the states listed in Slice 00 using the existing UI.
-3. Add `docs/ui-verification-checklist.md`.
-4. Record current shortcuts, focus behavior, window sizes, and divider defaults.
-5. Perform the checklist once and record known pre-existing defects separately from modernization regressions.
-6. Mark Slice 00 complete below and merge before creating Slice 01.
+1. Build the current shaded JAR. **Completed:** `mvn -B -ntp -DskipTests clean package` passed on 2026-07-14.
+2. Capture the states listed in Slice 00 using the existing UI. **Partially completed:** the existing loaded Dark-theme screenshot is recorded; the checklist identifies remaining interactive captures.
+3. Add `docs/ui-verification-checklist.md`. **Completed.**
+4. Record current shortcuts, focus behavior, window sizes, and divider defaults. **Completed in the checklist and baseline README.**
+5. Perform the checklist once and record known pre-existing defects separately from modernization regressions. **Interactive sign-off remains required before Slice 01/02 visual review.**
+6. Mark Slice 00 complete below and merge before creating Slice 01. **Completed for the documentation baseline.**
 
 ---
 
 ## 15. Slice tracking checklist
 
-- [ ] Slice 00 — Capture the baseline
+- [x] Slice 00 — Capture the baseline
 - [ ] Slice 01 — Add UI-logic test foundations
 - [ ] Slice 02 — Introduce UI tokens and repair color semantics
 - [ ] Slice 03 — Centralize FlatLaf and theme application
