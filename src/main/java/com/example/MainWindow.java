@@ -1,7 +1,5 @@
 package com.example;
 
-import com.formdev.flatlaf.FlatDarkLaf;
-import com.formdev.flatlaf.FlatLightLaf;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.Style;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
@@ -29,7 +27,6 @@ import javax.swing.JScrollBar;
 import javax.swing.JSplitPane;
 import javax.swing.JTextField;
 import javax.swing.JToolBar;
-import javax.swing.UIManager;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.event.HyperlinkEvent;
@@ -125,6 +122,7 @@ public class MainWindow {
     private boolean currentProblemIsEmpty;
     private String currentProblemCode;
     private AppThemePalette appThemePalette = AppThemePalette.dark();
+    private final ThemeManager themeManager = new ThemeManager();
     private java.util.concurrent.ScheduledExecutorService autosaveExecutor;
     private volatile String lastAutosavedSource = null;
     private double editorZoomFactor = 1.0;
@@ -150,7 +148,7 @@ public class MainWindow {
         appThemePalette = AppThemePalette.fromName(appSettings != null ? appSettings.appTheme() : DEFAULT_APP_THEME);
 
         JFrame.setDefaultLookAndFeelDecorated(true);
-        applyAppTheme(appThemePalette);
+        themeManager.apply(appThemePalette);
 
         Path appDataDir = settingsRepository.getAppDataDirectory();
         DiagnosticLogger.initialize(appDataDir);
@@ -303,60 +301,6 @@ public class MainWindow {
         } catch (Exception ignored) {
             // Silently ignore browser launch issues.
         }
-    }
-
-    private void applyAppTheme(AppThemePalette palette) {
-        AppThemePalette safePalette = palette != null ? palette : AppThemePalette.dark();
-        if (safePalette.lightTheme()) {
-            FlatLightLaf.setup();
-        } else {
-            FlatDarkLaf.setup();
-        }
-
-        UIManager.put("Component.accentColor", safePalette.accentColor());
-        UIManager.put("Component.focusColor", safePalette.accentColor());
-
-        UIManager.put("Panel.background", safePalette.frameBackground());
-        UIManager.put("RootPane.background", safePalette.frameBackground());
-        UIManager.put("Label.foreground", safePalette.textColor());
-
-        UIManager.put("ToolBar.background", safePalette.panelBackground());
-        UIManager.put("ToolBar.borderColor", safePalette.borderColor());
-        UIManager.put("ToolBar.dockingBackground", safePalette.panelBackground());
-        UIManager.put("ToolBar.overflowBackground", safePalette.panelBackground());
-
-        UIManager.put("Button.background", safePalette.surfaceBackground());
-        UIManager.put("Button.foreground", safePalette.textColor());
-        UIManager.put("Button.hoverBackground", safePalette.surfaceRaised());
-        UIManager.put("Button.default.background", safePalette.accentColor());
-        UIManager.put("Button.default.foreground", safePalette.accentForeground());
-
-        UIManager.put("TextField.background", safePalette.inputBackground());
-        UIManager.put("TextField.foreground", safePalette.inputForeground());
-        UIManager.put("TextField.caretForeground", safePalette.accentColor());
-        UIManager.put("TextField.selectionBackground", safePalette.selectionBackground());
-        UIManager.put("TextField.selectionForeground", safePalette.textColor());
-
-        UIManager.put("SplitPane.background", safePalette.frameBackground());
-        UIManager.put("SplitPaneDivider.background", safePalette.panelBackground());
-        UIManager.put("SplitPaneDivider.style", "grip");
-        UIManager.put("SplitPaneDivider.gripColor", safePalette.mutedTextColor());
-        UIManager.put("SplitPaneDivider.draggingColor", safePalette.accentColor());
-
-        UIManager.put("ScrollBar.background", safePalette.frameBackground());
-        UIManager.put("ScrollBar.track", safePalette.scrollbarTrack());
-        UIManager.put("ScrollBar.thumb", safePalette.scrollbarThumb());
-        UIManager.put("ScrollBar.thumbHover", safePalette.scrollbarThumbHover());
-        UIManager.put("ScrollBar.thumbPressed", safePalette.scrollbarThumbPressed());
-
-        UIManager.put("MenuBar.background", safePalette.panelBackground());
-        UIManager.put("MenuBar.foreground", safePalette.textColor());
-        UIManager.put("Menu.background", safePalette.panelBackground());
-        UIManager.put("Menu.foreground", safePalette.textColor());
-        UIManager.put("MenuItem.background", safePalette.panelBackground());
-        UIManager.put("MenuItem.foreground", safePalette.textColor());
-        UIManager.put("MenuItem.selectionBackground", safePalette.surfaceRaised());
-        UIManager.put("MenuItem.selectionForeground", safePalette.textColor());
     }
 
     private AppThemePalette currentThemePalette() {
@@ -558,11 +502,6 @@ public class MainWindow {
                     applyEditorPreferences(codeEditor, selection.editorFontSize(), selection.editorColorScheme(), selection.useTabsAsSpaces(), selection.tabSpacing());
                 }
                 refreshThemeAwareUi();
-                if (mainFrame != null) {
-                    SwingUtilities.updateComponentTreeUI(mainFrame);
-                    mainFrame.revalidate();
-                    mainFrame.repaint();
-                }
             }
         } catch (Exception ex) {
             System.err.println("[MainWindow] Failed to construct/show Preferences dialog: " + ex.getMessage());
@@ -2560,9 +2499,7 @@ public class MainWindow {
             }
         }
         if (mainFrame != null) {
-            SwingUtilities.updateComponentTreeUI(mainFrame);
-            mainFrame.revalidate();
-            mainFrame.repaint();
+            themeManager.refresh(mainFrame);
         }
     }
 
