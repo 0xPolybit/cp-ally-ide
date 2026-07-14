@@ -123,6 +123,7 @@ public class MainWindow {
     private String currentProblemCode;
     private AppThemePalette appThemePalette = AppThemePalette.dark();
     private final ThemeManager themeManager = new ThemeManager();
+    private final ActionRegistry actionRegistry = new ActionRegistry();
     private java.util.concurrent.ScheduledExecutorService autosaveExecutor;
     private volatile String lastAutosavedSource = null;
     private double editorZoomFactor = 1.0;
@@ -311,7 +312,64 @@ public class MainWindow {
         return appThemePalette;
     }
 
+    private void registerActions() {
+        actionRegistry.register(
+                ActionRegistry.Id.FETCH_PROBLEM,
+                "Fetch from CodeForces",
+                null,
+                this::onFetchProblemClicked);
+        actionRegistry.register(
+                ActionRegistry.Id.PREFERENCES,
+                "Preferences",
+                javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_P, java.awt.event.InputEvent.CTRL_DOWN_MASK),
+                this::onPreferencesClicked);
+        actionRegistry.register(
+                ActionRegistry.Id.CLEAR_ALL_CACHE,
+                "Clear All Cache",
+                null,
+                this::onClearAllCacheClicked);
+        actionRegistry.register(
+                ActionRegistry.Id.CHOOSE_PROBLEM,
+                "Choose Problem",
+                javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_N, java.awt.event.InputEvent.CTRL_DOWN_MASK),
+                this::promptForDifferentProblem);
+        actionRegistry.register(
+                ActionRegistry.Id.OPEN_EMPTY_PROBLEM,
+                "Open Empty",
+                javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_E, java.awt.event.InputEvent.CTRL_DOWN_MASK),
+                this::promptOpenEmptyProblem);
+        actionRegistry.register(
+                ActionRegistry.Id.REFRESH_PROBLEM,
+                "Refresh Problem",
+                null,
+                this::refreshCurrentProblem);
+        actionRegistry.register(
+                ActionRegistry.Id.EXIT,
+                "Exit",
+                null,
+                this::shutdownAndExit);
+        actionRegistry.register(
+                ActionRegistry.Id.RUN_CODE,
+                "Run Code",
+                javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_R, java.awt.event.InputEvent.CTRL_DOWN_MASK),
+                this::onRunButtonClicked);
+        actionRegistry.register(
+                ActionRegistry.Id.ADD_TEST_CASE,
+                "Add Test Case",
+                javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_T,
+                        java.awt.event.InputEvent.CTRL_DOWN_MASK | java.awt.event.InputEvent.SHIFT_DOWN_MASK),
+                () -> {
+                    if (testCasesPanel != null) {
+                        testCasesPanel.addCustomTestCase();
+                    }
+                });
+        actionRegistry.setEnabled(ActionRegistry.Id.REFRESH_PROBLEM, false);
+        actionRegistry.setEnabled(ActionRegistry.Id.RUN_CODE, false);
+        actionRegistry.setEnabled(ActionRegistry.Id.ADD_TEST_CASE, false);
+    }
+
     private JMenuBar createEmbeddedTitleBar() {
+        registerActions();
         AppThemePalette palette = currentThemePalette();
         JMenuBar titleBar = new JMenuBar();
         titleBar.setOpaque(true);
@@ -320,22 +378,13 @@ public class MainWindow {
 
         // File Menu
         JMenu fileMenu = new JMenu("File");
-        JMenuItem preferencesItem = new JMenuItem("Preferences");
-        preferencesItem.addActionListener(e -> onPreferencesClicked());
-        preferencesItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_P, java.awt.event.InputEvent.CTRL_DOWN_MASK));
-        JMenuItem clearCacheItem = new JMenuItem("Clear All Cache");
-        clearCacheItem.addActionListener(e -> onClearAllCacheClicked());
-        JMenuItem chooseDifferentProblemItem = new JMenuItem("Choose Problem");
-        chooseDifferentProblemItem.addActionListener(e -> promptForDifferentProblem());
-        chooseDifferentProblemItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_N, java.awt.event.InputEvent.CTRL_DOWN_MASK));
-        JMenuItem openEmptyProblemItem = new JMenuItem("Open Empty");
-        openEmptyProblemItem.addActionListener(e -> promptOpenEmptyProblem());
-        openEmptyProblemItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_E, java.awt.event.InputEvent.CTRL_DOWN_MASK));
-        refreshProblemItem = new JMenuItem("Refresh Problem");
-        refreshProblemItem.addActionListener(e -> refreshCurrentProblem());
-        refreshProblemItem.setEnabled(false);
-        JMenuItem exitItem = new JMenuItem("Exit");
-        exitItem.addActionListener(e -> shutdownAndExit());
+        JMenuItem preferencesItem = new JMenuItem(actionRegistry.action(ActionRegistry.Id.PREFERENCES));
+        JMenuItem clearCacheItem = new JMenuItem(actionRegistry.action(ActionRegistry.Id.CLEAR_ALL_CACHE));
+        JMenuItem chooseDifferentProblemItem = new JMenuItem(actionRegistry.action(ActionRegistry.Id.CHOOSE_PROBLEM));
+        JMenuItem openEmptyProblemItem = new JMenuItem(actionRegistry.action(ActionRegistry.Id.OPEN_EMPTY_PROBLEM));
+        refreshProblemItem = new JMenuItem(actionRegistry.action(ActionRegistry.Id.REFRESH_PROBLEM));
+        actionRegistry.setEnabled(ActionRegistry.Id.REFRESH_PROBLEM, false);
+        JMenuItem exitItem = new JMenuItem(actionRegistry.action(ActionRegistry.Id.EXIT));
         fileMenu.add(preferencesItem);
         userMenuItem = new JMenuItem(codeforcesUsername.isEmpty() ? "Add User" : "Logout User");
         userMenuItem.addActionListener(e -> onUserMenuClicked());
@@ -366,13 +415,9 @@ public class MainWindow {
 
         // Run Menu
         JMenu runMenu = new JMenu("Run");
-        JMenuItem runCodeItem = new JMenuItem("Run Code");
-        runCodeItem.addActionListener(e -> onRunButtonClicked());
-        runCodeItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_R, java.awt.event.InputEvent.CTRL_DOWN_MASK));
-        addTestCaseItem = new JMenuItem("Add Test Case");
-        addTestCaseItem.addActionListener(e -> { if (testCasesPanel != null) testCasesPanel.addCustomTestCase(); });
-        addTestCaseItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_T, java.awt.event.InputEvent.CTRL_DOWN_MASK | java.awt.event.InputEvent.SHIFT_DOWN_MASK));
-        addTestCaseItem.setEnabled(false);
+        JMenuItem runCodeItem = new JMenuItem(actionRegistry.action(ActionRegistry.Id.RUN_CODE));
+        addTestCaseItem = new JMenuItem(actionRegistry.action(ActionRegistry.Id.ADD_TEST_CASE));
+        actionRegistry.setEnabled(ActionRegistry.Id.ADD_TEST_CASE, false);
         runMenu.add(runCodeItem);
         runMenu.addSeparator();
         runMenu.add(addTestCaseItem);
@@ -607,7 +652,7 @@ public class MainWindow {
         problemCodeInput.setAlignmentX(Component.CENTER_ALIGNMENT);
         problemCodeInput.addActionListener(e -> fetchProblemButton.doClick());
 
-        fetchProblemButton = new JButton("Fetch from CodeForces");
+        fetchProblemButton = new JButton(actionRegistry.action(ActionRegistry.Id.FETCH_PROBLEM));
         fetchProblemButton.setAlignmentX(Component.CENTER_ALIGNMENT);
         fetchProblemButton.setMaximumSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
         fetchProblemButton.setMinimumSize(new Dimension(LEFT_FIELD_WIDTH, LEFT_FIELD_HEIGHT));
@@ -618,7 +663,6 @@ public class MainWindow {
             fetchProblemButton.setHorizontalTextPosition(javax.swing.SwingConstants.RIGHT);
             fetchProblemButton.setIconTextGap(8);
         }
-        fetchProblemButton.addActionListener(e -> onFetchProblemClicked());
         initialFocusButton = fetchProblemButton;
 
         JPanel actionStrip = new JPanel(new BorderLayout());
@@ -689,7 +733,7 @@ public class MainWindow {
         editorToolbar.setOpaque(false);
         disableFocus(editorToolbar);
 
-        runButton = createToolbarButton("Run");
+        runButton = new JButton(actionRegistry.action(ActionRegistry.Id.RUN_CODE));
         runButton.setEnabled(false);
         applyRunButtonIcons();
         runButton.addActionListener(e -> onRunButtonClicked());
@@ -1263,12 +1307,6 @@ public class MainWindow {
         return field;
     }
 
-    private JButton createToolbarButton(String text) {
-        JButton button = new JButton(text);
-        disableFocus(button);
-        return button;
-    }
-
     private void checkCodeforcesStatusAsync(JLabel statusLabel) {
         AppThemePalette palette = currentThemePalette();
         statusLabel.setText("Checking CodeForces...");
@@ -1408,6 +1446,7 @@ public class MainWindow {
     }
 
     private void showLeftPanelLoading(String problemCode) {
+        actionRegistry.setEnabled(ActionRegistry.Id.FETCH_PROBLEM, false);
         fetchProblemButton.setEnabled(false);
         fetchStatusLabel.setForeground(currentThemePalette().mutedTextColor());
         fetchStatusLabel.setText("Fetching problem " + problemCode + "...");
@@ -1423,16 +1462,17 @@ public class MainWindow {
     }
 
     private void restoreProblemEntryPanelWithError(String message) {
+        actionRegistry.setEnabled(ActionRegistry.Id.FETCH_PROBLEM, true);
         fetchProblemButton.setEnabled(true);
         fetchStatusLabel.setForeground(currentThemePalette().errorColor());
         fetchStatusLabel.setText(message);
 
         if (refreshProblemItem != null) {
-            refreshProblemItem.setEnabled(false);
+            actionRegistry.setEnabled(ActionRegistry.Id.REFRESH_PROBLEM, false);
         }
 
         if (addTestCaseItem != null) {
-            addTestCaseItem.setEnabled(false);
+            actionRegistry.setEnabled(ActionRegistry.Id.ADD_TEST_CASE, false);
         }
 
         leftPanelContainer.removeAll();
@@ -1677,11 +1717,11 @@ public class MainWindow {
         }
 
         if (refreshProblemItem != null) {
-            refreshProblemItem.setEnabled(!currentProblemIsEmpty);
+            actionRegistry.setEnabled(ActionRegistry.Id.REFRESH_PROBLEM, !currentProblemIsEmpty);
         }
 
         if (addTestCaseItem != null) {
-            addTestCaseItem.setEnabled(true);
+            actionRegistry.setEnabled(ActionRegistry.Id.ADD_TEST_CASE, true);
         }
 
         applyLanguageTemplateOrCachedProgram();
@@ -1780,6 +1820,7 @@ public class MainWindow {
                 + (support.supported() ? "Ready" : "Unavailable")
                 + "</span></html>");
         runtimeSupportLabel.setToolTipText(support.message());
+        actionRegistry.setEnabled(ActionRegistry.Id.RUN_CODE, ready);
         runButton.setEnabled(ready);
         runButton.setToolTipText(ready
             ? (currentProblemIsEmpty && !hasTestCases ? "Run the current code with empty input." : "Run the sample test cases locally")
