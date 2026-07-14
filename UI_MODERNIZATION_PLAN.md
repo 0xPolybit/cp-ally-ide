@@ -1217,7 +1217,7 @@ After Slice 00 merges, complete Slice 01 so CI protects existing pure behavior. 
 - [x] Slice 01 — Add UI-logic test foundations
 - [x] Slice 02 — Introduce UI tokens and repair color semantics
 - [x] Slice 03 — Centralize FlatLaf and theme application
-- [ ] Slice 04 — Build reusable UI primitives
+- [x] Slice 04 — Build reusable UI primitives
 - [ ] Slice 05 — Create a shared action registry
 - [ ] Slice 06 — Introduce explicit view state
 - [ ] Slice 07 — Add workspace and application status bars

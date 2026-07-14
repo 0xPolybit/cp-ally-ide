@@ -30,18 +30,12 @@ final class ExecutionResultsDialog {
         dialog.setLayout(new BorderLayout());
         dialog.getContentPane().setBackground(theme.frameBackground());
 
-        JPanel header = new JPanel(new BorderLayout());
+        SectionHeader header = new SectionHeader(
+                "Local execution for " + language,
+                ExecutionResultFormatter.summary(report),
+                theme);
+        header.setOpaque(true);
         header.setBackground(theme.panelBackground());
-        header.setBorder(BorderFactory.createEmptyBorder(12, 14, 12, 14));
-
-        JLabel title = new JLabel("Local execution for " + language);
-        title.setForeground(theme.textColor());
-        title.setFont(title.getFont().deriveFont(Font.BOLD, 15f));
-        header.add(title, BorderLayout.NORTH);
-
-        JLabel summary = new JLabel(ExecutionResultFormatter.summary(report));
-        summary.setForeground(theme.mutedTextColor());
-        header.add(summary, BorderLayout.SOUTH);
         dialog.add(header, BorderLayout.NORTH);
 
         JEditorPane pane = new JEditorPane();
