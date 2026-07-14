@@ -28,6 +28,28 @@ record AppThemePalette(
         Color scrollbarThumbPressed,
         Color selectionBackground) {
 
+    /** Accent used for links, focus, selection, and primary actions. */
+    Color linkColor() {
+        return accentColor;
+    }
+
+    /** Informational notices should not look like success or error states. */
+    Color infoColor() {
+        return lightTheme ? new Color(37, 99, 235) : new Color(96, 165, 250);
+    }
+
+    Color disabledTextColor() {
+        return lightTheme ? new Color(145, 154, 166) : new Color(112, 119, 131);
+    }
+
+    Color focusColor() {
+        return accentColor;
+    }
+
+    Color subtleBorderColor() {
+        return lightTheme ? new Color(226, 231, 238) : new Color(55, 59, 66);
+    }
+
     static AppThemePalette fromName(String themeName) {
         String normalized = themeName == null ? "dark" : themeName.trim().toLowerCase();
         return switch (normalized) {
@@ -48,7 +70,7 @@ record AppThemePalette(
                 new Color(210, 218, 227),
                 new Color(35, 40, 48),
                 new Color(93, 103, 117),
-                new Color(32, 142, 98),
+                new Color(59, 130, 246),
                 new Color(255, 255, 255),
                 new Color(34, 139, 85),
                 new Color(168, 108, 0),
@@ -76,7 +98,7 @@ record AppThemePalette(
                 new Color(225, 230, 236),
                 new Color(28, 32, 38),
                 new Color(96, 106, 120),
-                new Color(18, 154, 112),
+                new Color(37, 99, 235),
                 new Color(255, 255, 255),
                 new Color(31, 133, 78),
                 new Color(176, 117, 0),
@@ -104,7 +126,7 @@ record AppThemePalette(
                 new Color(184, 195, 208),
                 new Color(26, 31, 38),
                 new Color(74, 83, 95),
-                new Color(8, 135, 96),
+                new Color(37, 99, 235),
                 new Color(255, 255, 255),
                 new Color(24, 124, 74),
                 new Color(154, 101, 0),
@@ -132,7 +154,7 @@ record AppThemePalette(
                 new Color(67, 71, 76),
                 new Color(223, 225, 229),
                 new Color(169, 176, 188),
-                new Color(55, 247, 19),
+                new Color(86, 156, 214),
                 new Color(10, 11, 14),
                 new Color(97, 214, 110),
                 new Color(246, 198, 67),
@@ -160,7 +182,7 @@ record AppThemePalette(
                 new Color(50, 54, 60),
                 new Color(235, 237, 240),
                 new Color(148, 156, 167),
-                new Color(69, 219, 78),
+                new Color(96, 165, 250),
                 new Color(10, 11, 14),
                 new Color(97, 214, 110),
                 new Color(246, 198, 67),
@@ -188,7 +210,7 @@ record AppThemePalette(
                 new Color(77, 82, 89),
                 new Color(240, 242, 245),
                 new Color(176, 184, 194),
-                new Color(79, 255, 32),
+                new Color(96, 165, 250),
                 new Color(9, 10, 12),
                 new Color(108, 232, 121),
                 new Color(248, 206, 82),

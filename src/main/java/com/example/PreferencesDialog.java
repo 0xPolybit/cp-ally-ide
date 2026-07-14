@@ -155,7 +155,7 @@ final class PreferencesDialog {
             dialog.dispose();
         });
 
-        JPanel footer = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
+        JPanel footer = new JPanel(new FlowLayout(FlowLayout.RIGHT, UiTokens.SPACE_2, UiTokens.SPACE_2));
         footer.setOpaque(false);
         footer.add(cancelButton);
         footer.add(saveButton);
@@ -184,9 +184,9 @@ final class PreferencesDialog {
     private static JSpinner createFontSizeSpinner(int value) {
         JSpinner spinner = new JSpinner(new SpinnerNumberModel(value, 8, 32, 1));
         spinner.setFocusable(false);
-        spinner.setPreferredSize(new Dimension(90, 26));
-        spinner.setMinimumSize(new Dimension(90, 26));
-        spinner.setMaximumSize(new Dimension(90, 26));
+        spinner.setPreferredSize(new Dimension(UiTokens.SPINNER_WIDTH, UiTokens.COMPACT_CONTROL_HEIGHT));
+        spinner.setMinimumSize(new Dimension(UiTokens.SPINNER_WIDTH, UiTokens.COMPACT_CONTROL_HEIGHT));
+        spinner.setMaximumSize(new Dimension(UiTokens.SPINNER_WIDTH, UiTokens.COMPACT_CONTROL_HEIGHT));
 
         JSpinner.NumberEditor editor = new JSpinner.NumberEditor(spinner, "#");
         spinner.setEditor(editor);
@@ -198,9 +198,9 @@ final class PreferencesDialog {
     private static JSpinner createTabSpacingSpinner(int value) {
         JSpinner spinner = new JSpinner(new SpinnerNumberModel(value, 2, 8, 1));
         spinner.setFocusable(false);
-        spinner.setPreferredSize(new Dimension(90, 26));
-        spinner.setMinimumSize(new Dimension(90, 26));
-        spinner.setMaximumSize(new Dimension(90, 26));
+        spinner.setPreferredSize(new Dimension(UiTokens.SPINNER_WIDTH, UiTokens.COMPACT_CONTROL_HEIGHT));
+        spinner.setMinimumSize(new Dimension(UiTokens.SPINNER_WIDTH, UiTokens.COMPACT_CONTROL_HEIGHT));
+        spinner.setMaximumSize(new Dimension(UiTokens.SPINNER_WIDTH, UiTokens.COMPACT_CONTROL_HEIGHT));
 
         JSpinner.NumberEditor editor = new JSpinner.NumberEditor(spinner, "#");
         spinner.setEditor(editor);

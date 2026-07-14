@@ -82,13 +82,13 @@ public class MainWindow {
     private static final String VERSION_SOURCE_URL = "https://pastebin.com/raw/uzU8MUWs";
     private static final String RELEASES_URL = "https://github.com/0xPolybit/cp-ally-ide/releases";
     private static final Pattern SEMVER_PATTERN = Pattern.compile("\\b(\\d+\\.\\d+\\.\\d+)\\b");
-    private static final int LEFT_FIELD_WIDTH = 280;
-    private static final int LEFT_FIELD_HEIGHT = 32;
-    private static final int MIN_WINDOW_WIDTH = 1000;
-    private static final int MIN_WINDOW_HEIGHT = 680;
-    private static final int MIN_LEFT_PANEL_WIDTH = 280;
-    private static final int MIN_RIGHT_PANEL_WIDTH = 420;
-    private static final int RUN_ICON_SIZE = 24;
+    private static final int LEFT_FIELD_WIDTH = UiTokens.PROBLEM_FIELD_WIDTH;
+    private static final int LEFT_FIELD_HEIGHT = UiTokens.CONTROL_HEIGHT;
+    private static final int MIN_WINDOW_WIDTH = UiTokens.MIN_WINDOW_WIDTH;
+    private static final int MIN_WINDOW_HEIGHT = UiTokens.MIN_WINDOW_HEIGHT;
+    private static final int MIN_LEFT_PANEL_WIDTH = UiTokens.MIN_LEFT_PANEL_WIDTH;
+    private static final int MIN_RIGHT_PANEL_WIDTH = UiTokens.MIN_RIGHT_PANEL_WIDTH;
+    private static final int RUN_ICON_SIZE = UiTokens.ICON_LARGE;
 
     private final SettingsRepository settingsRepository = new SettingsRepository(
             SETTINGS_DIR_NAME,
@@ -599,7 +599,7 @@ public class MainWindow {
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, rightPanel);
         splitPane.setResizeWeight(0.35);
         splitPane.setDividerLocation(appSettings != null ? appSettings.dividerLocation() : 420);
-        splitPane.setDividerSize(14);
+        splitPane.setDividerSize(UiTokens.DIVIDER_SIZE);
         splitPane.setBorder(BorderFactory.createEmptyBorder(0, 10, 10, 10));
         disableFocus(splitPane);
         contentSplitPane = splitPane;
@@ -1833,10 +1833,12 @@ public class MainWindow {
         boolean hasTestCases = testCasesPanel != null && !testCasesPanel.getExecutionTestCases().isEmpty();
         boolean ready = problemStatementLoaded && support.supported() && (hasTestCases || currentProblemIsEmpty);
 
+        AppThemePalette palette = currentThemePalette();
+        Color supportColor = support.supported() ? palette.successColor() : palette.errorColor();
         runtimeSupportLabel.setText("<html><span style='color:"
-                + (support.supported() ? "#61d66e" : "#f65656")
+                + toHex(supportColor)
                 + ";'>"
-                + (support.supported() ? "Yes" : "No")
+                + (support.supported() ? "Ready" : "Unavailable")
                 + "</span></html>");
         runtimeSupportLabel.setToolTipText(support.message());
         runButton.setEnabled(ready);
@@ -1920,10 +1922,10 @@ public class MainWindow {
 
         if (running) {
             executionStateLabel.setText("Status: Running");
-            executionStateLabel.setForeground(new Color(247, 215, 26));
+            executionStateLabel.setForeground(currentThemePalette().warningColor());
         } else {
             executionStateLabel.setText("Status: Idle");
-            executionStateLabel.setForeground(new Color(169, 176, 188));
+            executionStateLabel.setForeground(currentThemePalette().mutedTextColor());
         }
     }
 
@@ -2073,7 +2075,7 @@ public class MainWindow {
         if (hover != null) {
             runButton.setRolloverIcon(hover);
         }
-        runButton.setPreferredSize(new Dimension(RUN_ICON_SIZE + 14, RUN_ICON_SIZE + 10));
+        runButton.setPreferredSize(UiTokens.compactIconButtonSize());
     }
 
     private String resolveSyntaxStyle(String language) {

@@ -48,12 +48,12 @@ final class TestCasesPanel {
         addTestCaseButton.setToolTipText("Add Test Case (Ctrl+Shift+T)");
         addTestCaseButton.setFocusable(false);
         addTestCaseButton.setRequestFocusEnabled(false);
-        addTestCaseButton.setPreferredSize(new Dimension(32, 28));
+        addTestCaseButton.setPreferredSize(new Dimension(UiTokens.CONTROL_HEIGHT, UiTokens.COMPACT_CONTROL_HEIGHT));
         addTestCaseButton.addActionListener(e -> showAddCustomTestCaseDialog());
 
         JLabel sectionLabel = new JLabel("Test Cases");
         sectionLabel.setForeground(this.theme.textColor());
-        sectionLabel.setFont(sectionLabel.getFont().deriveFont(Font.BOLD, 15f));
+        sectionLabel.setFont(sectionLabel.getFont().deriveFont(Font.BOLD, UiTokens.SECTION_FONT_SIZE));
 
         JPanel topBar = new JPanel(new BorderLayout());
         topBar.setOpaque(false);
