@@ -92,8 +92,11 @@ final class TestCasesPanel {
         testCasesTabs.removeAll();
 
         if (sampleTestCases.isEmpty() && customTestCases.isEmpty()) {
-            JPanel emptyPanel = new JPanel();
-            emptyPanel.setBackground(theme.frameBackground());
+            EmptyStatePanel emptyPanel = new EmptyStatePanel(
+                    "No test cases",
+                    "Add a custom input to test the current solution.",
+                    theme);
+            emptyPanel.setAction("Add test case", this::showAddCustomTestCaseDialog);
             testCasesTabs.addTab("No Test Cases", emptyPanel);
             testCasesTabs.setSelectedIndex(0);
             return;
