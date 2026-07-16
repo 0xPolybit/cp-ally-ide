@@ -738,225 +738,49 @@ public class MainWindow {
     }
 
     private JPanel createEditorPanel() {
-        AppThemePalette palette = currentThemePalette();
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setBorder(BorderFactory.createEmptyBorder(16, 10, 16, 16));
-        panel.setBackground(palette.frameBackground());
-
-        JToolBar editorToolbar = new JToolBar();
-        editorToolbar.setFloatable(false);
-        editorToolbar.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
-        editorToolbar.setOpaque(false);
-        disableFocus(editorToolbar);
-
-        runButton = new JButton(actionRegistry.action(ActionRegistry.Id.RUN_CODE));
-        runButton.setEnabled(false);
-        applyRunButtonIcons();
-        runButton.addActionListener(e -> onRunButtonClicked());
-        editorToolbar.add(runButton);
-        editorToolbar.add(Box.createHorizontalGlue());
-        editorToolbar.add(Box.createHorizontalStrut(20));
-
-        runtimeSupportLabel = new JLabel("checking...");
-        runtimeSupportLabel.setForeground(palette.mutedTextColor());
-        runtimeSupportLabel.setFont(runtimeSupportLabel.getFont().deriveFont(Font.PLAIN, 12f));
-        runtimeSupportLabel.setMaximumSize(new Dimension(40, 20));
-        runtimeSupportLabel.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
-        runtimeSupportLabel.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                onRuntimeSupportLabelClicked();
+        EditorPanel editorPanel = new EditorPanel(actionRegistry, new EditorPanel.Controller() {
+            @Override public AppSettings settings() { return appSettings; }
+            @Override public AppThemePalette palette() { return currentThemePalette(); }
+            @Override public void disableFocus(Component component) { MainWindow.this.disableFocus(component); }
+            @Override public void applyEditorPreferences(RSyntaxTextArea editor, int fontSize, String colorScheme, boolean useTabsAsSpaces, int tabSpacing) {
+                MainWindow.this.applyEditorPreferences(editor, fontSize, colorScheme, useTabsAsSpaces, tabSpacing);
             }
+            @Override public void installEditorAutoPairs(RSyntaxTextArea editor) { MainWindow.this.installEditorAutoPairs(editor); }
+            @Override public void saveCurrentProgramToCache(String language) { MainWindow.this.saveCurrentProgramToCache(language); }
+            @Override public void updateExecutionAvailability() { MainWindow.this.updateExecutionAvailability(); }
+            @Override public boolean problemStatementLoaded() { return problemStatementLoaded; }
+            @Override public void applyLanguageTemplateOrCachedProgram() { MainWindow.this.applyLanguageTemplateOrCachedProgram(); }
+            @Override public void setActiveEditorZoomTarget() { activeZoomTarget = ZoomTarget.EDITOR; }
+            @Override public void zoomEditorIn() { zoomIn(ZoomTarget.EDITOR); }
+            @Override public void zoomEditorOut() { zoomOut(ZoomTarget.EDITOR); }
+            @Override public void applyEditorZoom(RSyntaxTextArea editor) { applyZoomToEditor(); }
+            @Override public void onRuntimeSupportClicked() { onRuntimeSupportLabelClicked(); }
+            @Override public javax.swing.Action runAction() { return actionRegistry.action(ActionRegistry.Id.RUN_CODE); }
         });
-        editorToolbar.add(runtimeSupportLabel);
-        editorToolbar.add(Box.createHorizontalStrut(2));
-
-        JLabel hintIconLabel = createHintIconLabel();
-        editorToolbar.add(hintIconLabel);
-        editorToolbar.add(Box.createHorizontalStrut(10));
-
-        executionStateLabel = new JLabel("Status: Idle");
-        executionStateLabel.setForeground(palette.mutedTextColor());
-        executionStateLabel.setFont(executionStateLabel.getFont().deriveFont(Font.PLAIN, 12f));
-        editorToolbar.add(executionStateLabel);
-        editorToolbar.add(Box.createHorizontalStrut(10));
-
-        languageDropdown = new JComboBox<>(new String[] {
-                "Python 3",
-                "GNU G++17 7.3.0",
-                "GNU G++20 13.2",
-                "GNU C11 5.1.0",
-                "GNU G11 5.1.0",
-                "Java 21",
-                "Kotlin 1.9",
-                "C# 8",
-                "Go 1.22",
-                "Rust 2021",
-                "Node.js 20",
-                "PHP 8.2",
-                "Ruby 3.2",
-                "Perl 5",
-                "Haskell GHC 8.10",
-                "OCaml 4.02",
-                "Scala 2.12",
-                "Pascal 3.0",
-                "JavaScript V8",
-                "PyPy 3"
-        });
-
-        String preferredLanguage = appSettings != null ? appSettings.lastLanguage() : DEFAULT_LANGUAGE;
-        languageDropdown.setSelectedItem(preferredLanguage);
-        if (languageDropdown.getSelectedItem() == null) {
-            languageDropdown.setSelectedItem(DEFAULT_LANGUAGE);
-        }
-        languageDropdown.setPreferredSize(new Dimension(190, LEFT_FIELD_HEIGHT));
-        languageDropdown.setMaximumSize(new Dimension(220, LEFT_FIELD_HEIGHT));
-        languageDropdown.setBackground(palette.inputBackground());
-        languageDropdown.setForeground(palette.inputForeground());
-        languageDropdown.setFocusable(false);
-        languageDropdown.setRequestFocusEnabled(false);
-        languageDropdown.addItemListener(e -> {
-            if (e.getStateChange() == ItemEvent.DESELECTED) {
-                saveCurrentProgramToCache(e.getItem() != null ? e.getItem().toString() : null);
-                return;
-            }
-
-            updateExecutionAvailability();
-            if (problemStatementLoaded) {
-                applyLanguageTemplateOrCachedProgram();
-            }
-        });
-        editorToolbar.add(languageDropdown);
-        updateExecutionAvailability();
-
-        codeEditor = new RSyntaxTextArea(24, 80);
-        codeEditor.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
-        codeEditor.setTabSize(appSettings != null ? appSettings.tabSpacing() : 4);
-        codeEditor.setCodeFoldingEnabled(false);
-        codeEditor.setEditable(false);
-        codeEditor.setFocusable(false);
-        codeEditor.setRequestFocusEnabled(false);
+        codeEditor = editorPanel.editor();
+        codeScrollPane = editorPanel.scrollPane();
+        languageDropdown = editorPanel.languageDropdown();
+        runButton = editorPanel.runButton();
+        runtimeSupportLabel = editorPanel.runtimeSupportLabel();
+        executionStateLabel = editorPanel.executionStateLabel();
+        installEditorDirtyTracking(codeEditor);
         applyEditorPreferences(
-            codeEditor,
-            appSettings != null ? appSettings.editorFontSize() : 14,
-            appSettings != null ? appSettings.editorColorScheme() : DEFAULT_EDITOR_THEME,
-            appSettings != null && appSettings.useTabsAsSpaces(),
-            appSettings != null ? appSettings.tabSpacing() : 4);
-        installEditorAutoPairs(codeEditor);
-        codeEditor.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
-            @Override
-            public void insertUpdate(javax.swing.event.DocumentEvent event) {
-                markEditorDirty();
-            }
+                codeEditor,
+                appSettings != null ? appSettings.editorFontSize() : 14,
+                appSettings != null ? appSettings.editorColorScheme() : DEFAULT_EDITOR_THEME,
+                appSettings != null && appSettings.useTabsAsSpaces(),
+                appSettings != null ? appSettings.tabSpacing() : 4);
+        applyZoomToEditor();
+        updateExecutionAvailability();
+        return editorPanel;
+    }
 
-            @Override
-            public void removeUpdate(javax.swing.event.DocumentEvent event) {
-                markEditorDirty();
-            }
-
-            @Override
-            public void changedUpdate(javax.swing.event.DocumentEvent event) {
-                markEditorDirty();
-            }
+    private void installEditorDirtyTracking(RSyntaxTextArea editor) {
+        editor.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            @Override public void insertUpdate(javax.swing.event.DocumentEvent event) { markEditorDirty(); }
+            @Override public void removeUpdate(javax.swing.event.DocumentEvent event) { markEditorDirty(); }
+            @Override public void changedUpdate(javax.swing.event.DocumentEvent event) { markEditorDirty(); }
         });
-        replaceEditorText("Select a problem to get started...");
-        codeEditor.setCaretPosition(0);
-        codeEditor.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseEntered(MouseEvent e) {
-                activeZoomTarget = ZoomTarget.EDITOR;
-            }
-
-            @Override
-            public void mousePressed(MouseEvent e) {
-                activeZoomTarget = ZoomTarget.EDITOR;
-            }
-        });
-        // Support Ctrl+wheel / pinch-to-zoom on the editor
-        // Mouse wheel handling for the editor is attached to the scroll pane below so
-        // wheel events reliably control the scrollbar even when the editor isn't focusable.
-        // Editor zoom (font size) keybindings: Ctrl + Plus / Ctrl + Equals / NumpadAdd to increase,
-        // Ctrl + Minus / NumpadSubtract to decrease by 2pt.
-        javax.swing.Action zoomInAction = new javax.swing.AbstractAction() {
-            @Override
-            public void actionPerformed(java.awt.event.ActionEvent e) {
-                zoomIn(ZoomTarget.EDITOR);
-            }
-         };
-
-        javax.swing.Action zoomOutAction = new javax.swing.AbstractAction() {
-            @Override
-            public void actionPerformed(java.awt.event.ActionEvent e) {
-                zoomOut(ZoomTarget.EDITOR);
-            }
-        };
-
-        // Bind multiple keystrokes for plus (since '+' often requires Shift)
-        javax.swing.InputMap im = codeEditor.getInputMap(JComponent.WHEN_FOCUSED);
-        javax.swing.ActionMap am = codeEditor.getActionMap();
-        im.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_PLUS, java.awt.event.InputEvent.CTRL_DOWN_MASK), "zoomIn");
-        im.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_EQUALS, java.awt.event.InputEvent.CTRL_DOWN_MASK), "zoomIn");
-        im.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_ADD, java.awt.event.InputEvent.CTRL_DOWN_MASK), "zoomIn");
-        im.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_MINUS, java.awt.event.InputEvent.CTRL_DOWN_MASK), "zoomOut");
-        im.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_SUBTRACT, java.awt.event.InputEvent.CTRL_DOWN_MASK), "zoomOut");
-        am.put("zoomIn", zoomInAction);
-        am.put("zoomOut", zoomOutAction);
-        RTextScrollPane scrollPane = new RTextScrollPane(codeEditor);
-        // Ensure wheel scrolling is enabled on the scroll pane (some platforms/custom components
-        // can prevent wheel events from reaching the scrollbar). Attach a listener to the
-        // scroll pane to support Ctrl+wheel zooming while forwarding normal wheel events
-        // to the scrollbar explicitly for consistent behavior.
-        scrollPane.setWheelScrollingEnabled(true);
-        scrollPane.addMouseWheelListener(e -> {
-            try {
-                if (e.isControlDown()) {
-                    if (e.getWheelRotation() < 0) zoomIn(ZoomTarget.EDITOR); else zoomOut(ZoomTarget.EDITOR);
-                    e.consume();
-                    return;
-                }
-                JScrollBar vsb = scrollPane.getVerticalScrollBar();
-                int units = e.getUnitsToScroll();
-                int increment = Math.max(1, vsb.getUnitIncrement());
-                vsb.setValue(vsb.getValue() + units * increment);
-                e.consume();
-            } catch (Exception ignored) {
-            }
-        });
-        codeEditor.addMouseWheelListener(e -> {
-            try {
-                if (e.isControlDown()) {
-                    if (e.getWheelRotation() < 0) zoomIn(ZoomTarget.EDITOR); else zoomOut(ZoomTarget.EDITOR);
-                    e.consume();
-                    return;
-                }
-                if (codeScrollPane != null) {
-                    JScrollBar vsb = codeScrollPane.getVerticalScrollBar();
-                    int units = e.getUnitsToScroll();
-                    int increment = Math.max(1, vsb.getUnitIncrement());
-                    vsb.setValue(vsb.getValue() + units * increment);
-                    e.consume();
-                }
-            } catch (Exception ignored) {
-            }
-        });
-        codeScrollPane = scrollPane;
-        applyEditorFontSize(codeEditor, appSettings != null ? appSettings.editorFontSize() : 14);
-
-        scrollPane.setFoldIndicatorEnabled(true);
-        scrollPane.setBorder(BorderFactory.createLineBorder(palette.borderColor()));
-        scrollPane.getGutter().setBackground(palette.gutterBackground());
-        scrollPane.getGutter().setLineNumberColor(palette.mutedTextColor());
-        scrollPane.getGutter().setBorderColor(palette.borderColor());
-        scrollPane.getVerticalScrollBar().setBackground(palette.frameBackground());
-        scrollPane.getVerticalScrollBar().setForeground(palette.scrollbarThumb());
-        scrollPane.getHorizontalScrollBar().setBackground(palette.frameBackground());
-        scrollPane.getHorizontalScrollBar().setForeground(palette.scrollbarThumb());
-        scrollPane.getVerticalScrollBar().setUnitIncrement(14);
-        scrollPane.setBackground(palette.panelBackground());
-
-        panel.add(editorToolbar, BorderLayout.NORTH);
-        panel.add(scrollPane, BorderLayout.CENTER);
-        return panel;
     }
 
     private void applyEditorPreferences(RSyntaxTextArea editor, int fontSize, String colorScheme, boolean useTabsAsSpaces, int tabSpacing) {
