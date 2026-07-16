@@ -13,7 +13,6 @@ import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
-import javax.swing.JEditorPane;
 import javax.swing.JFrame;
 import javax.swing.ImageIcon;
 import javax.swing.JLabel;
@@ -23,13 +22,10 @@ import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
-import javax.swing.JScrollBar;
 import javax.swing.JSplitPane;
 import javax.swing.JTextField;
-import javax.swing.JToolBar;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
-import javax.swing.event.HyperlinkEvent;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
@@ -60,7 +56,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.awt.event.ItemEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
@@ -111,7 +106,7 @@ public class MainWindow {
     private JButton runButton;
     private RSyntaxTextArea codeEditor;
     private RTextScrollPane codeScrollPane;
-    private JPanel leftPanelContainer;
+    private ProblemViewPanel problemViewPanel;
     private JPanel problemEntryPanel;
     private final Map<String, String> copyPayloads = new HashMap<>();
     private JSplitPane contentSplitPane;
@@ -638,13 +633,10 @@ public class MainWindow {
 
     private JPanel createProblemStatementPanel() {
         AppThemePalette palette = currentThemePalette();
-        leftPanelContainer = new JPanel(new BorderLayout());
-        leftPanelContainer.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 10));
-        leftPanelContainer.setBackground(palette.frameBackground());
-
+        problemViewPanel = new ProblemViewPanel(palette);
         problemEntryPanel = createProblemEntryPanel();
-        leftPanelContainer.add(problemEntryPanel, BorderLayout.CENTER);
-        return leftPanelContainer;
+        problemViewPanel.showEntry(problemEntryPanel);
+        return problemViewPanel;
     }
 
     private JPanel createProblemEntryPanel() {
@@ -1357,10 +1349,7 @@ public class MainWindow {
         loadingPanel.setOpaque(false);
         loadingPanel.add(createLoadingLabel("Loading statement and sample tests..."));
 
-        leftPanelContainer.removeAll();
-        leftPanelContainer.add(loadingPanel, BorderLayout.CENTER);
-        leftPanelContainer.revalidate();
-        leftPanelContainer.repaint();
+        problemViewPanel.showLoading(loadingPanel);
     }
 
     private void restoreProblemEntryPanelWithError(String message) {
@@ -1378,10 +1367,7 @@ public class MainWindow {
             actionRegistry.setEnabled(ActionRegistry.Id.ADD_TEST_CASE, false);
         }
 
-        leftPanelContainer.removeAll();
-        leftPanelContainer.add(problemEntryPanel, BorderLayout.CENTER);
-        leftPanelContainer.revalidate();
-        leftPanelContainer.repaint();
+        problemViewPanel.showError(problemEntryPanel);
     }
 
     private void showCodeforcesProblemView(String problemCode, RenderedProblemView statementOnly, RenderedProblemView full) {
@@ -1478,116 +1464,27 @@ public class MainWindow {
             testCasesPanel.setSamplePayloads(full.copyPayloads());
         }
 
-        // Create or reuse persistent problemPane so we can re-render on zoom changes without rebuilding UI
-        if (problemPane == null) {
-            // Paint with high-quality interpolation so scaled images (LaTeX
-            // formulas, icons, statement illustrations) render smoothly.
-            problemPane = new JEditorPane() {
-                @Override
-                protected void paintComponent(java.awt.Graphics g) {
-                    if (g instanceof java.awt.Graphics2D g2) {
-                        g2.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
-                                java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-                        g2.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING,
-                                java.awt.RenderingHints.VALUE_RENDER_QUALITY);
-                        g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING,
-                                java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
-                        g2.setRenderingHint(java.awt.RenderingHints.KEY_TEXT_ANTIALIASING,
-                                java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-                        g2.setRenderingHint(java.awt.RenderingHints.KEY_ALPHA_INTERPOLATION,
-                                java.awt.RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
-                    }
-                    super.paintComponent(g);
-                }
-            };
-            problemPane.setContentType("text/html");
-            problemPane.setEditable(false);
-            problemPane.setFocusable(false);
-            problemPane.addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseEntered(MouseEvent e) {
-                    activeZoomTarget = ZoomTarget.PROBLEM;
-                }
+        problemViewPanel.initializeDocumentSurface(
+                () -> zoomIn(ZoomTarget.PROBLEM),
+                () -> zoomOut(ZoomTarget.PROBLEM),
+                () -> activeZoomTarget = ZoomTarget.PROBLEM,
+                this::handleProblemLink);
+        problemPane = problemViewPanel.documentPane();
+        problemScrollPane = problemViewPanel.documentScrollPane();
+        problemViewPanel.setDocumentHtml(statementOnly.html());
 
-                @Override
-                public void mousePressed(MouseEvent e) {
-                    activeZoomTarget = ZoomTarget.PROBLEM;
-                }
-            });
-            problemPane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
-            problemPane.addHyperlinkListener(event -> {
-                if (event.getEventType() != HyperlinkEvent.EventType.ACTIVATED || event.getDescription() == null) {
-                    return;
-                }
-                String description = event.getDescription();
-                if (description.startsWith("copy:")) {
-                    String key = description.substring("copy:".length());
-                    String payload = copyPayloads.get(key);
-                    if (payload != null) {
-                        copyToClipboard(payload);
-                    }
-                    return;
-                }
-
-                if (description.startsWith("http://") || description.startsWith("https://")) {
-                    openExternalUrl(description);
-                }
-            });
-        }
-        problemPane.setText(statementOnly.html());
-        problemPane.setCaretPosition(0);
-        problemPane.setBackground(palette.frameBackground());
-
-        if (problemScrollPane == null) {
-            // Build the persistent scroll pane and split pane once
-            problemScrollPane = new JScrollPane(problemPane);
-            problemScrollPane.setWheelScrollingEnabled(true);
-            problemScrollPane.addMouseWheelListener(e -> {
-                try {
-                    if (e.isControlDown()) {
-                        if (e.getWheelRotation() < 0) zoomIn(ZoomTarget.PROBLEM); else zoomOut(ZoomTarget.PROBLEM);
-                        e.consume();
-                    }
-                } catch (Exception ignored) {
-                }
-            });
-            problemScrollPane.setBorder(BorderFactory.createEmptyBorder());
-            problemScrollPane.getVerticalScrollBar().setUnitIncrement(14);
-
-            JPanel topBar = new JPanel(new BorderLayout());
-            topBar.setOpaque(false);
-            topBar.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
-
-            submissionStatusLabel = new JLabel("");
-            submissionStatusLabel.setFont(submissionStatusLabel.getFont().deriveFont(Font.BOLD, 12f));
-            submissionStatusLabel.setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 4));
-            submissionStatusLabel.setVisible(false);
-            topBar.add(submissionStatusLabel, BorderLayout.EAST);
-
-            JPanel statementPanel = new JPanel(new BorderLayout());
-            statementPanel.setOpaque(false);
-            statementPanel.add(topBar, BorderLayout.NORTH);
-            statementPanel.add(problemScrollPane, BorderLayout.CENTER);
-
+        if (statementTestCasesSplitPane == null) {
             JPanel testCasesSection = testCasesPanel != null ? testCasesPanel.createPanel() : new JPanel();
-
-            int minTestCaseHeight = MIN_WINDOW_HEIGHT / 3;
+            int minTestCaseHeight = UiTokens.MIN_WINDOW_HEIGHT / 3;
             int preferredDivider = appSettings != null && appSettings.testCasesDividerLocation() > 0
-                ? appSettings.testCasesDividerLocation()
-                : mainFrame.getHeight() - minTestCaseHeight - 10;
-
-            JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, statementPanel, testCasesSection);
-            splitPane.setResizeWeight(0.5);
-            splitPane.setDividerLocation(preferredDivider);
-            statementTestCasesSplitPane = splitPane;
+                    ? appSettings.testCasesDividerLocation()
+                    : mainFrame.getHeight() - minTestCaseHeight - UiTokens.SPACE_2;
+            statementTestCasesSplitPane = problemViewPanel.createStatementTestCasesSurface(
+                    testCasesSection, preferredDivider);
+            submissionStatusLabel = problemViewPanel.submissionStatusLabel();
         }
 
-        problemScrollPane.getViewport().setBackground(palette.frameBackground());
-
-        leftPanelContainer.removeAll();
-        leftPanelContainer.add(statementTestCasesSplitPane, BorderLayout.CENTER);
-        leftPanelContainer.revalidate();
-        leftPanelContainer.repaint();
+        problemViewPanel.showLoaded();
 
         currentProblemCode = problemCode;
         problemStatementLoaded = true;
@@ -1610,6 +1507,23 @@ public class MainWindow {
         }
 
         showEmptyProblemView(); // saves the current program before switching
+    }
+
+    private void handleProblemLink(String description) {
+        if (description == null) {
+            return;
+        }
+        if (description.startsWith("copy:")) {
+            String key = description.substring("copy:".length());
+            String payload = copyPayloads.get(key);
+            if (payload != null) {
+                copyToClipboard(payload);
+            }
+            return;
+        }
+        if (description.startsWith("http://") || description.startsWith("https://")) {
+            openExternalUrl(description);
+        }
     }
 
     private void copyToClipboard(String text) {
@@ -2483,8 +2397,8 @@ public class MainWindow {
             mainFrame.getRootPane().putClientProperty("JRootPane.titleBarBackground", palette.titleBarBackground());
             mainFrame.getRootPane().putClientProperty("JRootPane.titleBarForeground", palette.titleBarForeground());
         }
-        if (leftPanelContainer != null) {
-            leftPanelContainer.setBackground(palette.frameBackground());
+        if (problemViewPanel != null) {
+            problemViewPanel.setBackground(palette.frameBackground());
         }
         if (problemEntryPanel != null) {
             problemEntryPanel.setBackground(palette.frameBackground());

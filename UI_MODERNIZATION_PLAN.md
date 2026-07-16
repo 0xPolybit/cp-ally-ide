@@ -1222,7 +1222,7 @@ After Slice 00 merges, complete Slice 01 so CI protects existing pure behavior. 
 - [x] Slice 06 — Introduce explicit view state
 - [x] Slice 07 — Add workspace and application status bars
 - [x] Slice 08 — Extract and modernize the editor panel
-- [ ] Slice 09 — Extract a stable problem panel
+- [x] Slice 09 — Extract a stable problem panel
 - [ ] Slice 10 — Integrate and polish the main shell
 - [ ] Slice 11 — Modernize statement presentation
 - [ ] Slice 12 — Separate test-case data from its view
