@@ -38,6 +38,11 @@ final class ProblemViewPanel extends JPanel {
                 UiTokens.SPACE_4, UiTokens.SPACE_4, UiTokens.SPACE_4, UiTokens.SPACE_3));
         setBackground(this.palette.frameBackground());
         contentPanel.setOpaque(false);
+        SectionHeader header = new SectionHeader(
+                "Problem workspace",
+                "Statement and test cases",
+                this.palette);
+        add(header, BorderLayout.NORTH);
         add(contentPanel, BorderLayout.CENTER);
         getAccessibleContext().setAccessibleName("Problem workspace");
     }
@@ -166,6 +171,8 @@ final class ProblemViewPanel extends JPanel {
         statementTestCasesSplitPane = new JSplitPane(
                 JSplitPane.VERTICAL_SPLIT, statementPanel, testCases);
         statementTestCasesSplitPane.setResizeWeight(0.5);
+        statementTestCasesSplitPane.setDividerSize(UiTokens.DIVIDER_SIZE);
+        statementTestCasesSplitPane.setBorder(BorderFactory.createEmptyBorder());
         statementTestCasesSplitPane.setDividerLocation(divider);
         return statementTestCasesSplitPane;
     }

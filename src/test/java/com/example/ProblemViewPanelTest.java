@@ -36,6 +36,6 @@ class ProblemViewPanelTest {
         panel.showLoading(loading);
         panel.showError(error);
 
-        assertEquals(1, panel.getComponentCount());
+        assertEquals(2, panel.getComponentCount());
     }
 }

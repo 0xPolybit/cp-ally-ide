@@ -71,9 +71,11 @@ public class App {
                     primaryServer.startListening(url -> mainWindow.openFromUrl(url));
                     DiagnosticLogger.info("[App] IPC listener started.");
 
-                    splashScreenWindow.sleepUntilMinimumDuration(3000L);
+                    // Keep the splash from flashing on very fast starts, but do
+                    // not impose the former three-second startup delay.
+                    splashScreenWindow.sleepUntilMinimumDuration(350L);
                     splashScreenWindow.closeSplash();
-                    splashScreenWindow.sleepSilently(500L);
+                    splashScreenWindow.sleepSilently(100L);
 
                     SwingUtilities.invokeLater(() -> {
                         mainWindow.showWindow();

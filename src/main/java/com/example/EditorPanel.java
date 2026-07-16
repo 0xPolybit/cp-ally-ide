@@ -186,7 +186,15 @@ final class EditorPanel extends JPanel {
         codeScrollPane.setBackground(palette.panelBackground());
         controller.applyEditorZoom(codeEditor);
 
-        add(editorToolbar, BorderLayout.NORTH);
+        JPanel editorHeader = new JPanel(new BorderLayout());
+        editorHeader.setOpaque(false);
+        editorHeader.add(new SectionHeader(
+                "Solution editor",
+                "Write, run, and inspect your solution",
+                palette), BorderLayout.NORTH);
+        editorHeader.add(editorToolbar, BorderLayout.SOUTH);
+
+        add(editorHeader, BorderLayout.NORTH);
         add(codeScrollPane, BorderLayout.CENTER);
         getAccessibleContext().setAccessibleName("Code editor");
     }

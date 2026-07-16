@@ -595,7 +595,7 @@ public class MainWindow {
         splitPane.setResizeWeight(0.35);
         splitPane.setDividerLocation(appSettings != null ? appSettings.dividerLocation() : 420);
         splitPane.setDividerSize(UiTokens.DIVIDER_SIZE);
-        splitPane.setBorder(BorderFactory.createEmptyBorder(0, 10, 10, 10));
+        splitPane.setBorder(BorderFactory.createEmptyBorder(0, UiTokens.SPACE_3, UiTokens.SPACE_3, UiTokens.SPACE_3));
         disableFocus(splitPane);
         contentSplitPane = splitPane;
 
