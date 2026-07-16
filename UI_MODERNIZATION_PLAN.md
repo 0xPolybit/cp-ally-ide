@@ -1220,7 +1220,7 @@ After Slice 00 merges, complete Slice 01 so CI protects existing pure behavior. 
 - [x] Slice 04 — Build reusable UI primitives
 - [x] Slice 05 — Create a shared action registry
 - [x] Slice 06 — Introduce explicit view state
-- [ ] Slice 07 — Add workspace and application status bars
+- [x] Slice 07 — Add workspace and application status bars
 - [ ] Slice 08 — Extract and modernize the editor panel
 - [ ] Slice 09 — Extract a stable problem panel
 - [ ] Slice 10 — Integrate and polish the main shell

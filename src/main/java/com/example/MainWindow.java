@@ -103,6 +103,8 @@ public class MainWindow {
     private JLabel executionStateLabel;
     private AppSettings appSettings;
     private JFrame mainFrame;
+    private WorkspaceBar workspaceBar;
+    private ApplicationStatusBar applicationStatusBar;
     private JTextField problemCodeInput;
     private JButton fetchProblemButton;
     private JLabel fetchStatusLabel;
@@ -179,6 +181,14 @@ public class MainWindow {
         frame.getRootPane().putClientProperty("JRootPane.titleBarForeground", appThemePalette.titleBarForeground());
         frame.setJMenuBar(createEmbeddedTitleBar());
         mainFrame = frame;
+        workspaceBar = new WorkspaceBar(actionRegistry, appThemePalette);
+        workspaceBar.setProblemState(problemViewState);
+        applicationStatusBar = new ApplicationStatusBar(appThemePalette);
+        applicationStatusBar.setSaveState(saveState);
+        applicationStatusBar.setExecutionState(executionViewState.state());
+        applicationStatusBar.setZoomText(zoomLabelText());
+        frame.add(workspaceBar, BorderLayout.NORTH);
+        frame.add(applicationStatusBar, BorderLayout.SOUTH);
         testCasesPanel = new TestCasesPanel(mainFrame, appThemePalette);
 
         frame.add(createContentSplit(), BorderLayout.CENTER);
@@ -1333,6 +1343,7 @@ public class MainWindow {
         AppThemePalette palette = currentThemePalette();
         statusLabel.setText("Checking CodeForces...");
         statusLabel.setForeground(palette.mutedTextColor());
+        setConnectivityState(ConnectivityState.CHECKING, "Checking Codeforces");
 
         SwingWorker<ConnectivityResult, Void> worker = new SwingWorker<>() {
             @Override
@@ -1346,13 +1357,44 @@ public class MainWindow {
                     ConnectivityResult result = get();
                     statusLabel.setText(result.message());
                     statusLabel.setForeground(result.color());
+                    setConnectivityState(connectivityStateFor(result), result.message());
                 } catch (Exception ignored) {
                     statusLabel.setText("CodeForces unresponsive");
                     statusLabel.setForeground(palette.errorColor());
+                    setConnectivityState(ConnectivityState.OFFLINE, "Codeforces unresponsive");
                 }
             }
         };
         worker.execute();
+    }
+
+    private ConnectivityState connectivityStateFor(ConnectivityResult result) {
+        if (result == null || result.message() == null) {
+            return ConnectivityState.OFFLINE;
+        }
+        String message = result.message().toLowerCase();
+        if (message.contains("online") && message.contains("responsive")) {
+            return ConnectivityState.ONLINE;
+        }
+        if (message.contains("offline")) {
+            return ConnectivityState.OFFLINE;
+        }
+        return ConnectivityState.DEGRADED;
+    }
+
+    private void setConnectivityState(ConnectivityState state, String message) {
+        if (workspaceBar != null) {
+            workspaceBar.setConnectivity(state, message);
+        }
+        if (applicationStatusBar != null) {
+            applicationStatusBar.setConnectivity(state, message);
+        }
+    }
+
+    private void updateWorkspaceProblemState() {
+        if (workspaceBar != null) {
+            workspaceBar.setProblemState(problemViewState);
+        }
     }
 
     private void onFetchProblemClicked() {
@@ -1384,6 +1426,7 @@ public class MainWindow {
         long requestId = ++problemRequestSequence;
 
         problemViewState = ProblemViewState.loading(requestedProblemCode);
+        updateWorkspaceProblemState();
         showLeftPanelLoading(requestedProblemCode);
 
         final ProblemDetails[] fetched = new ProblemDetails[1];
@@ -1480,6 +1523,7 @@ public class MainWindow {
 
     private void showLeftPanelLoading(String problemCode) {
         problemViewState = ProblemViewState.loading(problemCode);
+        updateWorkspaceProblemState();
         actionRegistry.setEnabled(ActionRegistry.Id.FETCH_PROBLEM, false);
         fetchProblemButton.setEnabled(false);
         fetchStatusLabel.setForeground(currentThemePalette().mutedTextColor());
@@ -1500,6 +1544,7 @@ public class MainWindow {
         fetchProblemButton.setEnabled(true);
         fetchStatusLabel.setForeground(currentThemePalette().errorColor());
         fetchStatusLabel.setText(message);
+        updateWorkspaceProblemState();
 
         if (refreshProblemItem != null) {
             actionRegistry.setEnabled(ActionRegistry.Id.REFRESH_PROBLEM, false);
@@ -1725,6 +1770,7 @@ public class MainWindow {
         problemViewState = emptyProblem
                 ? ProblemViewState.empty()
                 : ProblemViewState.loaded(problemCode, currentProblemDetails);
+        updateWorkspaceProblemState();
         enableEditorForProblem();
     }
 
@@ -1833,6 +1879,9 @@ public class MainWindow {
 
     private void setSaveState(SaveState state) {
         saveState = state == null ? SaveState.DISABLED : state;
+        if (applicationStatusBar != null) {
+            applicationStatusBar.setSaveState(saveState);
+        }
     }
 
     private void saveCurrentProgramToCache() {
@@ -1976,6 +2025,9 @@ public class MainWindow {
             case FAILED -> ExecutionViewState.failed(language);
             case IDLE -> ExecutionViewState.idle(language);
         };
+        if (applicationStatusBar != null) {
+            applicationStatusBar.setExecutionState(state);
+        }
         actionRegistry.setEnabled(ActionRegistry.Id.RUN_CODE, state != ExecutionState.RUNNING);
         if (executionStateLabel == null) {
             return;
@@ -2483,8 +2535,12 @@ public class MainWindow {
             editorZoomFactor = clampedZoom;
             applyZoomToEditor();
         }
+        String zoomText = zoomLabelText();
         if (zoomPercentLabel != null) {
-            zoomPercentLabel.setText(zoomLabelText());
+            zoomPercentLabel.setText(zoomText);
+        }
+        if (applicationStatusBar != null) {
+            applicationStatusBar.setZoomText(zoomText);
         }
     }
 
