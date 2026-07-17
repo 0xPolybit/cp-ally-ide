@@ -30,63 +30,29 @@ final class SupportDialogs {
 
     static void showRuntimeSupportDialog(Frame owner, String language, String supportInfo, AppThemePalette theme) {
         AppThemePalette palette = theme != null ? theme : AppThemePalette.dark();
-        JDialog dialog = new JDialog(owner, "Language Support Details", true);
-        dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
-        dialog.setLayout(new BorderLayout());
-        dialog.setSize(new Dimension(500, 350));
-        dialog.setLocationRelativeTo(owner);
-
+        DialogShell shell = new DialogShell(owner, "Language Support Details", palette, true);
         JScrollPane scrollPane = new JScrollPane(createRuntimeSupportPanel(supportInfo, language, palette));
         scrollPane.setBorder(BorderFactory.createLineBorder(palette.borderColor()));
         scrollPane.getViewport().setBackground(palette.panelBackground());
         scrollPane.getVerticalScrollBar().setUnitIncrement(16);
-
-        JButton closeButton = new JButton("Close");
-        closeButton.addActionListener(e -> dialog.dispose());
-        JPanel buttonPanel = new JPanel();
-        buttonPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        buttonPanel.add(closeButton);
-
-        dialog.getRootPane().registerKeyboardAction(
-                e -> dialog.dispose(),
-                KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
-                JComponent.WHEN_IN_FOCUSED_WINDOW);
-
-        dialog.add(scrollPane, BorderLayout.CENTER);
-        dialog.add(buttonPanel, BorderLayout.SOUTH);
-        dialog.setVisible(true);
+        shell.setContentAndHeader(scrollPane, "Language Support Details", language);
+        shell.setSize(500, 350);
+        shell.addCancel();
+        shell.setVisible(true);
     }
 
     static void showCreditsDialog(Frame owner, AppThemePalette theme) {
         AppThemePalette palette = theme != null ? theme : AppThemePalette.dark();
-        JDialog dialog = new JDialog(owner, "Credits", true);
-        dialog.setLayout(new BorderLayout());
-        dialog.getContentPane().setBackground(palette.frameBackground());
-
+        DialogShell shell = new DialogShell(owner, "Credits", palette, true);
         JPanel content = createCreditsContentPanel(palette);
         JScrollPane scrollPane = new JScrollPane(content);
         scrollPane.setBorder(BorderFactory.createLineBorder(palette.borderColor()));
         scrollPane.getViewport().setBackground(palette.frameBackground());
         scrollPane.getVerticalScrollBar().setUnitIncrement(16);
-
-        JButton closeButton = new JButton("Close");
-        closeButton.addActionListener(e -> dialog.dispose());
-
-        JPanel footerPanel = new JPanel();
-        footerPanel.setBackground(palette.frameBackground());
-        footerPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        footerPanel.add(closeButton);
-
-        dialog.getRootPane().registerKeyboardAction(
-                e -> dialog.dispose(),
-                KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
-                JComponent.WHEN_IN_FOCUSED_WINDOW);
-
-        dialog.add(scrollPane, BorderLayout.CENTER);
-        dialog.add(footerPanel, BorderLayout.SOUTH);
-        dialog.setSize(760, 560);
-        dialog.setLocationRelativeTo(owner);
-        dialog.setVisible(true);
+        shell.setContentAndHeader(scrollPane, "Credits", "Project author and public profiles");
+        shell.setSize(760, 560);
+        shell.addCancel();
+        shell.setVisible(true);
     }
 
     private static JPanel createRuntimeSupportPanel(String rawInfo, String language, AppThemePalette palette) {
