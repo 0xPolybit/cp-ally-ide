@@ -1471,7 +1471,9 @@ public class MainWindow {
                 this::handleProblemLink);
         problemPane = problemViewPanel.documentPane();
         problemScrollPane = problemViewPanel.documentScrollPane();
+        problemViewPanel.rememberScrollPosition();
         problemViewPanel.setDocumentHtml(statementOnly.html());
+        problemViewPanel.restoreScrollPosition();
 
         if (statementTestCasesSplitPane == null) {
             JPanel testCasesSection = testCasesPanel != null ? testCasesPanel.createPanel() : new JPanel();
@@ -2289,6 +2291,59 @@ public class MainWindow {
         applyEditorFontSize(codeEditor, newSize);
     }
 
+    private void applyProblemPresentation(
+            RenderedProblemView full, RenderedProblemView statementOnly, List<SheetInfo> sheets) {
+        if (full != null) {
+            copyPayloads.clear();
+            copyPayloads.putAll(full.copyPayloads());
+            if (testCasesPanel != null) {
+                testCasesPanel.setSamplePayloads(full.copyPayloads());
+            }
+            ProblemStatementMetadata metadata = ProblemStatementMetadata.from(
+                    currentProblemDetails, full, sheets, currentProblemCode);
+            problemViewPanel.setMetadata(metadata);
+        } else {
+            problemViewPanel.setMetadata(null);
+        }
+        if (currentProblemDetails != null) {
+            problemViewPanel.rememberScrollPosition();
+            problemViewPanel.setDocumentHtml(statementOnly.html());
+            problemViewPanel.restoreScrollPosition();
+            problemViewPanel.setLatexNotice(buildLatexNotice());
+        } else if (currentProblemIsEmpty) {
+            problemViewPanel.setLatexNotice(null);
+        }
+    }
+
+    private static String buildProblemUrl(String problemCode) {
+        if (problemCode == null || problemCode.isBlank()) {
+            return "https://codeforces.com";
+        }
+        int split = 0;
+        while (split < problemCode.length() && Character.isDigit(problemCode.charAt(split))) {
+            split++;
+        }
+        if (split == 0 || split >= problemCode.length()) {
+            return "https://codeforces.com";
+        }
+        String contestId = problemCode.substring(0, split);
+        String index = problemCode.substring(split).toUpperCase();
+        return "https://codeforces.com/problemset/problem/" + contestId + "/" + index;
+    }
+
+    private InlineNotice buildLatexNotice() {
+        InlineNotice notice = new InlineNotice(
+                "LaTeX rendering is limited",
+                "If formulas or complex layout are not displaying correctly, view the statement on CodeForces.com.",
+                StatusBadge.Kind.WARNING,
+                currentThemePalette());
+        if (currentProblemDetails != null) {
+            notice.setAction("Open on Codeforces", () ->
+                    openExternalUrl(buildProblemUrl(currentProblemDetails.code())));
+        }
+        return notice;
+    }
+
     private void rerenderProblemStatement() {
         try {
             if (!problemStatementLoaded || problemPane == null || problemHtmlRenderer == null) {
@@ -2297,25 +2352,17 @@ public class MainWindow {
             if (currentProblemDetails != null) {
                 RenderedProblemView full = problemHtmlRenderer.render(currentProblemDetails);
                 RenderedProblemView statementOnly = problemHtmlRenderer.renderStatementOnly(currentProblemDetails);
-                if (problemSheetsService != null && currentProblemCode != null) {
-                    List<SheetInfo> sheets = problemSheetsService.getCached(currentProblemCode);
-                    if (!sheets.isEmpty()) {
-                        String sheetHtml = buildSheetInfoHtml(sheets, appThemePalette);
-                        full = injectSheetInfo(full, sheetHtml);
-                        statementOnly = injectSheetInfo(statementOnly, sheetHtml);
-                    }
-                }
-                copyPayloads.clear();
-                copyPayloads.putAll(full.copyPayloads());
-                if (testCasesPanel != null) {
-                    testCasesPanel.setSamplePayloads(full.copyPayloads());
-                }
-                problemPane.setText(statementOnly.html());
-                problemPane.setCaretPosition(0);
+                List<SheetInfo> sheets = currentProblemCode == null
+                        ? List.of()
+                        : problemSheetsService.getCached(currentProblemCode);
+                applyProblemPresentation(full, statementOnly, sheets);
             } else if (currentProblemIsEmpty) {
                 RenderedProblemView empty = problemHtmlRenderer.renderEmptyProblem();
-                problemPane.setText(empty.html());
-                problemPane.setCaretPosition(0);
+                problemViewPanel.rememberScrollPosition();
+                problemViewPanel.setDocumentHtml(empty.html());
+                problemViewPanel.restoreScrollPosition();
+                problemViewPanel.setMetadata(null);
+                problemViewPanel.setLatexNotice(null);
             }
         } catch (Exception ignored) {
         }

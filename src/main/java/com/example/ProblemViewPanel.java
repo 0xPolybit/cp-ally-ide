@@ -4,17 +4,19 @@ import javax.swing.BorderFactory;
 import javax.swing.JEditorPane;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
-import javax.swing.JScrollPane;
 import javax.swing.JScrollBar;
+import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.SwingConstants;
 import javax.swing.event.HyperlinkEvent;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.GridLayout;
 import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.List;
 import java.util.function.Consumer;
 
 /**
@@ -26,10 +28,14 @@ final class ProblemViewPanel extends JPanel {
 
     private final AppThemePalette palette;
     private final JPanel contentPanel = new JPanel(new BorderLayout());
+    private JPanel metadataPanel;
     private JEditorPane problemPane;
     private JScrollPane problemScrollPane;
     private JLabel submissionStatusLabel;
+    private InlineNotice latexNotice;
     private JSplitPane statementTestCasesSplitPane;
+    private int cachedScrollPosition;
+    private int cachedScrollMaximum;
 
     ProblemViewPanel(AppThemePalette palette) {
         this.palette = palette != null ? palette : AppThemePalette.dark();
@@ -177,6 +183,84 @@ final class ProblemViewPanel extends JPanel {
         return statementTestCasesSplitPane;
     }
 
+    void setMetadata(ProblemStatementMetadata metadata) {
+        if (metadataPanel == null) {
+            metadataPanel = new JPanel(new GridLayout(0, 1, 0, UiTokens.SPACE_1));
+            metadataPanel.setOpaque(true);
+            metadataPanel.setBackground(palette.surfaceBackground());
+            metadataPanel.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createLineBorder(palette.subtleBorderColor()),
+                    BorderFactory.createEmptyBorder(
+                            UiTokens.SPACE_2, UiTokens.SPACE_3, UiTokens.SPACE_2, UiTokens.SPACE_3)));
+            add(metadataPanel, BorderLayout.EAST);
+        }
+        metadataPanel.removeAll();
+        if (metadata == null) {
+            revalidate();
+            repaint();
+            return;
+        }
+        addRow(metadata.problemCode + "  ·  " + safe(metadata.title));
+        if (!metadata.timeLimit.isBlank()) {
+            addRow("Time: " + metadata.timeLimit);
+        }
+        if (!metadata.memoryLimit.isBlank()) {
+            addRow("Memory: " + metadata.memoryLimit);
+        }
+        if (!metadata.ioMode.isBlank()) {
+            addRow("I/O: " + metadata.ioMode);
+        }
+        if (!metadata.difficulty.isBlank()) {
+            addRow("Difficulty: " + metadata.difficulty);
+        }
+        if (metadata.tags != null && !metadata.tags.isEmpty()) {
+            addRow("Tags: " + String.join(", ", metadata.tags));
+        }
+        revalidate();
+        repaint();
+    }
+
+    void setLatexNotice(InlineNotice notice) {
+        if (latexNotice != null) {
+            remove(latexNotice);
+            latexNotice = null;
+        }
+        if (notice != null) {
+            latexNotice = notice;
+            JPanel wrapper = new JPanel(new BorderLayout());
+            wrapper.setOpaque(false);
+            wrapper.setBorder(BorderFactory.createEmptyBorder(0, 0, UiTokens.SPACE_3, 0));
+            wrapper.add(notice, BorderLayout.CENTER);
+            add(wrapper, BorderLayout.SOUTH);
+        }
+        revalidate();
+        repaint();
+    }
+
+    void rememberScrollPosition() {
+        if (problemScrollPane == null) {
+            return;
+        }
+        JScrollBar vertical = problemScrollPane.getVerticalScrollBar();
+        cachedScrollPosition = vertical.getValue();
+        cachedScrollMaximum = vertical.getMaximum();
+    }
+
+    void restoreScrollPosition() {
+        if (problemScrollPane == null) {
+            return;
+        }
+        JScrollBar vertical = problemScrollPane.getVerticalScrollBar();
+        if (cachedScrollMaximum == 0) {
+            vertical.setValue(0);
+            return;
+        }
+        int proportional = Math.max(0, Math.min(
+                vertical.getMaximum(),
+                (int) Math.round((double) cachedScrollPosition * vertical.getMaximum() / cachedScrollMaximum)));
+        vertical.setValue(proportional);
+    }
+
     JEditorPane documentPane() {
         return problemPane;
     }
@@ -202,6 +286,17 @@ final class ProblemViewPanel extends JPanel {
         }
     }
 
+    private void addRow(String text) {
+        JLabel label = new JLabel(text);
+        label.setForeground(palette.textColor());
+        label.setFont(label.getFont().deriveFont(java.awt.Font.PLAIN, UiTokens.CAPTION_FONT_SIZE));
+        metadataPanel.add(label);
+    }
+
+    private String safe(String value) {
+        return value == null ? "" : value;
+    }
+
     private void showComponent(java.awt.Component component) {
         contentPanel.removeAll();
         if (component != null) {
@@ -210,5 +305,4 @@ final class ProblemViewPanel extends JPanel {
         contentPanel.revalidate();
         contentPanel.repaint();
     }
-
 }
