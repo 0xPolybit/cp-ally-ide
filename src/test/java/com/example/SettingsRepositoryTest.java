@@ -34,7 +34,7 @@ class SettingsRepositoryTest {
         AppSettings expected = new AppSettings(
                 11, 22, 1400, 900, 500, 600, true,
                 "Java 21", 18, "Dracula Dark", "Ultra Dark",
-                true, 2, false, 45, "tourist");
+                true, 2, false, 45, "tourist", false, 320, "results");
 
         repository.save(expected);
 

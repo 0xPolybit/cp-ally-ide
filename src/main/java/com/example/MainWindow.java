@@ -110,7 +110,9 @@ public class MainWindow {
     private JPanel problemEntryPanel;
     private final Map<String, String> copyPayloads = new HashMap<>();
     private JSplitPane contentSplitPane;
-    private JSplitPane statementTestCasesSplitPane;
+    private BottomToolWindow bottomToolWindow;
+    private int expandedToolHeight;
+    private CodeExecutionService.ExecutionReport currentExecutionReport;
     private JScrollPane problemScrollPane;
     private TestCasesView testCasesView;
     private JMenuItem refreshProblemItem;
@@ -187,6 +189,7 @@ public class MainWindow {
         testCasesView = new TestCasesView(mainFrame, appThemePalette);
 
         frame.add(createContentSplit(), BorderLayout.CENTER);
+        frame.add(createBottomToolHost(), BorderLayout.SOUTH);
         frame.addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
@@ -203,8 +206,15 @@ public class MainWindow {
             SwingUtilities.invokeLater(() -> contentSplitPane.setDividerLocation(appSettings.dividerLocation()));
         }
 
-        if (statementTestCasesSplitPane != null && appSettings.testCasesDividerLocation() > 0) {
-            SwingUtilities.invokeLater(() -> statementTestCasesSplitPane.setDividerLocation(appSettings.testCasesDividerLocation()));
+        if (appSettings.bottomToolOpen()) {
+            expandedToolHeight = Math.max(180, appSettings.bottomToolHeight());
+            if (bottomToolWindow != null) {
+                bottomToolWindow.setExpanded(true);
+                bottomToolWindow.setPreferredHeight(expandedToolHeight);
+                bottomToolWindow.setSelectedTab(appSettings.bottomToolTab());
+            }
+        } else if (bottomToolWindow != null) {
+            bottomToolWindow.setExpanded(false);
         }
 
         if (appSettings.maximized()) {
@@ -584,6 +594,18 @@ public class MainWindow {
                 JOptionPane.INFORMATION_MESSAGE);
     }
 
+    private javax.swing.JComponent createBottomToolHost() {
+        if (testCasesView == null) {
+            return new JPanel();
+        }
+        ExecutionResultsView resultsView = new ExecutionResultsView(currentThemePalette());
+        bottomToolWindow = new BottomToolWindow(
+                testCasesView.createPanel(),
+                resultsView.component(),
+                currentThemePalette());
+        return bottomToolWindow.component();
+    }
+
     private JSplitPane createContentSplit() {
         JPanel leftPanel = createProblemStatementPanel();
         JPanel rightPanel = createEditorPanel();
@@ -881,7 +903,7 @@ public class MainWindow {
 
     private AppSettings replaceEditorPreferences(AppSettings current, int editorFontSize, String editorColorScheme, String appTheme, boolean useTabsAsSpaces, int tabSpacing, boolean autosaveEnabled, int autosaveIntervalSeconds) {
         if (current == null) {
-            return new AppSettings(-1, -1, 1200, 760, 420, 420, false, DEFAULT_LANGUAGE, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveIntervalSeconds, "");
+            return new AppSettings(-1, -1, 1200, 760, 420, 420, false, DEFAULT_LANGUAGE, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveIntervalSeconds, "", true, 280, "tests");
         }
         return new AppSettings(
                 current.x(),
@@ -899,7 +921,10 @@ public class MainWindow {
                 tabSpacing,
                 autosaveEnabled,
                 autosaveIntervalSeconds,
-                current.codeforcesUsername());
+                current.codeforcesUsername(),
+                current.bottomToolOpen(),
+                current.bottomToolHeight(),
+                current.bottomToolTab());
     }
 
     private record EditorTheme(
@@ -1474,19 +1499,8 @@ public class MainWindow {
         problemViewPanel.rememberScrollPosition();
         problemViewPanel.setDocumentHtml(statementOnly.html());
         problemViewPanel.restoreScrollPosition();
-
-        if (statementTestCasesSplitPane == null) {
-            JPanel testCasesSection = testCasesView != null ? testCasesView.createPanel() : new JPanel();
-            int minTestCaseHeight = UiTokens.MIN_WINDOW_HEIGHT / 3;
-            int preferredDivider = appSettings != null && appSettings.testCasesDividerLocation() > 0
-                    ? appSettings.testCasesDividerLocation()
-                    : mainFrame.getHeight() - minTestCaseHeight - UiTokens.SPACE_2;
-            statementTestCasesSplitPane = problemViewPanel.createStatementTestCasesSurface(
-                    testCasesSection, preferredDivider);
-            submissionStatusLabel = problemViewPanel.submissionStatusLabel();
-        }
-
         problemViewPanel.showLoaded();
+        submissionStatusLabel = problemViewPanel.submissionStatusLabel();
 
         currentProblemCode = problemCode;
         problemStatementLoaded = true;
@@ -1738,6 +1752,7 @@ public class MainWindow {
                     setExecutionState(ExecutionState.COMPLETE, language);
                     updateExecutionAvailability();
                     showExecutionResultsDialog(language, report);
+                    showResultsInBottomTool(report);
                 } catch (Exception ex) {
                     setExecutionState(ExecutionState.FAILED, language);
                     updateExecutionAvailability();
@@ -2215,7 +2230,10 @@ public class MainWindow {
         }
 
         int dividerLocation = contentSplitPane != null ? contentSplitPane.getDividerLocation() : 420;
-        int testCasesDividerLocation = statementTestCasesSplitPane != null ? statementTestCasesSplitPane.getDividerLocation() : 420;
+        int testCasesDividerLocation = appSettings != null ? appSettings.testCasesDividerLocation() : 420;
+        boolean bottomToolOpen = bottomToolWindow == null || bottomToolWindow.isExpanded();
+        String bottomToolTab = bottomToolWindow == null ? "tests" : bottomToolWindow.selectedTabKey();
+        int bottomToolHeight = bottomToolWindow == null ? expandedToolHeight : bottomToolWindow.expandedHeight();
 
         AppSettings settings = new AppSettings(
             frame.getX(),
@@ -2233,7 +2251,10 @@ public class MainWindow {
             appSettings != null ? appSettings.tabSpacing() : 4,
             appSettings != null ? appSettings.autosaveEnabled() : true,
             appSettings != null ? appSettings.autosaveIntervalSeconds() : 10,
-            codeforcesUsername);
+            codeforcesUsername,
+            bottomToolOpen,
+            bottomToolHeight,
+            bottomToolTab);
 
         settingsRepository.save(settings);
     }
@@ -2312,6 +2333,20 @@ public class MainWindow {
             problemViewPanel.setLatexNotice(buildLatexNotice());
         } else if (currentProblemIsEmpty) {
             problemViewPanel.setLatexNotice(null);
+        }
+    }
+
+    private void showExecutionInBottomTool(CodeExecutionService.ExecutionReport report, String language) {
+        ExecutionResultsDialog.show(mainFrame, language, report, currentThemePalette());
+    }
+
+    private void showResultsInBottomTool(CodeExecutionService.ExecutionReport report) {
+        if (bottomToolWindow != null) {
+            bottomToolWindow.setExpanded(true);
+            bottomToolWindow.selectResults();
+        }
+        if (report != null) {
+            currentExecutionReport = report;
         }
     }
 

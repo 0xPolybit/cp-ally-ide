@@ -65,8 +65,11 @@ class SettingsRepository {
             boolean autosaveEnabled = Boolean.parseBoolean(properties.getProperty("autosave.enabled", "true"));
             int autosaveInterval = parseInt(properties.getProperty("autosave.intervalSeconds"), 10);
             String codeforcesUsername = properties.getProperty("codeforces.username", "");
+            boolean bottomToolOpen = Boolean.parseBoolean(properties.getProperty("window.bottomToolOpen", "true"));
+            int bottomToolHeight = parseInt(properties.getProperty("window.bottomToolHeight"), 280);
+            String bottomToolTab = properties.getProperty("window.bottomToolTab", "tests");
 
-            return new AppSettings(x, y, width, height, divider, testCasesDivider, maximized, language, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveInterval, codeforcesUsername);
+            return new AppSettings(x, y, width, height, divider, testCasesDivider, maximized, language, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveInterval, codeforcesUsername, bottomToolOpen, bottomToolHeight, bottomToolTab);
         } catch (IOException e) {
             return AppSettings.defaults(defaultLanguage);
         }
@@ -93,6 +96,9 @@ class SettingsRepository {
             properties.setProperty("autosave.enabled", Boolean.toString(settings.autosaveEnabled()));
             properties.setProperty("autosave.intervalSeconds", Integer.toString(settings.autosaveIntervalSeconds()));
             properties.setProperty("codeforces.username", settings.codeforcesUsername());
+            properties.setProperty("window.bottomToolOpen", Boolean.toString(settings.bottomToolOpen()));
+            properties.setProperty("window.bottomToolHeight", Integer.toString(settings.bottomToolHeight()));
+            properties.setProperty("window.bottomToolTab", settings.bottomToolTab());
 
             try (OutputStream output = new BufferedOutputStream(Files.newOutputStream(settingsFile))) {
                 properties.store(output, "Competitive Programming Ally settings");
