@@ -112,7 +112,7 @@ public class MainWindow {
     private JSplitPane contentSplitPane;
     private JSplitPane statementTestCasesSplitPane;
     private JScrollPane problemScrollPane;
-    private TestCasesPanel testCasesPanel;
+    private TestCasesView testCasesView;
     private JMenuItem refreshProblemItem;
     private JMenuItem addTestCaseItem;
     private boolean problemStatementLoaded;
@@ -184,7 +184,7 @@ public class MainWindow {
         applicationStatusBar.setZoomText(zoomLabelText());
         frame.add(workspaceBar, BorderLayout.NORTH);
         frame.add(applicationStatusBar, BorderLayout.SOUTH);
-        testCasesPanel = new TestCasesPanel(mainFrame, appThemePalette);
+        testCasesView = new TestCasesView(mainFrame, appThemePalette);
 
         frame.add(createContentSplit(), BorderLayout.CENTER);
         frame.addWindowListener(new WindowAdapter() {
@@ -370,8 +370,8 @@ public class MainWindow {
                 javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_T,
                         java.awt.event.InputEvent.CTRL_DOWN_MASK | java.awt.event.InputEvent.SHIFT_DOWN_MASK),
                 () -> {
-                    if (testCasesPanel != null) {
-                        testCasesPanel.addCustomTestCase();
+                    if (testCasesView != null) {
+                        testCasesView.addCustomTestCase();
                     }
                 });
         actionRegistry.setEnabled(ActionRegistry.Id.REFRESH_PROBLEM, false);
@@ -1460,8 +1460,8 @@ public class MainWindow {
         currentProblemIsEmpty = emptyProblem;
         copyPayloads.clear();
         copyPayloads.putAll(full.copyPayloads());
-        if (testCasesPanel != null) {
-            testCasesPanel.setSamplePayloads(full.copyPayloads());
+        if (testCasesView != null) {
+            testCasesView.setSamplePayloads(full.copyPayloads());
         }
 
         problemViewPanel.initializeDocumentSurface(
@@ -1476,7 +1476,7 @@ public class MainWindow {
         problemViewPanel.restoreScrollPosition();
 
         if (statementTestCasesSplitPane == null) {
-            JPanel testCasesSection = testCasesPanel != null ? testCasesPanel.createPanel() : new JPanel();
+            JPanel testCasesSection = testCasesView != null ? testCasesView.createPanel() : new JPanel();
             int minTestCaseHeight = UiTokens.MIN_WINDOW_HEIGHT / 3;
             int preferredDivider = appSettings != null && appSettings.testCasesDividerLocation() > 0
                     ? appSettings.testCasesDividerLocation()
@@ -1660,7 +1660,7 @@ public class MainWindow {
         String language = selectedLanguage();
         CodeExecutionService.LanguageSupport support = codeExecutionService.detectSupport(language);
         runtimeViewState = RuntimeViewState.fromSupport(language, support);
-        boolean hasTestCases = testCasesPanel != null && !testCasesPanel.getExecutionTestCases().isEmpty();
+        boolean hasTestCases = testCasesView != null && !testCasesView.getExecutionTestCases().isEmpty();
         boolean ready = problemViewState.usable()
                 && runtimeViewState.ready()
                 && (hasTestCases || currentProblemIsEmpty)
@@ -1705,8 +1705,8 @@ public class MainWindow {
             return;
         }
 
-        List<CodeExecutionService.TestCaseSpec> testCases = testCasesPanel != null
-            ? testCasesPanel.getExecutionTestCases()
+        List<CodeExecutionService.TestCaseSpec> testCases = testCasesView != null
+            ? testCasesView.getExecutionTestCases()
             : SampleTestCaseCollector.collect(copyPayloads);
         boolean emptyProblemRun = currentProblemIsEmpty && testCases.isEmpty();
         if (testCases.isEmpty() && !emptyProblemRun) {
@@ -2296,8 +2296,8 @@ public class MainWindow {
         if (full != null) {
             copyPayloads.clear();
             copyPayloads.putAll(full.copyPayloads());
-            if (testCasesPanel != null) {
-                testCasesPanel.setSamplePayloads(full.copyPayloads());
+            if (testCasesView != null) {
+                testCasesView.setSamplePayloads(full.copyPayloads());
             }
             ProblemStatementMetadata metadata = ProblemStatementMetadata.from(
                     currentProblemDetails, full, sheets, currentProblemCode);
