@@ -2,14 +2,11 @@ package com.example;
 
 import javax.swing.BorderFactory;
 import javax.swing.JDialog;
-import javax.swing.JEditorPane;
-import javax.swing.JLabel;
-import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import java.awt.BorderLayout;
-import java.awt.Font;
 import java.awt.Frame;
 
+/** Dialog hosting the native {@link ExecutionResultsView}. */
 final class ExecutionResultsDialog {
 
     private ExecutionResultsDialog() {
@@ -38,19 +35,9 @@ final class ExecutionResultsDialog {
         header.setBackground(theme.panelBackground());
         dialog.add(header, BorderLayout.NORTH);
 
-        JEditorPane pane = new JEditorPane();
-        pane.setEditable(false);
-        pane.setContentType("text/html");
-        pane.setText(ExecutionResultFormatter.buildResultsHtml(language, report, theme));
-        pane.setCaretPosition(0);
-        pane.setBorder(BorderFactory.createEmptyBorder());
-        pane.setBackground(theme.frameBackground());
-        pane.setForeground(theme.textColor());
-
-        JScrollPane scrollPane = new JScrollPane(pane);
-        scrollPane.setBorder(BorderFactory.createEmptyBorder());
-        scrollPane.getViewport().setBackground(theme.frameBackground());
-        dialog.add(scrollPane, BorderLayout.CENTER);
+        ExecutionResultsView view = new ExecutionResultsView(theme);
+        view.setReport(report);
+        dialog.add(view.component(), BorderLayout.CENTER);
 
         dialog.setSize(860, 620);
         dialog.setLocationRelativeTo(owner);
@@ -66,28 +53,23 @@ final class ExecutionResultsDialog {
         dialog.setLayout(new BorderLayout());
         dialog.getContentPane().setBackground(theme.frameBackground());
 
-        JPanel header = new JPanel(new BorderLayout());
+        SectionHeader header = new SectionHeader(
+                "Local execution for " + language,
+                "Compilation failed",
+                theme);
+        header.setOpaque(true);
         header.setBackground(theme.panelBackground());
-        header.setBorder(BorderFactory.createEmptyBorder(12, 14, 12, 14));
-
-        JLabel title = new JLabel("Local execution for " + language);
-        title.setForeground(theme.textColor());
-        title.setFont(title.getFont().deriveFont(Font.BOLD, 15f));
-        header.add(title, BorderLayout.NORTH);
-
-        JLabel summary = new JLabel("Compilation failed.");
-        summary.setForeground(theme.errorColor());
-        header.add(summary, BorderLayout.SOUTH);
         dialog.add(header, BorderLayout.NORTH);
 
-        JEditorPane area = new JEditorPane();
+        javax.swing.JEditorPane area = new javax.swing.JEditorPane();
         area.setEditable(false);
         area.setContentType("text/plain");
-        area.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
+        area.setFont(new java.awt.Font(java.awt.Font.MONOSPACED, java.awt.Font.PLAIN, (int) UiTokens.CAPTION_FONT_SIZE));
         area.setBackground(theme.frameBackground());
         area.setForeground(theme.textColor());
         area.setCaretColor(theme.textColor());
-        area.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        area.setBorder(BorderFactory.createEmptyBorder(
+                UiTokens.SPACE_3, UiTokens.SPACE_3, UiTokens.SPACE_3, UiTokens.SPACE_3));
         area.setText(failureMessage == null || failureMessage.isBlank() ? "Compilation failed." : failureMessage);
         area.setCaretPosition(0);
 

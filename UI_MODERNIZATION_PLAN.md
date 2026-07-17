@@ -1226,7 +1226,7 @@ After Slice 00 merges, complete Slice 01 so CI protects existing pure behavior. 
 - [x] Slice 10 — Integrate and polish the main shell
 - [x] Slice 11 — Modernize statement presentation
 - [x] Slice 12 — Separate test-case data from its view
-- [ ] Slice 13 — Build native execution results
+- [x] Slice 13 — Build native execution results
 - [ ] Slice 14 — Add the Tests/Results bottom tool window
 - [ ] Slice 15 — Introduce a shared dialog shell
 - [ ] Slice 16 — Rebuild Preferences

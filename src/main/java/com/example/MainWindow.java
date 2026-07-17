@@ -1743,7 +1743,7 @@ public class MainWindow {
                     updateExecutionAvailability();
                     JOptionPane.showMessageDialog(
                             mainFrame,
-                            "Failed to run the selected language locally.\n\n" + ex.getMessage(),
+                            "Failed to run " + language + " locally.\n\n" + ex.getMessage(),
                             "Execution error",
                             JOptionPane.ERROR_MESSAGE);
                 }
