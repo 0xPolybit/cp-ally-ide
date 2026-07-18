@@ -24,12 +24,21 @@ import java.util.Map;
 
 final class TestCasesPanel {
 
+    /**
+     * Listener notified whenever the test-case list changes (samples or custom).
+     * The parent UI uses this to update Run button state, dirty indicators, etc.
+     */
+    interface Listener {
+        void onTestCasesChanged(TestCasesPanel source);
+    }
+
     private final Frame owner;
     private final AppThemePalette theme;
     private final Map<String, String> copyPayloads = new HashMap<>();
     private final List<CodeExecutionService.TestCaseSpec> customTestCases = new ArrayList<>();
     private final JTabbedPane testCasesTabs = new JTabbedPane();
     private final JPanel rootPanel = new JPanel(new BorderLayout());
+    private final List<Listener> listeners = new ArrayList<>();
     private List<CodeExecutionService.TestCaseSpec> sampleTestCases = List.of();
 
     TestCasesPanel(Frame owner, AppThemePalette theme) {
@@ -72,6 +81,12 @@ final class TestCasesPanel {
         return rootPanel;
     }
 
+    /**
+     * Replaces both the sample-derived payloads AND clears custom test cases.
+     * Use this only when the problem actually changes (e.g. a new fetch), not
+     * for cosmetic re-renders like zoom or theme changes — those should call
+     * {@link #updateSamplePayloads(Map)} to preserve user-added tests.
+     */
     void setSamplePayloads(Map<String, String> payloads) {
         copyPayloads.clear();
         if (payloads != null) {
@@ -79,6 +94,69 @@ final class TestCasesPanel {
         }
         customTestCases.clear();
         refreshTabs(-1);
+        fireChanged();
+    }
+
+    /**
+     * Refreshes the sample-derived copy payloads (e.g. after a problem
+     * statement re-render for zoom or theme changes) without touching the
+     * custom test cases. This is the safe entry point for any code path that
+     * only needs to rebuild the sample test set.
+     */
+    void updateSamplePayloads(Map<String, String> payloads) {
+        copyPayloads.clear();
+        if (payloads != null) {
+            copyPayloads.putAll(payloads);
+        }
+        // Refresh the tabs only if the sample-derived set actually changed,
+        // so the user's custom test selection is preserved when possible.
+        List<CodeExecutionService.TestCaseSpec> newSamples = SampleTestCaseCollector.collect(copyPayloads);
+        if (!newSamples.equals(sampleTestCases)) {
+            refreshTabs(-1);
+            fireChanged();
+        }
+    }
+
+    /**
+     * Replaces the custom test-case list. Used by persistence / restore.
+     * Sample tests are not affected. Triggers a change notification.
+     */
+    void setCustomTestCases(List<CodeExecutionService.TestCaseSpec> tests) {
+        customTestCases.clear();
+        if (tests != null) {
+            for (CodeExecutionService.TestCaseSpec spec : tests) {
+                if (spec != null && spec.custom()) {
+                    customTestCases.add(spec);
+                }
+            }
+        }
+        refreshTabs(-1);
+        fireChanged();
+    }
+
+    /** Returns an immutable snapshot of the current custom tests. */
+    List<CodeExecutionService.TestCaseSpec> getCustomTestCases() {
+        return List.copyOf(customTestCases);
+    }
+
+    void addListener(Listener listener) {
+        if (listener != null && !listeners.contains(listener)) {
+            listeners.add(listener);
+        }
+    }
+
+    void removeListener(Listener listener) {
+        listeners.remove(listener);
+    }
+
+    private void fireChanged() {
+        for (Listener listener : new ArrayList<>(listeners)) {
+            try {
+                listener.onTestCasesChanged(this);
+            } catch (Exception ex) {
+                DiagnosticLogger.error("[TestCasesPanel] Listener threw: " + ex.getMessage(), ex);
+            }
+        }
     }
 
     List<CodeExecutionService.TestCaseSpec> getExecutionTestCases() {
@@ -118,6 +196,7 @@ final class TestCasesPanel {
                 if (customIndex >= 0 && customIndex < customTestCases.size()) {
                     customTestCases.remove(customIndex);
                     refreshTabs(Math.max(0, sampleTestCases.size() + customIndex - 1));
+                    fireChanged();
                 }
             }));
         }
@@ -266,6 +345,7 @@ final class TestCasesPanel {
                     hasExpectedOutput,
                     "Custom Test Case " + (customTestCases.size() + 1)));
             refreshTabs(sampleTestCases.size() + customTestCases.size() - 1);
+            fireChanged();
             dialog.dispose();
         });
 

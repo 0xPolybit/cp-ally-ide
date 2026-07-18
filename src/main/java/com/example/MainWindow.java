@@ -175,6 +175,7 @@ public class MainWindow {
         frame.setJMenuBar(createEmbeddedTitleBar());
         mainFrame = frame;
         testCasesPanel = new TestCasesPanel(mainFrame, appThemePalette);
+        testCasesPanel.addListener(source -> updateExecutionAvailability());
 
         frame.add(createContentSplit(), BorderLayout.CENTER);
         frame.addWindowListener(new WindowAdapter() {
@@ -2453,7 +2454,10 @@ public class MainWindow {
                 copyPayloads.clear();
                 copyPayloads.putAll(full.copyPayloads());
                 if (testCasesPanel != null) {
-                    testCasesPanel.setSamplePayloads(full.copyPayloads());
+                    // Zoom/theme re-render must not destroy user-added custom
+                    // test cases; updateSamplePayloads refreshes the sample
+                    // set without touching the custom list.
+                    testCasesPanel.updateSamplePayloads(full.copyPayloads());
                 }
                 problemPane.setText(statementOnly.html());
                 problemPane.setCaretPosition(0);
