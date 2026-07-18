@@ -137,6 +137,8 @@ public class MainWindow {
     private static final long AUTOSAVE_DEBOUNCE_MILLIS = 1000L;
     private double editorZoomFactor = 1.0;
     private double problemZoomFactor = 1.0;
+    private static final double DEFAULT_ZOOM = 1.0;
+    private EditorFindBar editorFindBar;
     private static final double ZOOM_MIN = 0.25;
     private static final double ZOOM_MAX = 4.0;
     private static final double ZOOM_STEP = 0.05;
@@ -441,8 +443,41 @@ public class MainWindow {
                 codeEditor.selectAll();
             }
         });
+        JMenuItem findItem = new JMenuItem("Find");
+        findItem.addActionListener(e -> openFindDialog());
+        findItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(
+                KeyEvent.VK_F, java.awt.event.InputEvent.CTRL_DOWN_MASK));
+        JMenuItem replaceItem = new JMenuItem("Replace");
+        replaceItem.addActionListener(e -> openReplaceDialog());
+        replaceItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(
+                KeyEvent.VK_H, java.awt.event.InputEvent.CTRL_DOWN_MASK));
+        JMenuItem resetZoomItem = new JMenuItem("Reset Zoom");
+        resetZoomItem.addActionListener(e -> resetZoom());
+        resetZoomItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(
+                KeyEvent.VK_0, java.awt.event.InputEvent.CTRL_DOWN_MASK));
         editMenu.add(selectAllItem);
+        editMenu.add(findItem);
+        editMenu.add(replaceItem);
+        editMenu.addSeparator();
+        editMenu.add(resetZoomItem);
         titleBar.add(editMenu);
+
+        // Global Ctrl+0 reset-zoom binding: works regardless of which
+        // component has focus, matching the README.
+        javax.swing.JRootPane rootPane = mainFrame != null ? mainFrame.getRootPane() : null;
+        if (rootPane != null) {
+            javax.swing.Action resetZoomAction = new javax.swing.AbstractAction() {
+                @Override
+                public void actionPerformed(java.awt.event.ActionEvent e) {
+                    resetZoom();
+                }
+            };
+            rootPane.getInputMap(javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW)
+                    .put(javax.swing.KeyStroke.getKeyStroke(
+                                    KeyEvent.VK_0, java.awt.event.InputEvent.CTRL_DOWN_MASK),
+                            "cpa.resetZoom");
+            rootPane.getActionMap().put("cpa.resetZoom", resetZoomAction);
+        }
 
         // Run Menu
         JMenu runMenu = new JMenu("Run");
@@ -570,22 +605,34 @@ public class MainWindow {
                 // Restart autosave executor if autosave settings changed
                 restartAutosaveIfNeeded();
                 if (appThemeChanged) {
-                    JOptionPane.showMessageDialog(
-                            mainFrame,
-                            "The app theme has been updated. Please reopen the program to reflect all changes.",
-                            APP_NAME,
-                            JOptionPane.INFORMATION_MESSAGE);
-                    shutdownAndExit();
-                    return;
-                }
-                if (codeEditor != null) {
-                    applyEditorPreferences(codeEditor, selection.editorFontSize(), selection.editorColorScheme(), selection.useTabsAsSpaces(), selection.tabSpacing());
-                }
-                refreshThemeAwareUi();
-                if (mainFrame != null) {
-                    SwingUtilities.updateComponentTreeUI(mainFrame);
-                    mainFrame.revalidate();
-                    mainFrame.repaint();
+                    // Live theme switch: re-apply FlatLaf defaults, repaint
+                    // every component, and re-render the problem HTML so
+                    // the inline CSS picks up the new palette. The
+                    // previous "please reopen" prompt is gone.
+                    applyAppTheme(appThemePalette);
+                    if (problemHtmlRenderer != null) {
+                        problemHtmlRenderer.setTheme(appThemePalette);
+                    }
+                    if (codeEditor != null) {
+                        applyEditorPreferences(codeEditor, selection.editorFontSize(), selection.editorColorScheme(), selection.useTabsAsSpaces(), selection.tabSpacing());
+                    }
+                    refreshThemeAwareUi();
+                    rerenderProblemStatement();
+                    if (mainFrame != null) {
+                        SwingUtilities.updateComponentTreeUI(mainFrame);
+                        mainFrame.revalidate();
+                        mainFrame.repaint();
+                    }
+                } else {
+                    if (codeEditor != null) {
+                        applyEditorPreferences(codeEditor, selection.editorFontSize(), selection.editorColorScheme(), selection.useTabsAsSpaces(), selection.tabSpacing());
+                    }
+                    refreshThemeAwareUi();
+                    if (mainFrame != null) {
+                        SwingUtilities.updateComponentTreeUI(mainFrame);
+                        mainFrame.revalidate();
+                        mainFrame.repaint();
+                    }
                 }
             }
         } catch (Exception ex) {
@@ -968,7 +1015,14 @@ public class MainWindow {
         scrollPane.getVerticalScrollBar().setUnitIncrement(14);
         scrollPane.setBackground(palette.panelBackground());
 
+        // The find/replace bar lives just below the editor toolbar. It is
+        // hidden by default so the main window layout is unchanged when
+        // the user is not actively searching.
+        editorFindBar = new EditorFindBar(codeEditor);
+        editorFindBar.container().setBackground(palette.panelBackground());
+
         panel.add(editorToolbar, BorderLayout.NORTH);
+        panel.add(editorFindBar.container(), BorderLayout.AFTER_LAST_LINE);
         panel.add(scrollPane, BorderLayout.CENTER);
         return panel;
     }
@@ -1079,7 +1133,7 @@ public class MainWindow {
 
     private AppSettings replaceEditorPreferences(AppSettings current, int editorFontSize, String editorColorScheme, String appTheme, boolean useTabsAsSpaces, int tabSpacing, boolean autosaveEnabled, int autosaveIntervalSeconds) {
         if (current == null) {
-            return new AppSettings(-1, -1, 1200, 760, 420, 420, false, DEFAULT_LANGUAGE, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveIntervalSeconds, "");
+            return new AppSettings(-1, -1, 1200, 760, 420, 420, false, DEFAULT_LANGUAGE, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveIntervalSeconds, "", DEFAULT_ZOOM, DEFAULT_ZOOM);
         }
         return new AppSettings(
                 current.x(),
@@ -1097,7 +1151,9 @@ public class MainWindow {
                 tabSpacing,
                 autosaveEnabled,
                 autosaveIntervalSeconds,
-                current.codeforcesUsername());
+                current.codeforcesUsername(),
+                current.editorZoom(),
+                current.problemZoom());
     }
 
     private record EditorTheme(
@@ -2498,7 +2554,9 @@ public class MainWindow {
             appSettings != null ? appSettings.tabSpacing() : 4,
             appSettings != null ? appSettings.autosaveEnabled() : true,
             appSettings != null ? appSettings.autosaveIntervalSeconds() : 10,
-            codeforcesUsername);
+            codeforcesUsername,
+            editorZoomFactor,
+            problemZoomFactor);
 
         settingsRepository.save(settings);
     }
@@ -2510,6 +2568,31 @@ public class MainWindow {
 
     private void zoomOut(ZoomTarget target) {
         adjustZoom(target, -ZOOM_STEP);
+    }
+
+    /**
+     * Resets both editor and problem zoom to 100% and re-applies them.
+     * Bound globally to Ctrl+0 from the menu/title bar so the shortcut
+     * works regardless of which component currently has focus.
+     */
+    private void resetZoom() {
+        setZoomFactor(ZoomTarget.EDITOR, 1.0);
+        setZoomFactor(ZoomTarget.PROBLEM, 1.0);
+    }
+
+    private void openFindDialog() {
+        if (editorFindBar == null) return;
+        if (editorFindBar.isVisible()) {
+            // Toggle: pressing Find twice closes the bar.
+            editorFindBar.hide();
+            return;
+        }
+        editorFindBar.showFind();
+    }
+
+    private void openReplaceDialog() {
+        if (editorFindBar == null) return;
+        editorFindBar.showReplace();
     }
 
     private void adjustZoom(ZoomTarget target, double delta) {
@@ -2543,6 +2626,34 @@ public class MainWindow {
         if (zoomPercentLabel != null) {
             zoomPercentLabel.setText(zoomLabelText());
         }
+        // Persist the new zoom so a restart preserves it.
+        persistSettingsIfFrameReady();
+    }
+
+    private void persistSettingsIfFrameReady() {
+        if (mainFrame == null || appSettings == null) {
+            return;
+        }
+        appSettings = new AppSettings(
+                appSettings.x(),
+                appSettings.y(),
+                appSettings.width(),
+                appSettings.height(),
+                appSettings.dividerLocation(),
+                appSettings.testCasesDividerLocation(),
+                appSettings.maximized(),
+                appSettings.lastLanguage(),
+                appSettings.editorFontSize(),
+                appSettings.editorColorScheme(),
+                appSettings.appTheme(),
+                appSettings.useTabsAsSpaces(),
+                appSettings.tabSpacing(),
+                appSettings.autosaveEnabled(),
+                appSettings.autosaveIntervalSeconds(),
+                appSettings.codeforcesUsername(),
+                editorZoomFactor,
+                problemZoomFactor);
+        settingsRepository.save(appSettings);
     }
 
     private void applyZoomToEditor() {

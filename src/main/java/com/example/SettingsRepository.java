@@ -52,8 +52,10 @@ class SettingsRepository {
             boolean autosaveEnabled = Boolean.parseBoolean(properties.getProperty("autosave.enabled", "true"));
             int autosaveInterval = parseInt(properties.getProperty("autosave.intervalSeconds"), 10);
             String codeforcesUsername = properties.getProperty("codeforces.username", "");
+            double editorZoom = parseDouble(properties.getProperty("editor.zoom"), 1.0);
+            double problemZoom = parseDouble(properties.getProperty("problem.zoom"), 1.0);
 
-            return new AppSettings(x, y, width, height, divider, testCasesDivider, maximized, language, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveInterval, codeforcesUsername);
+            return new AppSettings(x, y, width, height, divider, testCasesDivider, maximized, language, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveInterval, codeforcesUsername, editorZoom, problemZoom);
         } catch (IOException e) {
             return AppSettings.defaults(defaultLanguage);
         }
@@ -80,6 +82,8 @@ class SettingsRepository {
             properties.setProperty("autosave.enabled", Boolean.toString(settings.autosaveEnabled()));
             properties.setProperty("autosave.intervalSeconds", Integer.toString(settings.autosaveIntervalSeconds()));
             properties.setProperty("codeforces.username", settings.codeforcesUsername());
+            properties.setProperty("editor.zoom", Double.toString(settings.editorZoom()));
+            properties.setProperty("problem.zoom", Double.toString(settings.problemZoom()));
 
             try (OutputStream output = new BufferedOutputStream(Files.newOutputStream(settingsFile))) {
                 properties.store(output, "Competitive Programming Ally settings");
@@ -107,6 +111,17 @@ class SettingsRepository {
     private int parseInt(String value, int fallback) {
         try {
             return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    private double parseDouble(String value, double fallback) {
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        try {
+            return Double.parseDouble(value);
         } catch (NumberFormatException e) {
             return fallback;
         }
