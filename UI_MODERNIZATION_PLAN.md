@@ -1229,7 +1229,7 @@ After Slice 00 merges, complete Slice 01 so CI protects existing pure behavior. 
 - [x] Slice 13 — Build native execution results
 - [x] Slice 14 — Add the Tests/Results bottom tool window
 - [x] Slice 15 — Introduce a shared dialog shell
-- [ ] Slice 16 — Rebuild Preferences
+- [x] Slice 16 — Rebuild Preferences
 - [ ] Slice 17 — Migrate secondary dialogs
 - [ ] Slice 18 — Accessibility, scaling, and release polish
 
