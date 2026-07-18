@@ -12,6 +12,7 @@ import org.fife.ui.rtextarea.RTextScrollPane;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
@@ -459,11 +460,20 @@ public class MainWindow {
         resetZoomItem.addActionListener(e -> resetZoom());
         resetZoomItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(
                 KeyEvent.VK_0, java.awt.event.InputEvent.CTRL_DOWN_MASK));
+        JMenuItem goToLineItem = new JMenuItem("Go to Line");
+        goToLineItem.addActionListener(e -> openGoToLineDialog());
+        goToLineItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(
+                KeyEvent.VK_G, java.awt.event.InputEvent.CTRL_DOWN_MASK));
+        JCheckBoxMenuItem foldingToggle = new JCheckBoxMenuItem("Code Folding",
+                appSettings == null || appSettings.codeFolding());
+        foldingToggle.addActionListener(e -> setCodeFoldingEnabled(foldingToggle.getState()));
         editMenu.add(selectAllItem);
         editMenu.add(findItem);
         editMenu.add(replaceItem);
+        editMenu.add(goToLineItem);
         editMenu.addSeparator();
         editMenu.add(resetZoomItem);
+        editMenu.add(foldingToggle);
         titleBar.add(editMenu);
 
         // Global Ctrl+0 reset-zoom binding: works regardless of which
@@ -913,7 +923,7 @@ public class MainWindow {
         codeEditor = new RSyntaxTextArea(24, 80);
         codeEditor.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
         codeEditor.setTabSize(appSettings != null ? appSettings.tabSpacing() : 4);
-        codeEditor.setCodeFoldingEnabled(false);
+        codeEditor.setCodeFoldingEnabled(appSettings == null || appSettings.codeFolding());
         codeEditor.setEditable(false);
         codeEditor.setFocusable(false);
         codeEditor.setRequestFocusEnabled(false);
@@ -924,6 +934,8 @@ public class MainWindow {
             appSettings != null && appSettings.useTabsAsSpaces(),
             appSettings != null ? appSettings.tabSpacing() : 4);
         installEditorAutoPairs(codeEditor);
+        installEditorIndenter(codeEditor);
+        installGoToLineShortcut(codeEditor);
         codeEditor.setText("Select a problem to get started...");
         codeEditor.setCaretPosition(0);
         codeEditor.addMouseListener(new MouseAdapter() {
@@ -1137,7 +1149,7 @@ public class MainWindow {
 
     private AppSettings replaceEditorPreferences(AppSettings current, int editorFontSize, String editorColorScheme, String appTheme, boolean useTabsAsSpaces, int tabSpacing, boolean autosaveEnabled, int autosaveIntervalSeconds) {
         if (current == null) {
-            return new AppSettings(-1, -1, 1200, 760, 420, 420, false, DEFAULT_LANGUAGE, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveIntervalSeconds, "", DEFAULT_ZOOM, DEFAULT_ZOOM);
+            return new AppSettings(-1, -1, 1200, 760, 420, 420, false, DEFAULT_LANGUAGE, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveIntervalSeconds, "", DEFAULT_ZOOM, DEFAULT_ZOOM, true);
         }
         return new AppSettings(
                 current.x(),
@@ -1157,7 +1169,8 @@ public class MainWindow {
                 autosaveIntervalSeconds,
                 current.codeforcesUsername(),
                 current.editorZoom(),
-                current.problemZoom());
+                current.problemZoom(),
+                current.codeFolding());
     }
 
     private record EditorTheme(
@@ -2188,44 +2201,26 @@ public class MainWindow {
     }
 
     private void installEditorAutoPairs(RSyntaxTextArea editor) {
+        EditorKeyBindings bindings = new EditorKeyBindings();
         editor.addKeyListener(new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
                 if (!editor.isEditable() || e.getKeyCode() != KeyEvent.VK_BACK_SPACE) {
                     return;
                 }
-
-                if (editor.getSelectionStart() != editor.getSelectionEnd()) {
+                EditorKeyBindings.Context ctx = snapshotContext(editor);
+                EditorKeyBindings.Decision decision = bindings.decideBackspace(ctx);
+                if (decision.kind() == EditorKeyBindings.Decision.Kind.PASS_THROUGH) {
                     return;
                 }
-
-                int caret = editor.getCaretPosition();
-                int length = editor.getDocument().getLength();
-                if (caret <= 0 || caret >= length) {
-                    return;
-                }
-
                 try {
-                    String left = editor.getDocument().getText(caret - 1, 1);
-                    String right = editor.getDocument().getText(caret, 1);
-                    if (left.length() == 1 && right.length() == 1) {
-                        char opening = left.charAt(0);
-                        char closing = right.charAt(0);
-                        char expected = switch (opening) {
-                            case '(' -> ')';
-                            case '[' -> ']';
-                            case '{' -> '}';
-                            default -> '\0';
-                        };
-
-                        if (expected != '\0' && closing == expected) {
-                            editor.getDocument().remove(caret - 1, 2);
-                            editor.setCaretPosition(caret - 1);
-                            e.consume();
-                        }
+                    if (decision.kind() == EditorKeyBindings.Decision.Kind.DELETE_PAIR) {
+                        editor.getDocument().remove(decision.caret(), 2);
+                        editor.setCaretPosition(decision.caret());
+                        e.consume();
                     }
                 } catch (Exception ignored) {
-                    // Keep default backspace behavior if paired deletion fails.
+                    // Keep default backspace behavior if the deletion fails.
                 }
             }
 
@@ -2234,48 +2229,217 @@ public class MainWindow {
                 if (!editor.isEditable()) {
                     return;
                 }
-
-                Character closing = switch (e.getKeyChar()) {
-                    case '(' -> ')';
-                    case '[' -> ']';
-                    case '{' -> '}';
-                    default -> null;
-                };
-
-                if (closing == null) {
+                char typed = e.getKeyChar();
+                if (Character.isISOControl(typed)) {
                     return;
                 }
-
-                // Wrap selection in pair if text is selected
-                if (editor.getSelectionStart() != editor.getSelectionEnd()) {
-                    try {
-                        String selected = editor.getSelectedText();
-                        if (selected == null) selected = "";
-                        int start = editor.getSelectionStart();
-                        int end = editor.getSelectionEnd();
-                        editor.getDocument().remove(start, end - start);
-                        editor.getDocument().insertString(start, e.getKeyChar() + selected + closing, null);
-                        editor.setCaretPosition(start + 1 + selected.length() + 1);
-                        e.consume();
-                    } catch (Exception ignored) {
-                        // Keep default typing behavior if wrapping fails.
+                EditorKeyBindings.Context ctx = snapshotContext(editor);
+                EditorKeyBindings.Decision decision = bindings.decideAutoPair(typed, ctx);
+                switch (decision.kind()) {
+                    case PASS_THROUGH -> { /* let the editor handle it */ }
+                    case INSERT -> {
+                        try {
+                            editor.getDocument().insertString(editor.getCaretPosition(),
+                                    decision.literal(), null);
+                            editor.setCaretPosition(decision.caret());
+                            e.consume();
+                        } catch (Exception ignored) { }
                     }
-                    return;
-                }
-
-                int caret = editor.getCaretPosition();
-                if (caret < 0 || caret > editor.getDocument().getLength()) {
-                    return;
-                }
-
-                try {
-                    editor.getDocument().insertString(caret, String.valueOf(closing), null);
-                    editor.setCaretPosition(caret);
-                } catch (Exception ignored) {
-                    // Keep default typing behavior if insertion fails.
+                    case WRAP -> {
+                        try {
+                            String selected = editor.getSelectedText();
+                            if (selected == null) selected = "";
+                            int start = decision.selStart();
+                            int end = decision.selEnd();
+                            int len = end - start;
+                            String opener = String.valueOf(typed);
+                            String closer = String.valueOf(EditorKeyBindings.matchingCloser(typed));
+                            editor.getDocument().remove(start, len);
+                            editor.getDocument().insertString(start,
+                                    opener + selected + closer, null);
+                            editor.setCaretPosition(decision.wrapCaret());
+                            e.consume();
+                        } catch (Exception ignored) { }
+                    }
+                    case SKIP -> {
+                        editor.setCaretPosition(decision.caret());
+                        e.consume();
+                    }
+                    default -> { }
                 }
             }
         });
+    }
+
+    private static EditorKeyBindings.Context snapshotContext(RSyntaxTextArea editor) {
+        boolean hasSelection = editor.getSelectionStart() != editor.getSelectionEnd();
+        int caret = editor.getCaretPosition();
+        char before = charAt(editor, caret - 1);
+        char after = charAt(editor, caret);
+        return new EditorKeyBindings.Context(hasSelection, caret, before, after);
+    }
+
+    private static char charAt(RSyntaxTextArea editor, int index) {
+        if (index < 0 || index >= editor.getDocument().getLength()) {
+            return '\0';
+        }
+        try {
+            String s = editor.getDocument().getText(index, 1);
+            return s.isEmpty() ? '\0' : s.charAt(0);
+        } catch (Exception ex) {
+            return '\0';
+        }
+    }
+
+    /**
+     * Tab/Shift+Tab indentation. Multi-line selections indent or
+     * outdent every selected line by one indent unit. With no
+     * selection, Tab inserts a tab/indent unit and Shift+Tab
+     * outdents the current line. The {@code useTabsAsSpaces} and
+     * {@code tabSpacing} settings are honored.
+     */
+    private void installEditorIndenter(RSyntaxTextArea editor) {
+        EditorIndenter indenter = new EditorIndenter(
+                appSettings != null ? appSettings.tabSpacing() : 4,
+                appSettings != null && appSettings.useTabsAsSpaces());
+
+        javax.swing.Action tabAction = new javax.swing.AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                applyIndenterAction(editor, indenter.decideTab(snapshotIndenterContext(editor)));
+            }
+        };
+        javax.swing.Action shiftTabAction = new javax.swing.AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                applyIndenterAction(editor, indenter.decideShiftTab(snapshotIndenterContext(editor)));
+            }
+        };
+        javax.swing.InputMap im = editor.getInputMap(JComponent.WHEN_FOCUSED);
+        javax.swing.ActionMap am = editor.getActionMap();
+        im.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_TAB, 0), "cpa.indent");
+        am.put("cpa.indent", tabAction);
+        im.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_TAB, java.awt.event.InputEvent.SHIFT_DOWN_MASK),
+                "cpa.outdent");
+        am.put("cpa.outdent", shiftTabAction);
+    }
+
+    private static EditorIndenter.Context snapshotIndenterContext(RSyntaxTextArea editor) {
+        int start = editor.getSelectionStart();
+        int end = editor.getSelectionEnd();
+        boolean hasSelection = start != end;
+        int firstLine;
+        int lastLine;
+        try {
+            firstLine = editor.getLineOfOffset(start);
+            lastLine = editor.getLineOfOffset(Math.max(start, end - 1));
+        } catch (javax.swing.text.BadLocationException ble) {
+            return new EditorIndenter.Context(false, -1, -1, false);
+        }
+        boolean singleLine = firstLine == lastLine;
+        return new EditorIndenter.Context(hasSelection, firstLine, lastLine, singleLine);
+    }
+
+    private void applyIndenterAction(RSyntaxTextArea editor, EditorIndenter.Action action) {
+        if (action.kind == EditorIndenter.Action.Kind.PASS_THROUGH) {
+            return;
+        }
+        if (action.kind == EditorIndenter.Action.Kind.INSERT_TAB) {
+            // No selection: insert one indent unit at the caret.
+            try {
+                editor.getDocument().insertString(editor.getCaretPosition(),
+                        new EditorIndenter(appSettings != null ? appSettings.tabSpacing() : 4,
+                                appSettings != null && appSettings.useTabsAsSpaces()).singleIndent(),
+                        null);
+            } catch (Exception ignored) { }
+            return;
+        }
+        // INDENT_LINES / OUTDENT_LINES: collect edits per line and apply
+        // in reverse offset order so earlier edits don't shift later ones.
+        try {
+            int totalLines = editor.getLineCount();
+            if (action.startLine < 0 || action.startLine >= totalLines) {
+                return;
+            }
+            java.util.List<EditorIndenter.LineEdit> edits = new java.util.ArrayList<>();
+            for (int i = action.startLine; i <= action.endLine && i < totalLines; i++) {
+                int lineStart = editor.getLineStartOffset(i);
+                int lineEnd = editor.getLineEndOffset(i);
+                String lineText = editor.getText(lineStart, lineEnd - lineStart);
+                String updated;
+                if (action.kind == EditorIndenter.Action.Kind.INDENT_LINES) {
+                    updated = action.indent + lineText;
+                } else {
+                    updated = EditorIndenter.removeIndent(lineText, action.indent);
+                }
+                edits.add(new EditorIndenter.LineEdit(i, lineText, updated));
+            }
+            // Apply in reverse so offsets remain valid.
+            for (int i = edits.size() - 1; i >= 0; i--) {
+                EditorIndenter.LineEdit edit = edits.get(i);
+                int lineStart = editor.getLineStartOffset(edit.lineIndex);
+                editor.getDocument().remove(lineStart, edit.original.length());
+                editor.getDocument().insertString(lineStart, edit.updated, null);
+            }
+        } catch (Exception ignored) {
+            // Best-effort; if anything goes wrong, leave the editor alone.
+        }
+    }
+
+    /**
+     * Wires the Ctrl+G "Go to Line" shortcut. Bound on the editor's
+     * input map so the keystroke works whenever the editor has focus.
+     */
+    private void installGoToLineShortcut(RSyntaxTextArea editor) {
+        javax.swing.Action goToLine = new javax.swing.AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                openGoToLineDialog();
+            }
+        };
+        javax.swing.InputMap im = editor.getInputMap(JComponent.WHEN_FOCUSED);
+        javax.swing.ActionMap am = editor.getActionMap();
+        im.put(javax.swing.KeyStroke.getKeyStroke(
+                        KeyEvent.VK_G, java.awt.event.InputEvent.CTRL_DOWN_MASK),
+                "cpa.goToLine");
+        am.put("cpa.goToLine", goToLine);
+    }
+
+    private void openGoToLineDialog() {
+        if (codeEditor == null) {
+            return;
+        }
+        int totalLines = codeEditor.getLineCount();
+        GoToLineDialog dlg = new GoToLineDialog(totalLines);
+        Integer line = dlg.show(mainFrame);
+        if (line != null) {
+            try {
+                int target = codeEditor.getLineStartOffset(line - 1);
+                codeEditor.setCaretPosition(target);
+            } catch (Exception ignored) { }
+        }
+    }
+
+    /**
+     * Toggles code folding in the editor and persists the choice.
+     */
+    private void setCodeFoldingEnabled(boolean enabled) {
+        if (codeEditor != null) {
+            codeEditor.setCodeFoldingEnabled(enabled);
+        }
+        if (appSettings != null) {
+            appSettings = new AppSettings(
+                    appSettings.x(), appSettings.y(), appSettings.width(), appSettings.height(),
+                    appSettings.dividerLocation(), appSettings.testCasesDividerLocation(),
+                    appSettings.maximized(), appSettings.lastLanguage(),
+                    appSettings.editorFontSize(), appSettings.editorColorScheme(),
+                    appSettings.appTheme(), appSettings.useTabsAsSpaces(),
+                    appSettings.tabSpacing(), appSettings.autosaveEnabled(),
+                    appSettings.autosaveIntervalSeconds(), appSettings.codeforcesUsername(),
+                    appSettings.editorZoom(), appSettings.problemZoom(),
+                    enabled);
+            settingsRepository.save(appSettings);
+        }
     }
 
     private void showExecutionResultsDialog(String language, CodeExecutionService.ExecutionReport report) {
@@ -2612,7 +2776,8 @@ public class MainWindow {
             appSettings != null ? appSettings.autosaveIntervalSeconds() : 10,
             codeforcesUsername,
             editorZoomFactor,
-            problemZoomFactor);
+            problemZoomFactor,
+            appSettings == null || appSettings.codeFolding());
 
         settingsRepository.save(settings);
     }
@@ -2708,7 +2873,8 @@ public class MainWindow {
                 appSettings.autosaveIntervalSeconds(),
                 appSettings.codeforcesUsername(),
                 editorZoomFactor,
-                problemZoomFactor);
+                problemZoomFactor,
+                appSettings.codeFolding());
         settingsRepository.save(appSettings);
     }
 
