@@ -54,8 +54,9 @@ class SettingsRepository {
             String codeforcesUsername = properties.getProperty("codeforces.username", "");
             double editorZoom = parseDouble(properties.getProperty("editor.zoom"), 1.0);
             double problemZoom = parseDouble(properties.getProperty("problem.zoom"), 1.0);
+            boolean codeFolding = Boolean.parseBoolean(properties.getProperty("editor.codeFolding", "true"));
 
-            return new AppSettings(x, y, width, height, divider, testCasesDivider, maximized, language, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveInterval, codeforcesUsername, editorZoom, problemZoom);
+            return new AppSettings(x, y, width, height, divider, testCasesDivider, maximized, language, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveInterval, codeforcesUsername, editorZoom, problemZoom, codeFolding);
         } catch (IOException e) {
             return AppSettings.defaults(defaultLanguage);
         }
@@ -84,6 +85,7 @@ class SettingsRepository {
             properties.setProperty("codeforces.username", settings.codeforcesUsername());
             properties.setProperty("editor.zoom", Double.toString(settings.editorZoom()));
             properties.setProperty("problem.zoom", Double.toString(settings.problemZoom()));
+            properties.setProperty("editor.codeFolding", Boolean.toString(settings.codeFolding()));
 
             try (OutputStream output = new BufferedOutputStream(Files.newOutputStream(settingsFile))) {
                 properties.store(output, "Competitive Programming Ally settings");

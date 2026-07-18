@@ -79,7 +79,7 @@ class ZoomAndThemeSettingsTest {
         // them through the constructor.
         AppSettings s = new AppSettings(0, 0, 1200, 760, 420, 420, false,
                 "Python 3", 14, "Eclipse Dark", "Dark", false, 4, true, 10,
-                "alice", 1.5, 0.75);
+                "alice", 1.5, 0.75, true);
         assertEquals(1.5, s.editorZoom(), 0.0001);
         assertEquals(0.75, s.problemZoom(), 0.0001);
     }
@@ -111,7 +111,7 @@ class ZoomAndThemeSettingsTest {
         // hold values that we want preserved (1.5x) without truncation.
         AppSettings s = new AppSettings(0, 0, 1200, 760, 420, 420, false,
                 "Python 3", 14, "Eclipse Dark", "Dark", false, 4, true, 10,
-                "", 2.0, 0.5);
+                "", 2.0, 0.5, true);
         assertEquals(2.0, s.editorZoom(), 0.0001);
         assertEquals(0.5, s.problemZoom(), 0.0001);
     }
