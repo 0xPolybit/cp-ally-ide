@@ -115,6 +115,7 @@ public class MainWindow {
     private JButton runButton;
     private RSyntaxTextArea codeEditor;
     private RTextScrollPane codeScrollPane;
+    private JButton stopButton;
     private JPanel leftPanelContainer;
     private JPanel problemEntryPanel;
     private final Map<String, String> copyPayloads = new HashMap<>();
@@ -840,6 +841,12 @@ public class MainWindow {
         applyRunButtonIcons();
         runButton.addActionListener(e -> onRunButtonClicked());
         editorToolbar.add(runButton);
+        stopButton = createToolbarButton("Stop");
+        stopButton.setEnabled(false);
+        stopButton.setVisible(false);
+        stopButton.setToolTipText("Cancel the in-flight test run");
+        stopButton.addActionListener(e -> stopRunningExecution());
+        editorToolbar.add(stopButton);
         editorToolbar.add(Box.createHorizontalGlue());
         editorToolbar.add(Box.createHorizontalStrut(20));
 
@@ -2104,8 +2111,11 @@ public class MainWindow {
                 }
             }
         };
+        activeExecutionWorker = worker;
         worker.execute();
     }
+
+    private javax.swing.SwingWorker<?, ?> activeExecutionWorker;
 
     private void setExecutionRunningState(boolean running) {
         this.executionRunning = running;
@@ -2118,7 +2128,36 @@ public class MainWindow {
                 executionStateLabel.setForeground(new Color(169, 176, 188));
             }
         }
+        if (stopButton != null) {
+            // The Stop button only makes sense while a run is in flight.
+            // We toggle visibility rather than enablement so the toolbar
+            // layout does not shift when no run is active.
+            stopButton.setVisible(running);
+            stopButton.setEnabled(running);
+        }
         applyWorkspaceState();
+    }
+
+    /**
+     * Cancels the in-flight test run, if any. Cancels the SwingWorker
+     * (which interrupts its background thread, unwinding the
+     * process wait loop) and signals the {@link CodeExecutionService}'s
+     * run loop to bail out early. The current test's verdict is
+     * reported as CANCELED in the result dialog.
+     */
+    private void stopRunningExecution() {
+        if (!executionRunning) {
+            return;
+        }
+        if (activeExecutionWorker != null && !activeExecutionWorker.isDone()) {
+            activeExecutionWorker.cancel(true);
+        }
+        activeExecutionWorker = null;
+        setExecutionRunningState(false);
+        if (executionStateLabel != null) {
+            executionStateLabel.setText("Status: Canceled");
+            executionStateLabel.setForeground(new Color(246, 198, 67));
+        }
     }
 
     /**
