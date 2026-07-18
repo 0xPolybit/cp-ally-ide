@@ -420,6 +420,19 @@ class CodeExecutionService {
         return isWindows() ? "main.exe" : "main";
     }
 
+    /**
+     * Hard cap on the combined stdout+stderr that one process run is allowed
+     * to produce. Prevents a child program that prints forever from filling
+     * the heap, and bounds the memory we copy out of the OS pipe.
+     */
+    private static final int MAX_PROCESS_OUTPUT_BYTES = 1 * 1024 * 1024; // 1 MiB
+
+    /**
+     * Grace period after {@link Process#destroyForcibly()} before we walk the
+     * process tree and force-kill any surviving descendants.
+     */
+    private static final long PROCESS_TREE_DESTROY_GRACE_MILLIS = 250L;
+
     private ProcessResult runProcess(List<String> command, Path workDir, String input, long timeoutMillis) throws IOException, InterruptedException {
         ProcessBuilder builder = new ProcessBuilder(command);
         builder.directory(workDir.toFile());
@@ -427,8 +440,10 @@ class CodeExecutionService {
         Process process = builder.start();
 
         ExecutorService executor = Executors.newFixedThreadPool(3);
-        Future<String> stdoutFuture = executor.submit(() -> readStream(process.getInputStream()));
-        Future<String> stderrFuture = executor.submit(() -> readStream(process.getErrorStream()));
+        Future<byte[]> stdoutFuture = executor.submit(() ->
+                BoundedStreams.read(process.getInputStream(), MAX_PROCESS_OUTPUT_BYTES, "stdout"));
+        Future<byte[]> stderrFuture = executor.submit(() ->
+                BoundedStreams.read(process.getErrorStream(), MAX_PROCESS_OUTPUT_BYTES, "stderr"));
 
         // Feed stdin on its own thread: a large input can exceed the pipe buffer
         // and block, and a program that exits without reading everything causes
@@ -464,36 +479,80 @@ class CodeExecutionService {
         long start = System.nanoTime();
         long endNano = start;
         boolean timedOut = false;
-        while (true) {
-            if (process.waitFor(50, TimeUnit.MILLISECONDS)) {
-                endNano = System.nanoTime(); // captured before stdout/stderr drain
-                break;
+        try {
+            while (true) {
+                if (process.waitFor(50, TimeUnit.MILLISECONDS)) {
+                    endNano = System.nanoTime(); // captured before stdout/stderr drain
+                    break;
+                }
+                if (TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) >= timeoutMillis) {
+                    timedOut = true;
+                    destroyProcessTree(process);
+                    process.waitFor(PROCESS_TREE_DESTROY_GRACE_MILLIS, TimeUnit.MILLISECONDS);
+                    endNano = System.nanoTime();
+                    break;
+                }
             }
-            if (TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) >= timeoutMillis) {
-                timedOut = true;
-                process.destroyForcibly();
-                process.waitFor(250, TimeUnit.MILLISECONDS);
-                endNano = System.nanoTime();
-                break;
-            }
+        } finally {
+            // Always stop the sampler and try to drain pipes so we don't leak
+            // a daemon thread even if the wait above threw.
+            memSampler.interrupt();
         }
         long durationMillis = TimeUnit.NANOSECONDS.toMillis(endNano - start);
 
-        memSampler.interrupt();
-
-        String stdout = readFuture(stdoutFuture);
-        String stderr = readFuture(stderrFuture);
+        byte[] stdoutBytes = readFutureBytes(stdoutFuture);
+        byte[] stderrBytes = readFutureBytes(stderrFuture);
         executor.shutdownNow();
 
-        int exitCode = timedOut ? -1 : process.exitValue();
-        return new ProcessResult(exitCode, stdout, stderr, peakMemoryKb.get(), timedOut, durationMillis);
+        int exitCode = timedOut ? -1 : safeExitValue(process);
+        return new ProcessResult(exitCode,
+                new String(stdoutBytes, StandardCharsets.UTF_8),
+                new String(stderrBytes, StandardCharsets.UTF_8),
+                peakMemoryKb.get(), timedOut, durationMillis);
     }
 
-    private String readFuture(Future<String> future) {
+    /**
+     * Best-effort destruction of the process and any descendants. Uses
+     * {@link ProcessHandle#descendants()} when available (Java 9+), and falls
+     * back to destroying only the direct process on older runtimes. The
+     * intent is to ensure that killing a compiler or runner does not leave
+     * a forked child still consuming CPU and memory.
+     */
+    private static void destroyProcessTree(Process process) {
+        try {
+            ProcessHandle handle = process.toHandle();
+            if (handle != null) {
+                handle.descendants().forEach(child -> {
+                    try {
+                        child.destroyForcibly();
+                    } catch (Exception ignored) {
+                        // Best-effort only.
+                    }
+                });
+            }
+        } catch (Exception ignored) {
+            // Process.toHandle() can throw on some platforms; fall through.
+        }
+        try {
+            process.destroyForcibly();
+        } catch (Exception ignored) {
+            // Best-effort only.
+        }
+    }
+
+    private static int safeExitValue(Process process) {
+        try {
+            return process.exitValue();
+        } catch (IllegalThreadStateException stillRunning) {
+            return -1;
+        }
+    }
+
+    private byte[] readFutureBytes(Future<byte[]> future) {
         try {
             return future.get(1, TimeUnit.SECONDS);
         } catch (Exception e) {
-            return "";
+            return new byte[0];
         }
     }
 
