@@ -88,22 +88,16 @@ class CacheNamesTest {
         // place files under cache/source/, not the legacy cache/ root.
         ProgramCacheRepository repo = new ProgramCacheRepository(tempDir);
         repo.save("2208A", "Python 3", "print('hello')");
+        // The new layout uses <problem>/<language>/current.txt.
+        Path currentFile = repo.currentFileFor("2208A", "Python 3");
+        assertTrue(Files.exists(currentFile),
+                "Current source file must exist under cache/source/<problem>/<language>/current.txt");
+        // The cache/source/ root must contain only directories, not loose files.
         Path sourceDir = CacheNames.sourceDir(tempDir);
         try (var stream = Files.list(sourceDir)) {
-            List<Path> files = stream.toList();
-            assertTrue(files.stream().anyMatch(p -> p.getFileName().toString().endsWith(".properties")),
-                    "Source files must live under cache/source/");
-        }
-        // The legacy cache/ root should not contain any source files after
-        // ProgramCacheRepository has run.
-        Path legacy = CacheNames.legacyCacheDir(tempDir);
-        if (Files.isDirectory(legacy)) {
-            try (var stream = Files.list(legacy)) {
-                assertTrue(stream.allMatch(p -> p.getFileName().toString().equals("source")
-                                || p.getFileName().toString().equals("latex")
-                                || p.getFileName().toString().equals("icons")),
-                        "Legacy cache/ may only contain the three namespace subdirs");
-            }
+            List<Path> entries = stream.toList();
+            assertTrue(entries.stream().allMatch(Files::isDirectory),
+                    "cache/source/ should only contain subdirectories (one per problem)");
         }
     }
 
@@ -124,5 +118,19 @@ class CacheNamesTest {
 
         assertTrue(Files.exists(latexFile),
                 "clearAll on the source cache must not touch the LaTeX cache");
+    }
+
+    @Test
+    void programCacheRepositoryLoadReturnsSavedSource(@TempDir Path tempDir) {
+        ProgramCacheRepository repo = new ProgramCacheRepository(tempDir);
+        repo.save("2208A", "Python 3", "print('hello')\n");
+        assertEquals("print('hello')\n", repo.loadLatestSource("2208A", "Python 3"));
+    }
+
+    @Test
+    void programCacheRepositoryEmptyProblemIsNotPersisted(@TempDir Path tempDir) {
+        ProgramCacheRepository repo = new ProgramCacheRepository(tempDir);
+        repo.save("__EMPTY_PROBLEM__", "Python 3", "x");
+        assertEquals(null, repo.loadLatestSource("__EMPTY_PROBLEM__", "Python 3"));
     }
 }

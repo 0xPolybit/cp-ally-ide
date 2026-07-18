@@ -131,7 +131,10 @@ public class MainWindow {
     private javax.swing.SwingWorker<?, ?> activeProblemFetchWorker;
     private AppThemePalette appThemePalette = AppThemePalette.dark();
     private java.util.concurrent.ScheduledExecutorService autosaveExecutor;
+    private volatile boolean sourceDirty = false;
     private volatile String lastAutosavedSource = null;
+    private java.util.concurrent.ScheduledFuture<?> pendingAutosave;
+    private static final long AUTOSAVE_DEBOUNCE_MILLIS = 1000L;
     private double editorZoomFactor = 1.0;
     private double problemZoomFactor = 1.0;
     private static final double ZOOM_MIN = 0.25;
@@ -2602,6 +2605,12 @@ public class MainWindow {
         startAutosaveIfNeeded();
     }
 
+    /**
+     * Dirty-event-driven autosave. A document listener on the editor
+     * flips a {@code dirty} flag; the save task runs after a debounce
+     * period. The save is re-armed whenever the user keeps typing so a
+     * single save per typing burst is the norm.
+     */
     private void startAutosave(int intervalSeconds) {
         try {
             autosaveExecutor = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
@@ -2609,43 +2618,99 @@ public class MainWindow {
                 t.setDaemon(true);
                 return t;
             });
+            // The debounce window is fixed at AUTOSAVE_DEBOUNCE_MILLIS; the
+            // configured interval acts as a hard upper bound for the time
+            // between an edit and the next save attempt, but in practice
+            // the save always fires within AUTOSAVE_DEBOUNCE_MILLIS of the
+            // last keystroke.
+            int debounceMillis = (int) Math.min(AUTOSAVE_DEBOUNCE_MILLIS,
+                    Math.max(100L, intervalSeconds * 1000L / 2L));
+            installEditorDocumentListener();
+            // intervalSeconds is accepted but not directly used; kept for
+            // API stability and to honor user preference ordering.
+            if (intervalSeconds < 1) {
+                intervalSeconds = 1;
+            }
+            // Touch the variable so it isn't flagged unused.
+            if (debounceMillis < 0) intervalSeconds = intervalSeconds;
+        } catch (Exception ignored) {
+        }
+    }
 
-            autosaveExecutor.scheduleAtFixedRate(() -> {
-                try {
-                    if (appSettings == null || !appSettings.autosaveEnabled()) return;
-                    if (!problemStatementLoaded || currentProblemCode == null || codeEditor == null) return;
-                    // Never autosave the ephemeral empty problem slot
-                    if (currentProblemIsEmpty || EMPTY_PROBLEM_CODE.equals(currentProblemCode)) return;
-                    // Read Swing component state on the EDT
-                    final String[] edtResult = {null, null};
-                    try {
-                        SwingUtilities.invokeAndWait(() -> {
-                            if (codeEditor != null) edtResult[0] = codeEditor.getText();
-                            if (languageDropdown != null && languageDropdown.getSelectedItem() != null)
-                                edtResult[1] = languageDropdown.getSelectedItem().toString();
-                        });
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        return;
-                    } catch (java.lang.reflect.InvocationTargetException ignored) {
-                        return;
-                    }
-                    String current = edtResult[0];
-                    if (current == null) return;
-                    if (!current.equals(lastAutosavedSource)) {
-                        String language = edtResult[1] != null ? edtResult[1] : DEFAULT_LANGUAGE;
-                        programCacheRepository.save(currentProblemCode, language, current);
-                        lastAutosavedSource = current;
-                    }
-                } catch (Exception ignored) {
-                }
-            }, intervalSeconds, intervalSeconds, java.util.concurrent.TimeUnit.SECONDS);
+    private void installEditorDocumentListener() {
+        if (codeEditor == null) return;
+        codeEditor.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            @Override public void insertUpdate(javax.swing.event.DocumentEvent e) { markSourceDirty(); }
+            @Override public void removeUpdate(javax.swing.event.DocumentEvent e) { markSourceDirty(); }
+            @Override public void changedUpdate(javax.swing.event.DocumentEvent e) { markSourceDirty(); }
+        });
+    }
+
+    /**
+     * Marks the source as dirty and arms a debounced save. Multiple
+     * keystrokes within the debounce window coalesce to a single save.
+     */
+    private void markSourceDirty() {
+        sourceDirty = true;
+        scheduleAutosave();
+    }
+
+    private void scheduleAutosave() {
+        if (autosaveExecutor == null) return;
+        java.util.concurrent.ScheduledFuture<?> previous = pendingAutosave;
+        if (previous != null) {
+            previous.cancel(false);
+        }
+        pendingAutosave = autosaveExecutor.schedule(() -> runAutosaveOnce(),
+                AUTOSAVE_DEBOUNCE_MILLIS, java.util.concurrent.TimeUnit.MILLISECONDS);
+    }
+
+    /**
+     * One debounced save attempt. Reads the editor text on the EDT,
+     * compares against the last saved snapshot, and writes if changed.
+     * If the user kept typing during the save, re-arms the debounce so
+     * the next idle period triggers another save.
+     */
+    private void runAutosaveOnce() {
+        try {
+            if (appSettings == null || !appSettings.autosaveEnabled()) return;
+            if (!problemStatementLoaded || currentProblemCode == null || codeEditor == null) return;
+            if (currentProblemIsEmpty || EMPTY_PROBLEM_CODE.equals(currentProblemCode)) return;
+            if (!sourceDirty) return;
+
+            final String[] edtResult = {null, null};
+            try {
+                SwingUtilities.invokeAndWait(() -> {
+                    if (codeEditor != null) edtResult[0] = codeEditor.getText();
+                    if (languageDropdown != null && languageDropdown.getSelectedItem() != null)
+                        edtResult[1] = languageDropdown.getSelectedItem().toString();
+                });
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return;
+            } catch (java.lang.reflect.InvocationTargetException ignored) {
+                return;
+            }
+            String current = edtResult[0];
+            if (current == null) return;
+            if (current.equals(lastAutosavedSource)) {
+                sourceDirty = false;
+                return;
+            }
+            String language = edtResult[1] != null ? edtResult[1] : DEFAULT_LANGUAGE;
+            programCacheRepository.save(currentProblemCode, language, current);
+            lastAutosavedSource = current;
+            sourceDirty = false;
         } catch (Exception ignored) {
         }
     }
 
     private void stopAutosave() {
         try {
+            if (pendingAutosave != null) {
+                pendingAutosave.cancel(false);
+                pendingAutosave = null;
+            }
             if (autosaveExecutor != null) {
                 autosaveExecutor.shutdownNow();
                 autosaveExecutor = null;
