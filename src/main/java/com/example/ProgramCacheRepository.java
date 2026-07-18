@@ -16,7 +16,6 @@ import java.util.UUID;
 
 final class ProgramCacheRepository {
 
-    private static final String CACHE_DIRECTORY_NAME = "cache";
     private static final String FILE_EXTENSION = ".properties";
     private static final String KEY_PROBLEM_CODE = "problem.code";
     private static final String KEY_LANGUAGE = "language";
@@ -27,7 +26,7 @@ final class ProgramCacheRepository {
     private final Path cacheDirectory;
 
     ProgramCacheRepository(Path appDataDirectory) {
-        this.cacheDirectory = appDataDirectory.resolve(CACHE_DIRECTORY_NAME);
+        this.cacheDirectory = CacheNames.sourceDir(appDataDirectory);
     }
 
     void save(String problemCode, String language, String sourceCode) {

@@ -467,7 +467,7 @@ class ProblemHtmlRenderer {
 
             // Cache the icon at its native resolution; display size is set via
             // <img width/height> so the editor pane scales it smoothly.
-            Path iconCacheDir = appDataDirectory.resolve("cache").resolve("icons");
+            Path iconCacheDir = CacheNames.iconsDir(appDataDirectory);
             Files.createDirectories(iconCacheDir);
             String sanitized = iconFile.replace('.', '_');
             String themeVariant = (appTheme != null && appTheme.lightTheme()) ? "light" : "dark";

@@ -497,7 +497,7 @@ public class MainWindow {
                 JOptionPane.YES_NO_OPTION,
                 JOptionPane.WARNING_MESSAGE);
         if (response == JOptionPane.YES_OPTION) {
-            programCacheRepository.clearAll();
+            CacheManager.clearAll(settingsRepository.getAppDataDirectory());
             codeforcesService.clearProblemCache();
             if (problemHtmlRenderer != null) {
                 // Cached LaTeX/icon files were just deleted from disk; drop the
