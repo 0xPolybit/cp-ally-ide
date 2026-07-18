@@ -211,6 +211,19 @@ public class MainWindow {
         checkForAppUpdatesAsync();
     }
 
+    /**
+     * Signals that the main window has finished initialization and is safe to
+     * receive external commands. The application entry point calls this after
+     * {@link #showWindow()} returns and before draining any queued deep-link
+     * commands. The default implementation is a no-op; tests and integrations
+     * may override to observe readiness.
+     */
+    void markReady() {
+        // Intentionally empty: callers use the App-level drain after invoking
+        // this. Exposed for symmetry and to make the readiness contract
+        // explicit in the type system.
+    }
+
     private void checkForAppUpdatesAsync() {
         SwingWorker<String, Void> worker = new SwingWorker<>() {
             @Override

@@ -20,6 +20,16 @@ public class App {
         String pendingUrl = parseCpallyUrl(args);
         DiagnosticLogger.info("[App] pendingUrl=" + pendingUrl);
 
+        // Single application-wide command queue. Any deep-link delivered to the
+        // primary instance before the main window is ready is buffered here and
+        // applied once the window reports readiness. This eliminates the race
+        // where an IPC-arriving URL could call MainWindow.openFromUrl() while
+        // the UI fields are still null.
+        PendingCommands pendingCommands = new PendingCommands(16);
+        if (pendingUrl != null) {
+            pendingCommands.submit(pendingUrl);
+        }
+
         InstanceServer instanceServer = new InstanceServer();
         DiagnosticLogger.info("[App] Calling tryBind...");
         boolean isPrimary = instanceServer.tryBind();
@@ -35,15 +45,18 @@ public class App {
                     isPrimary = instanceServer.tryBind();
                     DiagnosticLogger.info("[App] Retry tryBind returned isPrimary=" + isPrimary);
                     if (!isPrimary) {
+                        pendingCommands.discard();
                         DiagnosticLogger.info("[App] Could not become primary. Exiting.");
                         System.exit(0);
                     }
                     // Fall through as primary below.
                 } else {
+                    pendingCommands.discard();
                     DiagnosticLogger.info("[App] URL forwarded. Exiting secondary instance.");
                     System.exit(0);
                 }
             } else {
+                pendingCommands.discard();
                 DiagnosticLogger.info("[App] Secondary instance with no URL. Exiting.");
                 System.exit(0);
             }
@@ -53,7 +66,7 @@ public class App {
         Runtime.getRuntime().addShutdownHook(new Thread(instanceServer::close, "cpally-shutdown"));
 
         final InstanceServer primaryServer = instanceServer;
-        final String urlToOpen = pendingUrl;
+        final PendingCommands pending = pendingCommands;
 
         SwingUtilities.invokeLater(() -> {
             SplashScreenWindow splashScreenWindow = new SplashScreenWindow();
@@ -65,10 +78,11 @@ public class App {
 
                     MainWindow mainWindow = new MainWindow();
 
-                    // Register IPC handler before showing the window so that any
-                    // hot-handoff URL that arrives during startup is queued on the EDT
-                    // and processed after showWindow() completes.
-                    primaryServer.startListening(url -> mainWindow.openFromUrl(url));
+                    // Register IPC handler. Any URL that arrives while the window
+                    // is still initializing is queued on the EDT and delivered
+                    // only after the window signals readiness, eliminating the
+                    // pre-showWindow race.
+                    primaryServer.startListening(pending::submit);
                     DiagnosticLogger.info("[App] IPC listener started.");
 
                     splashScreenWindow.sleepUntilMinimumDuration(3000L);
@@ -76,10 +90,21 @@ public class App {
                     splashScreenWindow.sleepSilently(500L);
 
                     SwingUtilities.invokeLater(() -> {
-                        mainWindow.showWindow();
-                        if (urlToOpen != null) {
-                            DiagnosticLogger.info("[App] Cold-launch URL: " + urlToOpen);
-                            mainWindow.openFromUrl(urlToOpen);
+                        try {
+                            mainWindow.showWindow();
+                            mainWindow.markReady();
+                            java.util.Map<String, String> drained = pending.markReady();
+                            if (!drained.isEmpty()) {
+                                DiagnosticLogger.info("[App] Draining " + drained.size()
+                                        + " queued command(s) after readiness.");
+                                // The queue is keyed by problem code and the values
+                                // are the original commands; deliver each in the
+                                // submission order. openFromUrl is idempotent for
+                                // repeated URLs of the same problem.
+                                drained.values().forEach(mainWindow::openFromUrl);
+                            }
+                        } catch (Throwable t) {
+                            DiagnosticLogger.error("[App] Fatal exception during UI startup", t);
                         }
                     });
                 } catch (Throwable t) {
