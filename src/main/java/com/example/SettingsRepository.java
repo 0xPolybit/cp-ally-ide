@@ -55,8 +55,10 @@ class SettingsRepository {
             double editorZoom = parseDouble(properties.getProperty("editor.zoom"), 1.0);
             double problemZoom = parseDouble(properties.getProperty("problem.zoom"), 1.0);
             boolean codeFolding = Boolean.parseBoolean(properties.getProperty("editor.codeFolding", "true"));
+            int runTimeoutSeconds = parseInt(properties.getProperty("execution.timeoutSeconds"), 2);
+            int maxOutputBytes = parseInt(properties.getProperty("execution.maxOutputBytes"), 1024 * 1024);
 
-            return new AppSettings(x, y, width, height, divider, testCasesDivider, maximized, language, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveInterval, codeforcesUsername, editorZoom, problemZoom, codeFolding);
+            return new AppSettings(x, y, width, height, divider, testCasesDivider, maximized, language, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveInterval, codeforcesUsername, editorZoom, problemZoom, codeFolding, runTimeoutSeconds, maxOutputBytes);
         } catch (IOException e) {
             return AppSettings.defaults(defaultLanguage);
         }
@@ -86,6 +88,8 @@ class SettingsRepository {
             properties.setProperty("editor.zoom", Double.toString(settings.editorZoom()));
             properties.setProperty("problem.zoom", Double.toString(settings.problemZoom()));
             properties.setProperty("editor.codeFolding", Boolean.toString(settings.codeFolding()));
+            properties.setProperty("execution.timeoutSeconds", Integer.toString(settings.runTimeoutSeconds()));
+            properties.setProperty("execution.maxOutputBytes", Integer.toString(settings.maxOutputBytes()));
 
             try (OutputStream output = new BufferedOutputStream(Files.newOutputStream(settingsFile))) {
                 properties.store(output, "Competitive Programming Ally settings");

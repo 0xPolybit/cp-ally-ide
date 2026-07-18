@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
@@ -95,6 +96,23 @@ final class ProgramCacheRepository {
      * actions. The total snapshot count per (problem, language) is capped
      * at {@link #MAX_ENTRIES_PER_KEY}.
      */
+    List<Path> listSnapshots(String problemCode, String language) {
+        Path dir = cacheDirectory.resolve(safeName(problemCode)).resolve(safeName(language)).resolve(SNAPSHOTS_DIR);
+        if (!Files.isDirectory(dir)) return List.of();
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, "*.txt")) {
+            List<Path> paths = new java.util.ArrayList<>();
+            stream.forEach(paths::add);
+            paths.sort(Comparator.comparing(Path::getFileName).reversed());
+            return List.copyOf(paths);
+        } catch (IOException ignored) { return List.of(); }
+    }
+
+    String restoreSnapshot(Path snapshot) {
+        if (snapshot == null || !Files.exists(snapshot)) return null;
+        try { return Files.readString(snapshot, java.nio.charset.StandardCharsets.UTF_8); }
+        catch (IOException ignored) { return null; }
+    }
+
     void takeSnapshot(String problemCode, String language) {
         if (isBlank(problemCode) || isBlank(language) || EMPTY_PROBLEM_CODE.equals(problemCode)) {
             return;

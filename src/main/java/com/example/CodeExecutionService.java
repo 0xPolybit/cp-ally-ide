@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicLong;
 class CodeExecutionService {
 
     private static final long COMPILE_TIMEOUT_MILLIS = 60_000L;
-    private static final long RUN_TIMEOUT_MILLIS = 2_000L;
+    private volatile long runTimeoutMillis = 2_000L;
 
     // Toolchain lookups spawn `where`/`command -v` subprocesses (up to 3s each)
     // and are triggered from the EDT on every language change — memoize them.
@@ -149,7 +149,7 @@ class CodeExecutionService {
             List<TestCaseResult> results = new ArrayList<>();
             int index = 1;
             for (TestCaseSpec testCase : testCases) {
-                ProcessResult runResult = runProcess(plan.runCommand().create(sourceFile, workDir), workDir, testCase.input(), RUN_TIMEOUT_MILLIS);
+                ProcessResult runResult = runProcess(plan.runCommand().create(sourceFile, workDir), workDir, testCase.input(), runTimeoutMillis);
                 String actual = normalizeOutput(runResult.stdout());
                 boolean hasExpectedOutput = testCase.expectedOutputProvided() && testCase.expectedOutput() != null && !testCase.expectedOutput().isBlank();
                 String expected = normalizeOutput(testCase.expectedOutput());
@@ -235,7 +235,7 @@ class CodeExecutionService {
                 }
             }
 
-            ProcessResult runResult = runProcess(plan.runCommand().create(sourceFile, workDir), workDir, "", RUN_TIMEOUT_MILLIS);
+            ProcessResult runResult = runProcess(plan.runCommand().create(sourceFile, workDir), workDir, "", runTimeoutMillis);
             String details;
             boolean passed = !runResult.timedOut() && runResult.exitCode() == 0;
             if (runResult.timedOut()) {
@@ -429,7 +429,12 @@ class CodeExecutionService {
      * to produce. Prevents a child program that prints forever from filling
      * the heap, and bounds the memory we copy out of the OS pipe.
      */
-    private static final int MAX_PROCESS_OUTPUT_BYTES = 1 * 1024 * 1024; // 1 MiB
+    private volatile int maxProcessOutputBytes = 1 * 1024 * 1024; // 1 MiB
+
+    void configureExecutionLimits(int timeoutSeconds, int maxOutputBytes) {
+        runTimeoutMillis = Math.max(1L, Math.min(600L, timeoutSeconds)) * 1000L;
+        maxProcessOutputBytes = Math.max(1024, Math.min(64 * 1024 * 1024, maxOutputBytes));
+    }
 
     /**
      * Grace period after {@link Process#destroyForcibly()} before we walk the
@@ -445,9 +450,9 @@ class CodeExecutionService {
 
         ExecutorService executor = Executors.newFixedThreadPool(3);
         Future<BoundedStreams.Result> stdoutFuture = executor.submit(() ->
-                BoundedStreams.read(process.getInputStream(), MAX_PROCESS_OUTPUT_BYTES, "stdout"));
+                BoundedStreams.read(process.getInputStream(), maxProcessOutputBytes, "stdout"));
         Future<BoundedStreams.Result> stderrFuture = executor.submit(() ->
-                BoundedStreams.read(process.getErrorStream(), MAX_PROCESS_OUTPUT_BYTES, "stderr"));
+                BoundedStreams.read(process.getErrorStream(), maxProcessOutputBytes, "stderr"));
 
         // Feed stdin on its own thread: a large input can exceed the pipe buffer
         // and block, and a program that exits without reading everything causes

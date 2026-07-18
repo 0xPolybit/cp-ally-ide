@@ -175,6 +175,9 @@ public class MainWindow {
         problemHtmlRenderer = new ProblemHtmlRenderer(appDataDir);
         problemHtmlRenderer.setTheme(appThemePalette);
         codeforcesService = new CodeforcesService(appDataDir);
+        if (appSettings != null) {
+            codeExecutionService.configureExecutionLimits(appSettings.runTimeoutSeconds(), appSettings.maxOutputBytes());
+        }
         toolchainAvailability = new ToolchainAvailability(codeExecutionService);
         problemSheetsService = new ProblemSheetsService();
         cfUserService = new CodeforcesUserService();
@@ -193,6 +196,7 @@ public class MainWindow {
         mainFrame = frame;
         testCasesPanel = new TestCasesPanel(mainFrame, appThemePalette, customTestRepository);
         testCasesPanel.addListener(source -> updateExecutionAvailability());
+        testCasesPanel.setRunTestHandler(this::runSingleTest);
 
         frame.add(createContentSplit(), BorderLayout.CENTER);
         frame.addWindowListener(new WindowAdapter() {
@@ -413,6 +417,8 @@ public class MainWindow {
         preferencesItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_P, java.awt.event.InputEvent.CTRL_DOWN_MASK));
         JMenuItem clearCacheItem = new JMenuItem("Clear All Cache");
         clearCacheItem.addActionListener(e -> onClearAllCacheClicked());
+        JMenuItem restoreSnapshotItem = new JMenuItem("Restore Source Snapshot…");
+        restoreSnapshotItem.addActionListener(e -> restoreSourceSnapshot());
         chooseDifferentProblemItem = new JMenuItem("Choose Problem");
         chooseDifferentProblemItem.addActionListener(e -> promptForDifferentProblem());
         chooseDifferentProblemItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_N, java.awt.event.InputEvent.CTRL_DOWN_MASK));
@@ -438,6 +444,7 @@ public class MainWindow {
         fileMenu.add(refreshProblemItem);
         fileMenu.addSeparator();
         fileMenu.add(clearCacheItem);
+        fileMenu.add(restoreSnapshotItem);
         fileMenu.add(exitItem);
         titleBar.add(fileMenu);
 
@@ -610,11 +617,14 @@ public class MainWindow {
                     appSettings != null && appSettings.useTabsAsSpaces(),
                     appSettings != null ? appSettings.tabSpacing() : 4,
                     appSettings != null ? appSettings.autosaveEnabled() : true,
-                    appSettings != null ? appSettings.autosaveIntervalSeconds() : 10);
+                    appSettings != null ? appSettings.autosaveIntervalSeconds() : 10,
+                    appSettings != null ? appSettings.runTimeoutSeconds() : 2,
+                    appSettings != null ? appSettings.maxOutputBytes() : 1024 * 1024);
             PreferencesDialog.PreferencesSelection selection = PreferencesDialog.showDialog(mainFrame, initialSelection, currentThemePalette());
             if (selection != null) {
                 boolean appThemeChanged = !selection.appTheme().equalsIgnoreCase(currentAppTheme);
-                appSettings = replaceEditorPreferences(appSettings, selection.editorFontSize(), selection.editorColorScheme(), selection.appTheme(), selection.useTabsAsSpaces(), selection.tabSpacing(), selection.autosaveEnabled(), selection.autosaveIntervalSeconds());
+                appSettings = replaceEditorPreferences(appSettings, selection.editorFontSize(), selection.editorColorScheme(), selection.appTheme(), selection.useTabsAsSpaces(), selection.tabSpacing(), selection.autosaveEnabled(), selection.autosaveIntervalSeconds(), selection.runTimeoutSeconds(), selection.maxOutputBytes());
+                codeExecutionService.configureExecutionLimits(selection.runTimeoutSeconds(), selection.maxOutputBytes());
                 appThemePalette = AppThemePalette.fromName(selection.appTheme());
                 settingsRepository.save(appSettings);
                 // Restart autosave executor if autosave settings changed
@@ -915,7 +925,11 @@ public class MainWindow {
         languageDropdown.setRequestFocusEnabled(false);
         languageDropdown.addItemListener(e -> {
             if (e.getStateChange() == ItemEvent.DESELECTED) {
-                saveCurrentProgramToCache(e.getItem() != null ? e.getItem().toString() : null);
+                String oldLanguage = e.getItem() != null ? e.getItem().toString() : null;
+                if (currentProblemCode != null && oldLanguage != null) {
+                    programCacheRepository.takeSnapshot(currentProblemCode, oldLanguage);
+                }
+                saveCurrentProgramToCache(oldLanguage);
                 return;
             }
 
@@ -1154,9 +1168,9 @@ public class MainWindow {
         return colorScheme == null ? DEFAULT_EDITOR_THEME : colorScheme.trim().toLowerCase();
     }
 
-    private AppSettings replaceEditorPreferences(AppSettings current, int editorFontSize, String editorColorScheme, String appTheme, boolean useTabsAsSpaces, int tabSpacing, boolean autosaveEnabled, int autosaveIntervalSeconds) {
+    private AppSettings replaceEditorPreferences(AppSettings current, int editorFontSize, String editorColorScheme, String appTheme, boolean useTabsAsSpaces, int tabSpacing, boolean autosaveEnabled, int autosaveIntervalSeconds, int runTimeoutSeconds, int maxOutputBytes) {
         if (current == null) {
-            return new AppSettings(-1, -1, 1200, 760, 420, 420, false, DEFAULT_LANGUAGE, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveIntervalSeconds, "", DEFAULT_ZOOM, DEFAULT_ZOOM, true);
+            return new AppSettings(-1, -1, 1200, 760, 420, 420, false, DEFAULT_LANGUAGE, editorFontSize, editorColorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveIntervalSeconds, "", DEFAULT_ZOOM, DEFAULT_ZOOM, true, runTimeoutSeconds, maxOutputBytes);
         }
         return new AppSettings(
                 current.x(),
@@ -1177,7 +1191,9 @@ public class MainWindow {
                 current.codeforcesUsername(),
                 current.editorZoom(),
                 current.problemZoom(),
-                current.codeFolding());
+                current.codeFolding(),
+                runTimeoutSeconds,
+                maxOutputBytes);
     }
 
     private record EditorTheme(
@@ -1478,6 +1494,9 @@ public class MainWindow {
             return;
         }
 
+        if (currentProblemCode != null && languageDropdown != null) {
+            programCacheRepository.takeSnapshot(currentProblemCode, selectedLanguage());
+        }
         saveCurrentProgramToCache();
 
         Matcher matcher = PROBLEM_CODE_PATTERN.matcher(rawCode);
@@ -1962,6 +1981,28 @@ public class MainWindow {
         saveCurrentProgramToCache(languageDropdown.getSelectedItem().toString());
     }
 
+    private void restoreSourceSnapshot() {
+        if (currentProblemCode == null || currentProblemCode.isBlank() || currentProblemIsEmpty || codeEditor == null) {
+            return;
+        }
+        String language = selectedLanguage();
+        List<Path> snapshots = programCacheRepository.listSnapshots(currentProblemCode, language);
+        if (snapshots.isEmpty()) {
+            JOptionPane.showMessageDialog(mainFrame, "No source snapshots are available for this problem and language.", "Restore Snapshot", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        String[] choices = snapshots.stream().map(p -> p.getFileName().toString().replace(".txt", "")).toArray(String[]::new);
+        Object selected = JOptionPane.showInputDialog(mainFrame, "Choose a snapshot:", "Restore Source Snapshot", JOptionPane.PLAIN_MESSAGE, null, choices, choices[0]);
+        if (selected == null) return;
+        int index = java.util.Arrays.asList(choices).indexOf(selected.toString());
+        if (index < 0) return;
+        String source = programCacheRepository.restoreSnapshot(snapshots.get(index));
+        if (source != null) {
+            codeEditor.setText(source);
+            codeEditor.setCaretPosition(0);
+        }
+    }
+
     private void saveCurrentProgramToCache(String language) {
         if (!problemStatementLoaded || currentProblemCode == null || codeEditor == null || language == null || language.isBlank()) {
             return;
@@ -2084,8 +2125,35 @@ public class MainWindow {
         }
 
         String sourceCode = codeEditor.getText();
+        startExecution(language, sourceCode, testCases, emptyProblemRun);
+    }
+
+    /** Runs one sample/custom test selected from the TestCasesPanel. */
+    private void runSingleTest(int oneBasedIndex) {
+        if (!problemStatementLoaded || codeEditor == null || executionRunning) {
+            return;
+        }
+        String language = selectedLanguage();
+        CodeExecutionService.LanguageSupport support = codeExecutionService.detectSupport(language);
+        if (!support.supported()) {
+            JOptionPane.showMessageDialog(mainFrame, support.message(),
+                    "Execution unavailable", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        CodeExecutionService.TestCaseSpec test = testCasesPanel != null
+                ? testCasesPanel.getTestCase(oneBasedIndex) : null;
+        if (test == null) {
+            return;
+        }
+        startExecution(language, codeEditor.getText(), List.of(test), false);
+    }
+
+    private void startExecution(String language, String sourceCode,
+                                List<CodeExecutionService.TestCaseSpec> testCases,
+                                boolean emptyProblemRun) {
         runButton.setEnabled(false);
-        runButton.setToolTipText("Running sample test cases...");
+        runButton.setToolTipText(testCases.size() == 1
+                ? "Running selected test..." : "Running sample test cases...");
         setExecutionRunningState(true);
 
         SwingWorker<CodeExecutionService.ExecutionReport, Void> worker = new SwingWorker<>() {
@@ -2098,10 +2166,20 @@ public class MainWindow {
 
             @Override
             protected void done() {
+                boolean canceled = isCancelled();
                 setExecutionRunningState(false);
+                activeExecutionWorker = null;
                 updateExecutionAvailability();
                 try {
-                    showExecutionResultsDialog(language, get());
+                    if (canceled) {
+                        showExecutionResultsDialog(language,
+                                CodeExecutionService.ExecutionReport.failure("Run canceled by user."));
+                    } else {
+                        showExecutionResultsDialog(language, get());
+                    }
+                } catch (java.util.concurrent.CancellationException ex) {
+                    showExecutionResultsDialog(language,
+                            CodeExecutionService.ExecutionReport.failure("Run canceled by user."));
                 } catch (Exception ex) {
                     JOptionPane.showMessageDialog(
                             mainFrame,

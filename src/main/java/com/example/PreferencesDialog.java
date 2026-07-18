@@ -39,7 +39,7 @@ final class PreferencesDialog {
         "Codeforces Light"
     };
 
-    record PreferencesSelection(int editorFontSize, String editorColorScheme, String appTheme, boolean useTabsAsSpaces, int tabSpacing, boolean autosaveEnabled, int autosaveIntervalSeconds) {
+    record PreferencesSelection(int editorFontSize, String editorColorScheme, String appTheme, boolean useTabsAsSpaces, int tabSpacing, boolean autosaveEnabled, int autosaveIntervalSeconds, int runTimeoutSeconds, int maxOutputBytes) {
     }
 
     private PreferencesDialog() {
@@ -132,6 +132,18 @@ final class PreferencesDialog {
         grid.add(new JLabel("Auto-save Interval (sec):"), labelGbc);
         grid.add(autosaveIntervalSpinner, controlGbc);
 
+        JSpinner timeoutSpinner = new JSpinner(new SpinnerNumberModel(initialSelection != null ? initialSelection.runTimeoutSeconds() : 2, 1, 600, 1));
+        applySpinnerTheme(timeoutSpinner, palette);
+        labelGbc.gridy = row; controlGbc.gridy = row++;
+        grid.add(new JLabel("Execution Timeout (sec):"), labelGbc);
+        grid.add(timeoutSpinner, controlGbc);
+
+        JSpinner outputLimitSpinner = new JSpinner(new SpinnerNumberModel(initialSelection != null ? initialSelection.maxOutputBytes() : 1024 * 1024, 1024, 64 * 1024 * 1024, 1024));
+        applySpinnerTheme(outputLimitSpinner, palette);
+        labelGbc.gridy = row; controlGbc.gridy = row++;
+        grid.add(new JLabel("Max Output (bytes):"), labelGbc);
+        grid.add(outputLimitSpinner, controlGbc);
+
         // Wrap grid in scroll pane
         JScrollPane scroll = new JScrollPane(grid);
         scroll.setBorder(BorderFactory.createEmptyBorder());
@@ -151,7 +163,9 @@ final class PreferencesDialog {
             int tabSpacing = ((Number) tabSpacingSpinner.getValue()).intValue();
             boolean autosaveEnabled = autosaveCheckbox.isSelected();
             int autosaveInterval = ((Number) autosaveIntervalSpinner.getValue()).intValue();
-            result[0] = new PreferencesSelection(fontSize, colorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveInterval);
+            int timeoutSeconds = ((Number) timeoutSpinner.getValue()).intValue();
+            int maxOutputBytes = ((Number) outputLimitSpinner.getValue()).intValue();
+            result[0] = new PreferencesSelection(fontSize, colorScheme, appTheme, useTabsAsSpaces, tabSpacing, autosaveEnabled, autosaveInterval, timeoutSeconds, maxOutputBytes);
             dialog.dispose();
         });
 
