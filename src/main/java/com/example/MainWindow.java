@@ -95,6 +95,7 @@ public class MainWindow {
             SETTINGS_FILE_NAME,
             DEFAULT_LANGUAGE);
         private final ProgramCacheRepository programCacheRepository = new ProgramCacheRepository(settingsRepository.getAppDataDirectory());
+    private final CustomTestRepository customTestRepository = new CustomTestRepository(settingsRepository.getAppDataDirectory());
     private ToolchainAvailability toolchainAvailability;
     private CodeforcesService codeforcesService;
     private ProblemSheetsService problemSheetsService;
@@ -179,7 +180,7 @@ public class MainWindow {
         frame.getRootPane().putClientProperty("JRootPane.titleBarForeground", appThemePalette.titleBarForeground());
         frame.setJMenuBar(createEmbeddedTitleBar());
         mainFrame = frame;
-        testCasesPanel = new TestCasesPanel(mainFrame, appThemePalette);
+        testCasesPanel = new TestCasesPanel(mainFrame, appThemePalette, customTestRepository);
         testCasesPanel.addListener(source -> updateExecutionAvailability());
 
         frame.add(createContentSplit(), BorderLayout.CENTER);
@@ -188,6 +189,7 @@ public class MainWindow {
             public void windowClosing(WindowEvent e) {
                 stopAutosave();
                 saveCurrentProgramToCache();
+                customTestRepository.flush();
                 persistSettings(frame);
             }
         });
@@ -1561,6 +1563,11 @@ public class MainWindow {
 
     private void showCodeforcesProblemView(String problemCode, RenderedProblemView statementOnly, RenderedProblemView full) {
         renderProblemView(problemCode, statementOnly, full, false);
+        // Reload any custom tests persisted for this problem so the user does
+        // not have to recreate them when they return to it.
+        if (testCasesPanel != null) {
+            testCasesPanel.setSamplePayloadsForProblem(problemCode, full.copyPayloads());
+        }
         refreshSubmissionStatus();
     }
 
@@ -1642,6 +1649,11 @@ public class MainWindow {
         currentProblemDetails = null;
         RenderedProblemView empty = problemHtmlRenderer.renderEmptyProblem();
         renderProblemView(EMPTY_PROBLEM_CODE, empty, empty, true);
+        if (testCasesPanel != null) {
+            // Empty problem is ephemeral; clear any restored custom tests so
+            // they belong to the next real problem, not to the placeholder.
+            testCasesPanel.setSamplePayloadsForProblem(null, empty.copyPayloads());
+        }
     }
 
     private void renderProblemView(String problemCode, RenderedProblemView statementOnly, RenderedProblemView full, boolean emptyProblem) {
@@ -2443,6 +2455,9 @@ public class MainWindow {
         try {
             stopAutosave();
             saveCurrentProgramToCache();
+            // Flush any pending custom-test writes so a user does not lose
+            // tests they just added if they immediately exit.
+            customTestRepository.flush();
             if (mainFrame != null) {
                 persistSettings(mainFrame);
             }

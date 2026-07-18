@@ -39,11 +39,18 @@ final class TestCasesPanel {
     private final JTabbedPane testCasesTabs = new JTabbedPane();
     private final JPanel rootPanel = new JPanel(new BorderLayout());
     private final List<Listener> listeners = new ArrayList<>();
+    private final CustomTestRepository customTestRepository;
+    private String currentProblemCode = "";
     private List<CodeExecutionService.TestCaseSpec> sampleTestCases = List.of();
 
     TestCasesPanel(Frame owner, AppThemePalette theme) {
+        this(owner, theme, null);
+    }
+
+    TestCasesPanel(Frame owner, AppThemePalette theme, CustomTestRepository customTestRepository) {
         this.owner = owner;
         this.theme = theme != null ? theme : AppThemePalette.dark();
+        this.customTestRepository = customTestRepository;
         testCasesTabs.setBackground(this.theme.panelBackground());
         testCasesTabs.setForeground(this.theme.textColor());
 
@@ -88,11 +95,25 @@ final class TestCasesPanel {
      * {@link #updateSamplePayloads(Map)} to preserve user-added tests.
      */
     void setSamplePayloads(Map<String, String> payloads) {
+        setSamplePayloadsForProblem(null, payloads);
+    }
+
+    /**
+     * Replaces the sample payloads and loads the persisted custom tests for
+     * {@code problemCode}, if a {@link CustomTestRepository} is configured.
+     * This is the entry point for problem changes; cosmetic re-renders
+     * should use {@link #updateSamplePayloads(Map)} instead.
+     */
+    void setSamplePayloadsForProblem(String problemCode, Map<String, String> payloads) {
         copyPayloads.clear();
         if (payloads != null) {
             copyPayloads.putAll(payloads);
         }
         customTestCases.clear();
+        currentProblemCode = problemCode == null ? "" : problemCode;
+        if (customTestRepository != null && !currentProblemCode.isBlank()) {
+            customTestCases.addAll(customTestRepository.load(currentProblemCode));
+        }
         refreshTabs(-1);
         fireChanged();
     }
@@ -119,7 +140,9 @@ final class TestCasesPanel {
 
     /**
      * Replaces the custom test-case list. Used by persistence / restore.
-     * Sample tests are not affected. Triggers a change notification.
+     * Sample tests are not affected. Triggers a change notification and
+     * schedules a debounced save when a {@link CustomTestRepository} is
+     * configured.
      */
     void setCustomTestCases(List<CodeExecutionService.TestCaseSpec> tests) {
         customTestCases.clear();
@@ -131,7 +154,15 @@ final class TestCasesPanel {
             }
         }
         refreshTabs(-1);
+        persistCustomTests();
         fireChanged();
+    }
+
+    private void persistCustomTests() {
+        if (customTestRepository == null || currentProblemCode.isBlank()) {
+            return;
+        }
+        customTestRepository.save(currentProblemCode, customTestCases);
     }
 
     /** Returns an immutable snapshot of the current custom tests. */
@@ -196,6 +227,7 @@ final class TestCasesPanel {
                 if (customIndex >= 0 && customIndex < customTestCases.size()) {
                     customTestCases.remove(customIndex);
                     refreshTabs(Math.max(0, sampleTestCases.size() + customIndex - 1));
+                    persistCustomTests();
                     fireChanged();
                 }
             }));
@@ -345,6 +377,7 @@ final class TestCasesPanel {
                     hasExpectedOutput,
                     "Custom Test Case " + (customTestCases.size() + 1)));
             refreshTabs(sampleTestCases.size() + customTestCases.size() - 1);
+            persistCustomTests();
             fireChanged();
             dialog.dispose();
         });
