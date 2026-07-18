@@ -191,7 +191,9 @@ class CodeExecutionService {
                         runResult.stdout(),
                         runResult.stderr(),
                         details,
-                        yesNoCaseInsensitive ? "All caps is recommended for YES/NO outputs." : ""));
+                        yesNoCaseInsensitive ? "All caps is recommended for YES/NO outputs." : "",
+                        runResult.exitCode(),
+                        runResult.outputTruncated()));
             }
 
             return ExecutionReport.success(results, compileLog);
@@ -257,7 +259,9 @@ class CodeExecutionService {
                     runResult.stdout(),
                     runResult.stderr(),
                     details,
-                    ""));
+                    "",
+                    runResult.exitCode(),
+                    runResult.outputTruncated()));
 
             return ExecutionReport.success(results, compileLog);
         } finally {
@@ -440,9 +444,9 @@ class CodeExecutionService {
         Process process = builder.start();
 
         ExecutorService executor = Executors.newFixedThreadPool(3);
-        Future<byte[]> stdoutFuture = executor.submit(() ->
+        Future<BoundedStreams.Result> stdoutFuture = executor.submit(() ->
                 BoundedStreams.read(process.getInputStream(), MAX_PROCESS_OUTPUT_BYTES, "stdout"));
-        Future<byte[]> stderrFuture = executor.submit(() ->
+        Future<BoundedStreams.Result> stderrFuture = executor.submit(() ->
                 BoundedStreams.read(process.getErrorStream(), MAX_PROCESS_OUTPUT_BYTES, "stderr"));
 
         // Feed stdin on its own thread: a large input can exceed the pipe buffer
@@ -500,15 +504,16 @@ class CodeExecutionService {
         }
         long durationMillis = TimeUnit.NANOSECONDS.toMillis(endNano - start);
 
-        byte[] stdoutBytes = readFutureBytes(stdoutFuture);
-        byte[] stderrBytes = readFutureBytes(stderrFuture);
+        BoundedStreams.Result stdoutResult = readFutureResult(stdoutFuture);
+        BoundedStreams.Result stderrResult = readFutureResult(stderrFuture);
         executor.shutdownNow();
 
+        boolean outputTruncated = stdoutResult.truncated() || stderrResult.truncated();
         int exitCode = timedOut ? -1 : safeExitValue(process);
         return new ProcessResult(exitCode,
-                new String(stdoutBytes, StandardCharsets.UTF_8),
-                new String(stderrBytes, StandardCharsets.UTF_8),
-                peakMemoryKb.get(), timedOut, durationMillis);
+                new String(stdoutResult.bytes(), StandardCharsets.UTF_8),
+                new String(stderrResult.bytes(), StandardCharsets.UTF_8),
+                peakMemoryKb.get(), timedOut, durationMillis, outputTruncated);
     }
 
     /**
@@ -553,6 +558,14 @@ class CodeExecutionService {
             return future.get(1, TimeUnit.SECONDS);
         } catch (Exception e) {
             return new byte[0];
+        }
+    }
+
+    private BoundedStreams.Result readFutureResult(Future<BoundedStreams.Result> future) {
+        try {
+            return future.get(1, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            return new BoundedStreams.Result(new byte[0], false);
         }
     }
 
@@ -767,7 +780,7 @@ class CodeExecutionService {
             ProcessCommand runCommand) {
     }
 
-    private record ProcessResult(int exitCode, String stdout, String stderr, long peakMemoryKb, boolean timedOut, long durationMillis) {
+    private record ProcessResult(int exitCode, String stdout, String stderr, long peakMemoryKb, boolean timedOut, long durationMillis, boolean outputTruncated) {
     }
 
     record LanguageSupport(boolean supported, String message) {
@@ -777,7 +790,8 @@ class CodeExecutionService {
     }
 
     record TestCaseResult(int index, String displayName, boolean passed, boolean timedOut, boolean unknown, long durationMillis, long peakMemoryKb,
-                          String input, String expectedOutput, String actualOutput, String stderrOutput, String details, String note) {
+                          String input, String expectedOutput, String actualOutput, String stderrOutput, String details, String note,
+                          int exitCode, boolean outputTruncated) {
     }
 
     record ExecutionReport(boolean success, String compileLog, List<TestCaseResult> results, String failureMessage) {

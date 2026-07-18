@@ -295,7 +295,7 @@ class CodeforcesProfileService {
                 return null;
             }
             try (in) {
-                byte[] bytes = BoundedStreams.read(in, MAX_BODY_BYTES, source);
+                byte[] bytes = BoundedStreams.read(in, MAX_BODY_BYTES, source).bytes();
                 return new String(bytes, StandardCharsets.UTF_8);
             }
         } finally {

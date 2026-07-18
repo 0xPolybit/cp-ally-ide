@@ -1,14 +1,25 @@
 package com.example;
 
 import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JEditorPane;
+import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.KeyStroke;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.BorderLayout;
 import java.awt.Font;
 import java.awt.Frame;
+import java.awt.Toolkit;
+import java.awt.datatransfer.StringSelection;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 final class ExecutionResultsDialog {
 
@@ -56,11 +67,68 @@ final class ExecutionResultsDialog {
         JScrollPane scrollPane = new JScrollPane(pane);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
         scrollPane.getViewport().setBackground(theme.frameBackground());
+
+        JPanel footer = buildFooter(dialog, language, report, theme);
+        dialog.add(header, BorderLayout.NORTH);
         dialog.add(scrollPane, BorderLayout.CENTER);
+        dialog.add(footer, BorderLayout.SOUTH);
 
         dialog.setSize(860, 620);
         dialog.setLocationRelativeTo(owner);
         dialog.setVisible(true);
+    }
+
+    private static JPanel buildFooter(JDialog owner, String language,
+                                      CodeExecutionService.ExecutionReport report,
+                                      AppThemePalette theme) {
+        JPanel footer = new JPanel(new BorderLayout());
+        footer.setBackground(theme.panelBackground());
+        footer.setBorder(BorderFactory.createEmptyBorder(8, 14, 8, 14));
+
+        JButton closeButton = new JButton("Close");
+        closeButton.addActionListener(e -> owner.dispose());
+        owner.getRootPane().registerKeyboardAction(
+                e -> owner.dispose(),
+                KeyStroke.getKeyStroke("ESCAPE"),
+                JComponent.WHEN_IN_FOCUSED_WINDOW);
+
+        JButton copyButton = new JButton("Copy Report");
+        copyButton.addActionListener(e -> {
+            String text = ExecutionResultFormatter.buildResultsText(language, report);
+            Toolkit.getDefaultToolkit().getSystemClipboard()
+                    .setContents(new StringSelection(text), null);
+        });
+        JButton saveButton = new JButton("Save Report…");
+        saveButton.addActionListener(e -> saveReportToFile(owner, language, report));
+        JPanel buttonRow = new JPanel();
+        buttonRow.setOpaque(false);
+        buttonRow.add(copyButton);
+        buttonRow.add(saveButton);
+        buttonRow.add(closeButton);
+        footer.add(buttonRow, BorderLayout.EAST);
+        return footer;
+    }
+
+    private static void saveReportToFile(JDialog owner, String language,
+                                        CodeExecutionService.ExecutionReport report) {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Save execution report");
+        chooser.setFileFilter(new FileNameExtensionFilter("Text files", "txt"));
+        chooser.setSelectedFile(new java.io.File("cp-ally-report.txt"));
+        if (chooser.showSaveDialog(owner) != JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+        Path target = chooser.getSelectedFile().toPath();
+        try {
+            Files.writeString(target,
+                    ExecutionResultFormatter.buildResultsText(language, report),
+                    StandardCharsets.UTF_8);
+        } catch (IOException ioe) {
+            javax.swing.JOptionPane.showMessageDialog(owner,
+                    "Failed to save report:\n" + ioe.getMessage(),
+                    "Save error",
+                    javax.swing.JOptionPane.ERROR_MESSAGE);
+        }
     }
 
     static void showCompilationError(Frame owner, String language, String failureMessage, AppThemePalette palette) {
@@ -102,8 +170,21 @@ final class ExecutionResultsDialog {
         scrollPane.getViewport().setBackground(theme.frameBackground());
         dialog.add(scrollPane, BorderLayout.CENTER);
 
+        JButton close = new JButton("Close");
+        close.addActionListener(e -> dialog.dispose());
+        JPanel footer = new JPanel();
+        footer.setOpaque(false);
+        footer.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        footer.add(close);
+        dialog.add(footer, BorderLayout.SOUTH);
+
         dialog.setSize(860, 620);
         dialog.setLocationRelativeTo(owner);
         dialog.setVisible(true);
     }
+
+    // Suppress unused-import warning for Frame in case future
+    // enhancements need it.
+    @SuppressWarnings("unused")
+    private static final Class<?> UNUSED = java.awt.Frame.class;
 }

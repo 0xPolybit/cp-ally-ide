@@ -8,11 +8,68 @@ final class ExecutionResultFormatter {
     }
 
     static String summary(CodeExecutionService.ExecutionReport report) {
-        long passed = report.results().stream().filter(CodeExecutionService.TestCaseResult::passed).count();
-        long timedOut = report.results().stream().filter(CodeExecutionService.TestCaseResult::timedOut).count();
-        long unknown = report.results().stream().filter(CodeExecutionService.TestCaseResult::unknown).count();
-        long failed = report.results().size() - passed - timedOut - unknown;
-        return passed + " passed, " + failed + " failed, " + timedOut + " timed out, " + unknown + " unknown";
+        long passed = count(report, r -> verdictOf(r) == Verdict.PASSED);
+        long wrong = count(report, r -> verdictOf(r) == Verdict.WRONG_ANSWER);
+        long runtime = count(report, r -> verdictOf(r) == Verdict.RUNTIME_ERROR);
+        long tle = count(report, r -> verdictOf(r) == Verdict.TIME_LIMIT_EXCEEDED);
+        long outLimit = count(report, r -> verdictOf(r) == Verdict.OUTPUT_LIMIT_EXCEEDED);
+        long unknown = count(report, r -> verdictOf(r) == Verdict.UNKNOWN_NO_EXPECTED_OUTPUT);
+        long canceled = count(report, r -> verdictOf(r) == Verdict.CANCELED);
+        return passed + " passed, " + wrong + " wrong answer, "
+                + runtime + " runtime error, " + tle + " time limit, "
+                + outLimit + " output limit, " + unknown + " unknown, "
+                + canceled + " canceled";
+    }
+
+    private static long count(CodeExecutionService.ExecutionReport report,
+                              java.util.function.Predicate<CodeExecutionService.TestCaseResult> pred) {
+        return report.results().stream().filter(pred).count();
+    }
+
+    /**
+     * Map a single {@link CodeExecutionService.TestCaseResult} to the
+     * structured {@link Verdict} that the UI uses to label it. The
+     * mapping is deterministic so the same result always produces the
+     * same label.
+     */
+    static Verdict verdictOf(CodeExecutionService.TestCaseResult r) {
+        if (r.timedOut()) {
+            return Verdict.TIME_LIMIT_EXCEEDED;
+        }
+        if (r.outputTruncated()) {
+            return Verdict.OUTPUT_LIMIT_EXCEEDED;
+        }
+        if (r.passed()) {
+            return Verdict.PASSED;
+        }
+        if (r.unknown()) {
+            return Verdict.UNKNOWN_NO_EXPECTED_OUTPUT;
+        }
+        if (r.exitCode() != 0) {
+            return Verdict.RUNTIME_ERROR;
+        }
+        return Verdict.WRONG_ANSWER;
+    }
+
+    static String verdictLabel(Verdict v) {
+        return switch (v) {
+            case PASSED -> "PASSED";
+            case WRONG_ANSWER -> "WRONG ANSWER";
+            case RUNTIME_ERROR -> "RUNTIME ERROR";
+            case TIME_LIMIT_EXCEEDED -> "TIME LIMIT EXCEEDED";
+            case OUTPUT_LIMIT_EXCEEDED -> "OUTPUT LIMIT EXCEEDED";
+            case CANCELED -> "CANCELED";
+            case UNKNOWN_NO_EXPECTED_OUTPUT -> "NO EXPECTED OUTPUT";
+        };
+    }
+
+    static String verdictCssClass(Verdict v) {
+        return switch (v) {
+            case PASSED -> "status-pass";
+            case WRONG_ANSWER, RUNTIME_ERROR -> "status-fail";
+            case TIME_LIMIT_EXCEEDED, OUTPUT_LIMIT_EXCEEDED, CANCELED -> "status-tle";
+            case UNKNOWN_NO_EXPECTED_OUTPUT -> "status-unknown";
+        };
     }
 
     static String buildResultsHtml(String language, CodeExecutionService.ExecutionReport report, AppThemePalette palette) {
@@ -42,6 +99,7 @@ final class ExecutionResultFormatter {
                 .append(".status-unknown { color:").append(toHex(warning)).append("; font-weight:700; }")
                 .append(".section { color:").append(toHex(text)).append("; margin-top:8px; margin-bottom:4px; font-weight:600; }")
                 .append(".note { color:").append(toHex(warning)).append("; margin-top:8px; font-size:12px; font-style:italic; }")
+                .append(".diff { background:").append(toHex(codeBg)).append("; color:").append(toHex(text)).append("; border:1px solid ").append(toHex(border)).append("; border-radius:6px; padding:10px; white-space:pre-wrap; font-family:monospace; }")
                 .append("pre { margin:0; background:").append(toHex(codeBg)).append("; color:").append(toHex(codeText)).append("; border:1px solid ").append(toHex(border)).append("; border-radius:6px; padding:10px; white-space:pre-wrap; }")
                 .append("</style></head><body><div class='wrap'>");
 
@@ -49,8 +107,9 @@ final class ExecutionResultFormatter {
         html.append("<div class='summary'>").append(escape(summary(report))).append("</div>");
 
         for (CodeExecutionService.TestCaseResult result : report.results()) {
-            String statusClass = result.timedOut() ? "status-tle" : (result.unknown() ? "status-unknown" : (result.passed() ? "status-pass" : "status-fail"));
-            String statusText = result.timedOut() ? "TIME LIMIT EXCEEDED" : (result.unknown() ? "IDK BRUH" : (result.passed() ? "PASSED" : "FAILED"));
+            Verdict v = verdictOf(result);
+            String statusClass = verdictCssClass(v);
+            String statusText = verdictLabel(v);
 
             html.append("<div class='case'>");
             html.append("<div><strong>").append(escape(result.displayName())).append("</strong></div>");
@@ -60,15 +119,34 @@ final class ExecutionResultFormatter {
                     .append(result.peakMemoryKb() >= 0 ? formatMemory(result.peakMemoryKb()) : "N/A")
                     .append("</div>");
 
+            // Show input always.
             html.append("<div class='section'>Input</div>");
             html.append(codeBlock(result.input()));
 
+            // Output. Mark truncation in the meta line if it happened.
             html.append("<div class='section'>Output</div>");
             html.append(codeBlock(result.actualOutput()));
+            if (result.outputTruncated()) {
+                html.append("<div class='note'>Output truncated: the program produced more than the configured output cap. The remaining bytes were discarded.</div>");
+            }
 
-            if (!result.passed() || result.timedOut()) {
+            // Expected output: always when there is one. For
+            // UNKNOWN_NO_EXPECTED_OUTPUT, we still render the block
+            // but label it clearly.
+            boolean hasExpected = result.expectedOutput() != null
+                    && !result.expectedOutput().isEmpty();
+            if (hasExpected) {
                 html.append("<div class='section'>Expected Output</div>");
                 html.append(codeBlock(result.expectedOutput()));
+                if (v == Verdict.WRONG_ANSWER) {
+                    html.append("<div class='section'>First Difference</div>");
+                    html.append("<div class='diff'>")
+                            .append(escape(DiffSummary.firstDifference(result.actualOutput(), result.expectedOutput())))
+                            .append("</div>");
+                }
+            } else if (v == Verdict.UNKNOWN_NO_EXPECTED_OUTPUT) {
+                html.append("<div class='section'>Expected Output</div>");
+                html.append("<div class='note'>No expected output was provided for this test.</div>");
             }
 
             if (result.stderrOutput() != null && !result.stderrOutput().isBlank()) {
@@ -76,6 +154,9 @@ final class ExecutionResultFormatter {
                 html.append(codeBlock(result.stderrOutput()));
             }
 
+            if (result.details() != null && !result.details().isBlank()) {
+                html.append("<div class='note'>").append(escape(result.details())).append("</div>");
+            }
             if (result.note() != null && !result.note().isBlank()) {
                 html.append("<div class='note'>").append(escape(result.note())).append("</div>");
             }
@@ -84,6 +165,47 @@ final class ExecutionResultFormatter {
 
         html.append("</div></body></html>");
         return html.toString();
+    }
+
+    /**
+     * Returns a plain-text representation of the report. Used by the
+     * "Copy report" and "Save report" actions on the results dialog.
+     */
+    static String buildResultsText(String language, CodeExecutionService.ExecutionReport report) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Local execution for ").append(language).append('\n');
+        sb.append(summary(report)).append("\n\n");
+        for (CodeExecutionService.TestCaseResult r : report.results()) {
+            Verdict v = verdictOf(r);
+            sb.append(r.displayName()).append("  [").append(verdictLabel(v)).append("]  ");
+            sb.append("time=").append(r.durationMillis()).append("ms");
+            if (r.peakMemoryKb() >= 0) {
+                sb.append(" mem=").append(formatMemory(r.peakMemoryKb()));
+            }
+            sb.append('\n');
+            sb.append("  Input:\n").append(indentBlock(r.input())).append('\n');
+            sb.append("  Output:\n").append(indentBlock(r.actualOutput())).append('\n');
+            if (r.expectedOutput() != null && !r.expectedOutput().isEmpty()) {
+                sb.append("  Expected:\n").append(indentBlock(r.expectedOutput())).append('\n');
+            }
+            if (r.stderrOutput() != null && !r.stderrOutput().isBlank()) {
+                sb.append("  Stderr:\n").append(indentBlock(r.stderrOutput())).append('\n');
+            }
+            if (r.details() != null && !r.details().isBlank()) {
+                sb.append("  Details: ").append(r.details()).append('\n');
+            }
+            sb.append('\n');
+        }
+        return sb.toString();
+    }
+
+    private static String indentBlock(String text) {
+        if (text == null) return "";
+        StringBuilder sb = new StringBuilder();
+        for (String line : text.split("\n", -1)) {
+            sb.append("    ").append(line).append('\n');
+        }
+        return sb.toString();
     }
 
     private static String codeBlock(String content) {

@@ -189,7 +189,7 @@ class CodeforcesUserService {
                 return null;
             }
             try (InputStream in = conn.getInputStream()) {
-                byte[] bytes = BoundedStreams.read(in, 2 * 1024 * 1024, "codeforces user.status");
+                byte[] bytes = BoundedStreams.read(in, 2 * 1024 * 1024, "codeforces user.status").bytes();
                 return new String(bytes, StandardCharsets.UTF_8);
             }
         } catch (Exception e) {

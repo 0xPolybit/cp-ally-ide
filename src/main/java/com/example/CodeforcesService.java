@@ -357,7 +357,11 @@ class CodeforcesService {
      * not support --max-filesize.
      */
     private static byte[] readBounded(InputStream in, int maxBytes, String url) throws IOException {
-        return BoundedStreams.read(in, maxBytes, url);
+        BoundedStreams.Result r = BoundedStreams.read(in, maxBytes, url);
+        if (r.truncated()) {
+            throw new IOException("Problem HTML exceeded " + maxBytes + " bytes for " + url);
+        }
+        return r.bytes();
     }
 
     /**
