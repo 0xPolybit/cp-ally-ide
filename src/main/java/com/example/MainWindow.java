@@ -95,6 +95,7 @@ public class MainWindow {
             SETTINGS_FILE_NAME,
             DEFAULT_LANGUAGE);
         private final ProgramCacheRepository programCacheRepository = new ProgramCacheRepository(settingsRepository.getAppDataDirectory());
+    private ToolchainAvailability toolchainAvailability;
     private CodeforcesService codeforcesService;
     private ProblemSheetsService problemSheetsService;
     private final CodeExecutionService codeExecutionService = new CodeExecutionService();
@@ -162,6 +163,7 @@ public class MainWindow {
         problemHtmlRenderer = new ProblemHtmlRenderer(appDataDir);
         problemHtmlRenderer.setTheme(appThemePalette);
         codeforcesService = new CodeforcesService(appDataDir);
+        toolchainAvailability = new ToolchainAvailability(codeExecutionService);
         problemSheetsService = new ProblemSheetsService();
         cfUserService = new CodeforcesUserService();
         cfProfileService = new CodeforcesProfileService();
@@ -1884,7 +1886,37 @@ public class MainWindow {
         }
 
         String language = selectedLanguage();
-        CodeExecutionService.LanguageSupport support = codeExecutionService.detectSupport(language);
+
+        // If we already know the support state for this language, paint the UI
+        // synchronously and avoid another async probe. Otherwise show a
+        // Checking… placeholder and update once the probe completes; the
+        // probe itself runs on a background thread, never the EDT.
+        CodeExecutionService.LanguageSupport cached = toolchainAvailability != null
+                ? toolchainAvailability.cached(language)
+                : codeExecutionService.detectSupport(language);
+        if (cached != null) {
+            paintExecutionAvailability(cached);
+        } else {
+            paintExecutionAvailabilityChecking(language);
+            if (toolchainAvailability != null) {
+                toolchainAvailability.probe(language, result -> {
+                    if (selectedLanguage().equals(language)) {
+                        paintExecutionAvailability(result);
+                    }
+                });
+            } else {
+                // Fallback: no cache available, do the probe synchronously. This
+                // is the only path that can still block the EDT.
+                paintExecutionAvailability(codeExecutionService.detectSupport(language));
+            }
+        }
+    }
+
+    private void paintExecutionAvailability(CodeExecutionService.LanguageSupport support) {
+        if (languageDropdown == null || runtimeSupportLabel == null || runButton == null) {
+            return;
+        }
+        String language = selectedLanguage();
         boolean hasTestCases = testCasesPanel != null && !testCasesPanel.getExecutionTestCases().isEmpty();
         boolean ready = problemStatementLoaded && support.supported() && (hasTestCases || currentProblemIsEmpty);
 
@@ -1898,6 +1930,20 @@ public class MainWindow {
         runButton.setToolTipText(ready
             ? (currentProblemIsEmpty && !hasTestCases ? "Run the current code with empty input." : "Run the sample test cases locally")
             : (hasTestCases ? support.message() : "No test cases available to run."));
+        // Avoid 'unused' lint when only the language is read for log lines.
+        if (language == null) {
+            // no-op
+        }
+    }
+
+    private void paintExecutionAvailabilityChecking(String language) {
+        runtimeSupportLabel.setText("<html><span style='color:"
+                + (currentThemePalette().mutedTextColor() != null
+                        ? toHex(currentThemePalette().mutedTextColor()) : "#a9b0bc")
+                + ";'>Checking\u2026</span></html>");
+        runtimeSupportLabel.setToolTipText("Checking local toolchain for " + language);
+        runButton.setEnabled(false);
+        runButton.setToolTipText("Checking local toolchain for " + language + "\u2026");
     }
 
     private String selectedLanguage() {
