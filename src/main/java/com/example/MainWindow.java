@@ -124,6 +124,9 @@ public class MainWindow {
     private boolean problemStatementLoaded;
     private boolean currentProblemIsEmpty;
     private String currentProblemCode;
+    private final ProblemFetchArbiter problemFetchArbiter = new ProblemFetchArbiter();
+    private CancellationToken activeProblemFetchToken;
+    private javax.swing.SwingWorker<?, ?> activeProblemFetchWorker;
     private AppThemePalette appThemePalette = AppThemePalette.dark();
     private java.util.concurrent.ScheduledExecutorService autosaveExecutor;
     private volatile String lastAutosavedSource = null;
@@ -1400,16 +1403,37 @@ public class MainWindow {
 
         String contestId = matcher.group(1);
         String index = matcher.group(2).toUpperCase();
+        String problemCode = contestId + index;
 
-        showLeftPanelLoading(contestId + index);
+        // Bump the request id and cancel the previous fetch, if any. Any
+        // in-flight worker that finishes after this point will see its
+        // requestId is no longer the current one and discard its result.
+        ProblemFetchArbiter.Request req = problemFetchArbiter.begin();
+        long myRequestId = req.requestId;
+        if (activeProblemFetchToken != null) {
+            activeProblemFetchToken.cancel();
+        }
+        if (activeProblemFetchWorker != null && !activeProblemFetchWorker.isDone()) {
+            activeProblemFetchWorker.cancel(true);
+        }
+        final CancellationToken myToken = req.token;
+        activeProblemFetchToken = myToken;
+
+        showLeftPanelLoading(problemCode);
 
         final ProblemDetails[] fetched = new ProblemDetails[1];
         SwingWorker<RenderedProblemView[], Void> worker = new SwingWorker<>() {
             @Override
             protected RenderedProblemView[] doInBackground() throws Exception {
-                ProblemDetails details = codeforcesService.fetchProblemDetails(contestId, index);
+                ProblemDetails details = codeforcesService.fetchProblemDetails(contestId, index, myToken);
+                if (myToken.isCancelled() || isCancelled()) {
+                    return null;
+                }
                 fetched[0] = details;
                 List<SheetInfo> sheets = problemSheetsService.fetchSheets(contestId + index);
+                if (myToken.isCancelled() || isCancelled()) {
+                    return null;
+                }
                 RenderedProblemView full = problemHtmlRenderer.render(details);
                 RenderedProblemView statementOnly = problemHtmlRenderer.renderStatementOnly(details);
                 if (!sheets.isEmpty()) {
@@ -1422,10 +1446,21 @@ public class MainWindow {
 
             @Override
             protected void done() {
+                // Drop stale results: if a newer fetch has been started (or
+                // this worker was cancelled), do not touch the UI.
+                if (!problemFetchArbiter.isCurrent(myRequestId) || isCancelled()) {
+                    DiagnosticLogger.info("[MainWindow] Discarding stale fetch result for " + problemCode);
+                    return;
+                }
                 try {
                     RenderedProblemView[] renders = get();
+                    if (renders == null) {
+                        return;
+                    }
                     currentProblemDetails = fetched[0];
-                    showCodeforcesProblemView(contestId + index, renders[0], renders[1]);
+                    showCodeforcesProblemView(problemCode, renders[0], renders[1]);
+                } catch (java.util.concurrent.CancellationException cancelled) {
+                    DiagnosticLogger.info("[MainWindow] Fetch cancelled for " + problemCode);
                 } catch (Exception ex) {
                     DiagnosticLogger.error("[MainWindow] Failed to fetch CodeForces problem " + rawCode, ex);
                     // Surface the underlying cause (network, bot-check, missing markup, etc.)
@@ -1442,6 +1477,7 @@ public class MainWindow {
                 }
             }
         };
+        activeProblemFetchWorker = worker;
         worker.execute();
     }
 

@@ -40,6 +40,13 @@ class CodeforcesService {
         private static final int FETCH_TIMEOUT_MS = 25000;
 
     ProblemDetails fetchProblemDetails(String contestId, String index) throws IOException {
+        return fetchProblemDetails(contestId, index, new CancellationToken());
+    }
+
+    ProblemDetails fetchProblemDetails(String contestId, String index, CancellationToken cancellation) throws IOException {
+        if (cancellation == null) {
+            cancellation = new CancellationToken();
+        }
         String problemCode = contestId + index;
         ProblemDetails cached = problemCache.load(problemCode);
         if (cached != null) {
@@ -51,9 +58,16 @@ class CodeforcesService {
 
         IOException lastError = null;
         for (String host : PROBLEM_HOSTS) {
+            if (cancellation.isCancelled()) {
+                throw new IOException("Fetch cancelled before trying host " + host);
+            }
             try {
                 DiagnosticLogger.info("[CodeforcesService] Fetching " + problemCode + " from " + host);
-                ProblemDetails fetched = fetchProblemDetailsFromHost(host, contestId, index);
+                ProblemDetails fetched = fetchProblemDetailsFromHost(host, contestId, index, cancellation);
+                if (cancellation.isCancelled()) {
+                    // Do not persist a result the caller no longer wants.
+                    throw new IOException("Fetch cancelled after retrieving " + problemCode);
+                }
                 problemCache.save(fetched);
                 return fetched;
             } catch (IOException ex) {
@@ -68,7 +82,7 @@ class CodeforcesService {
         throw new IOException("Could not fetch problem statement from available hosts");
     }
 
-    private ProblemDetails fetchProblemDetailsFromHost(String host, String contestId, String index) throws IOException {
+    private ProblemDetails fetchProblemDetailsFromHost(String host, String contestId, String index, CancellationToken cancellation) throws IOException {
         // Cookie bootstrap is best-effort: a transient 4xx/5xx or network blip on the
         // root should NOT abort the whole fetch — the problem page can still be tried
         // with empty cookies. This was previously the single biggest point of failure
@@ -162,9 +176,19 @@ class CodeforcesService {
     }
 
     private Document fetchDocument(String url, Map<String, String> cookies) throws IOException {
+        return fetchDocument(url, cookies, new CancellationToken());
+    }
+
+    private Document fetchDocument(String url, Map<String, String> cookies, CancellationToken cancellation) throws IOException {
+        if (cancellation == null) {
+            cancellation = new CancellationToken();
+        }
         try {
-            return fetchDocumentWithCurl(url, cookies);
+            return fetchDocumentWithCurl(url, cookies, cancellation);
         } catch (IOException curlError) {
+            if (cancellation.isCancelled()) {
+                throw new IOException("Fetch cancelled while using curl for " + url, curlError);
+            }
             DiagnosticLogger.error("[CodeforcesService] curl fetch failed for " + url, curlError);
         }
 
@@ -202,6 +226,10 @@ class CodeforcesService {
     private static final String SEC_CH_UA_PLATFORM = "\"Windows\"";
 
     private Document fetchDocumentWithCurl(String url, Map<String, String> cookies) throws IOException {
+        return fetchDocumentWithCurl(url, cookies, new CancellationToken());
+    }
+
+    private Document fetchDocumentWithCurl(String url, Map<String, String> cookies, CancellationToken cancellation) throws IOException {
         String curlCommand = isWindows() ? "curl.exe" : "curl";
         List<String> command = new ArrayList<>();
         command.add(curlCommand);
@@ -250,6 +278,31 @@ class CodeforcesService {
                 .redirectErrorStream(true)
                 .start();
 
+        // Watcher thread: if the cancellation token is signalled while curl is
+        // still running, destroy the process so the call returns quickly.
+        Thread cancellationWatcher = null;
+        if (cancellation != null) {
+            cancellationWatcher = new Thread(() -> {
+                while (!Thread.currentThread().isInterrupted()) {
+                    if (cancellation.isCancelled()) {
+                        process.destroyForcibly();
+                        return;
+                    }
+                    if (!process.isAlive()) {
+                        return;
+                    }
+                    try {
+                        Thread.sleep(50L);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+            }, "cpa-fetch-cancel");
+            cancellationWatcher.setDaemon(true);
+            cancellationWatcher.start();
+        }
+
         byte[] output;
         try (InputStream input = process.getInputStream()) {
             output = input.readAllBytes();
@@ -258,6 +311,9 @@ class CodeforcesService {
         try {
             int exitCode = process.waitFor();
             String html = new String(output, StandardCharsets.UTF_8);
+            if (cancellation != null && cancellation.isCancelled()) {
+                throw new IOException("Fetch cancelled for " + url);
+            }
             if (exitCode != 0) {
                 throw new IOException("curl exited with code " + exitCode + (html.isBlank() ? "" : ": " + html.trim()));
             }
@@ -269,6 +325,10 @@ class CodeforcesService {
             Thread.currentThread().interrupt();
             process.destroy();
             throw new IOException("Interrupted while fetching " + url, e);
+        } finally {
+            if (cancellationWatcher != null) {
+                cancellationWatcher.interrupt();
+            }
         }
     }
 
