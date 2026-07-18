@@ -801,7 +801,6 @@ public class MainWindow {
                 "GNU G++17 7.3.0",
                 "GNU G++20 13.2",
                 "GNU C11 5.1.0",
-                "GNU G11 5.1.0",
                 "Java 21",
                 "Kotlin 1.9",
                 "C# 8",
@@ -820,6 +819,12 @@ public class MainWindow {
         });
 
         String preferredLanguage = appSettings != null ? appSettings.lastLanguage() : DEFAULT_LANGUAGE;
+        // Normalize legacy "GNU G11" label (an old dropdown artifact) to the
+        // canonical Codeforces "GNU C11" label so previously-saved settings
+        // still map to a valid dropdown entry.
+        if (preferredLanguage != null && preferredLanguage.startsWith("GNU G11")) {
+            preferredLanguage = "GNU C11 5.1.0";
+        }
         languageDropdown.setSelectedItem(preferredLanguage);
         if (languageDropdown.getSelectedItem() == null) {
             languageDropdown.setSelectedItem(DEFAULT_LANGUAGE);
@@ -2094,8 +2099,11 @@ public class MainWindow {
         if (language.startsWith("Python") || language.startsWith("PyPy")) {
             return SyntaxConstants.SYNTAX_STYLE_PYTHON;
         }
-        if (language.startsWith("GNU G++") || language.startsWith("GNU C11") || language.startsWith("GNU G11")) {
+        if (language.startsWith("GNU G++")) {
             return SyntaxConstants.SYNTAX_STYLE_CPLUSPLUS;
+        }
+        if (language.startsWith("GNU C11") || language.startsWith("GNU G11")) {
+            return SyntaxConstants.SYNTAX_STYLE_C;
         }
         if (language.startsWith("Java ")) {
             return SyntaxConstants.SYNTAX_STYLE_JAVA;
@@ -2140,11 +2148,20 @@ public class MainWindow {
                 + "if __name__ == \"__main__\":\n"
                 + "\tmain()\n";
         }
-        if (language.startsWith("GNU G++") || language.startsWith("GNU C11") || language.startsWith("GNU G11")) {
+        if (language.startsWith("GNU G++")) {
             return "#include <bits/stdc++.h>\n"
                     + "using namespace std;\n"
                     + "\n"
                     + "int main() {\n"
+                    + "\t// code goes here...\n"
+                    + "\treturn 0;\n"
+                    + "}\n";
+        }
+        if (language.startsWith("GNU C11") || language.startsWith("GNU G11")) {
+            return "#include <stdio.h>\n"
+                    + "#include <stdlib.h>\n"
+                    + "\n"
+                    + "int main(void) {\n"
                     + "\t// code goes here...\n"
                     + "\treturn 0;\n"
                     + "}\n";
