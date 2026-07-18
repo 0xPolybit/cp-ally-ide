@@ -133,6 +133,8 @@ public class MainWindow {
     private java.util.concurrent.ScheduledExecutorService autosaveExecutor;
     private volatile boolean sourceDirty = false;
     private volatile String lastAutosavedSource = null;
+    private volatile boolean problemLoading = false;
+    private volatile boolean executionRunning = false;
     private java.util.concurrent.ScheduledFuture<?> pendingAutosave;
     private static final long AUTOSAVE_DEBOUNCE_MILLIS = 1000L;
     private double editorZoomFactor = 1.0;
@@ -149,6 +151,8 @@ public class MainWindow {
     private ZoomTarget activeZoomTarget = ZoomTarget.EDITOR;
     private JMenuItem userMenuItem;
     private JMenuItem showProfileMenuItem;
+    private JMenuItem chooseDifferentProblemItem;
+    private JMenuItem openEmptyProblemItem;
     private JLabel loggedInLabel;
     private JLabel submissionStatusLabel;
     private CodeforcesUserService cfUserService;
@@ -407,10 +411,10 @@ public class MainWindow {
         preferencesItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_P, java.awt.event.InputEvent.CTRL_DOWN_MASK));
         JMenuItem clearCacheItem = new JMenuItem("Clear All Cache");
         clearCacheItem.addActionListener(e -> onClearAllCacheClicked());
-        JMenuItem chooseDifferentProblemItem = new JMenuItem("Choose Problem");
+        chooseDifferentProblemItem = new JMenuItem("Choose Problem");
         chooseDifferentProblemItem.addActionListener(e -> promptForDifferentProblem());
         chooseDifferentProblemItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_N, java.awt.event.InputEvent.CTRL_DOWN_MASK));
-        JMenuItem openEmptyProblemItem = new JMenuItem("Open Empty");
+        openEmptyProblemItem = new JMenuItem("Open Empty");
         openEmptyProblemItem.addActionListener(e -> promptOpenEmptyProblem());
         openEmptyProblemItem.setAccelerator(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_E, java.awt.event.InputEvent.CTRL_DOWN_MASK));
         refreshProblemItem = new JMenuItem("Refresh Problem");
@@ -1483,6 +1487,8 @@ public class MainWindow {
         activeProblemFetchToken = myToken;
 
         showLeftPanelLoading(problemCode);
+        problemLoading = true;
+        applyWorkspaceState();
 
         final ProblemDetails[] fetched = new ProblemDetails[1];
         SwingWorker<RenderedProblemView[], Void> worker = new SwingWorker<>() {
@@ -1515,6 +1521,8 @@ public class MainWindow {
                     DiagnosticLogger.info("[MainWindow] Discarding stale fetch result for " + problemCode);
                     return;
                 }
+                // We are the current request, so the loading state ends here.
+                problemLoading = false;
                 try {
                     RenderedProblemView[] renders = get();
                     if (renders == null) {
@@ -1524,6 +1532,7 @@ public class MainWindow {
                     showCodeforcesProblemView(problemCode, renders[0], renders[1]);
                 } catch (java.util.concurrent.CancellationException cancelled) {
                     DiagnosticLogger.info("[MainWindow] Fetch cancelled for " + problemCode);
+                    problemLoading = false;
                 } catch (Exception ex) {
                     DiagnosticLogger.error("[MainWindow] Failed to fetch CodeForces problem " + rawCode, ex);
                     // Surface the underlying cause (network, bot-check, missing markup, etc.)
@@ -1587,7 +1596,8 @@ public class MainWindow {
     }
 
     private void showLeftPanelLoading(String problemCode) {
-        fetchProblemButton.setEnabled(false);
+        // Enablement is delegated to applyWorkspaceState; just keep the
+        // visual cue here.
         fetchStatusLabel.setForeground(currentThemePalette().mutedTextColor());
         fetchStatusLabel.setText("Fetching problem " + problemCode + "...");
 
@@ -1602,7 +1612,7 @@ public class MainWindow {
     }
 
     private void restoreProblemEntryPanelWithError(String message) {
-        fetchProblemButton.setEnabled(true);
+        problemLoading = false;
         fetchStatusLabel.setForeground(currentThemePalette().errorColor());
         fetchStatusLabel.setText(message);
 
@@ -1865,13 +1875,12 @@ public class MainWindow {
             codeEditor.setRequestFocusEnabled(true);
         }
 
-        if (refreshProblemItem != null) {
-            refreshProblemItem.setEnabled(!currentProblemIsEmpty);
-        }
-
-        if (addTestCaseItem != null) {
-            addTestCaseItem.setEnabled(true);
-        }
+        // Enablement of the menu items is now derived from the central
+        // workspace state, not from scattered setEnabled calls. The
+        // empty-problem distinction is preserved here via the
+        // refreshEnabled() policy, which already returns false for
+        // empty problems.
+        applyWorkspaceState();
 
         applyLanguageTemplateOrCachedProgram();
         updateExecutionAvailability();
@@ -2086,17 +2095,64 @@ public class MainWindow {
     }
 
     private void setExecutionRunningState(boolean running) {
-        if (executionStateLabel == null) {
-            return;
+        this.executionRunning = running;
+        if (executionStateLabel != null) {
+            if (running) {
+                executionStateLabel.setText("Status: Running");
+                executionStateLabel.setForeground(new Color(247, 215, 26));
+            } else {
+                executionStateLabel.setText("Status: Idle");
+                executionStateLabel.setForeground(new Color(169, 176, 188));
+            }
         }
+        applyWorkspaceState();
+    }
 
-        if (running) {
-            executionStateLabel.setText("Status: Running");
-            executionStateLabel.setForeground(new Color(247, 215, 26));
-        } else {
-            executionStateLabel.setText("Status: Idle");
-            executionStateLabel.setForeground(new Color(169, 176, 188));
+    /**
+     * Centralised enablement of every interactive control in the main
+     * window. Call this whenever one of the underlying state booleans
+     * changes; the control set is derived from a {@link WorkspaceState}
+     * value object so the policy lives in one place.
+     */
+    private void applyWorkspaceState() {
+        WorkspaceState s = currentWorkspaceState();
+        if (fetchProblemButton != null) {
+            fetchProblemButton.setEnabled(s.fetchEnabled());
         }
+        if (refreshProblemItem != null) {
+            refreshProblemItem.setEnabled(s.refreshEnabled(currentProblemIsEmpty));
+        }
+        if (addTestCaseItem != null) {
+            addTestCaseItem.setEnabled(s.addTestCaseEnabled());
+        }
+        if (chooseDifferentProblemItem != null) {
+            chooseDifferentProblemItem.setEnabled(!s.problemLoading());
+        }
+        if (openEmptyProblemItem != null) {
+            openEmptyProblemItem.setEnabled(!s.executionRunning());
+        }
+        if (showProfileMenuItem != null) {
+            showProfileMenuItem.setEnabled(s.showProfileEnabled());
+        }
+        if (runButton != null) {
+            // Run button is governed by toolchain availability; only
+            // additionally gate it on workspace state here. The actual
+            // "ready to run" check happens in updateExecutionAvailability.
+            if (s.executionRunning()) {
+                runButton.setEnabled(false);
+                runButton.setText("Running…");
+            } else if (runButton.getText() != null && runButton.getText().startsWith("Running")) {
+                runButton.setText("Run");
+            }
+        }
+    }
+
+    private WorkspaceState currentWorkspaceState() {
+        return new WorkspaceState(
+                problemLoading,
+                problemStatementLoaded,
+                executionRunning,
+                codeforcesUsername != null && !codeforcesUsername.isEmpty());
     }
 
     private void onRuntimeSupportLabelClicked() {
