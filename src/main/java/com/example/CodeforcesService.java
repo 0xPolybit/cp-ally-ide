@@ -37,7 +37,15 @@ class CodeforcesService {
             "/contest/%s/problem/%s"
         };
 
+        // Hard caps on a single problem fetch. curl gets explicit --connect-timeout
+        // and --max-time flags and a generous --max-filesize; we also enforce a
+        // matching cap on the Java side in case the bundled curl doesn't support
+        // --max-filesize. The Jsoup fallback has a matching .maxBodySize(...) to
+        // stop a malicious/slow server from filling the heap.
         private static final int FETCH_TIMEOUT_MS = 25000;
+        private static final int CURL_CONNECT_TIMEOUT_SECONDS = 15;
+        private static final int CURL_MAX_TIME_SECONDS = 30;
+        private static final int MAX_PROBLEM_BODY_BYTES = 10 * 1024 * 1024; // 10 MiB
 
     ProblemDetails fetchProblemDetails(String contestId, String index) throws IOException {
         return fetchProblemDetails(contestId, index, new CancellationToken());
@@ -150,7 +158,7 @@ class CodeforcesService {
                     .header("Upgrade-Insecure-Requests", "1")
                     .followRedirects(true)
                     .ignoreHttpErrors(true)
-                    .maxBodySize(0)
+                    .maxBodySize(MAX_PROBLEM_BODY_BYTES)
                     .timeout(FETCH_TIMEOUT_MS)
                     .execute();
 
@@ -209,7 +217,7 @@ class CodeforcesService {
                 .cookies(cookies)
                 .followRedirects(true)
                 .ignoreHttpErrors(true)
-                .maxBodySize(0)
+                .maxBodySize(MAX_PROBLEM_BODY_BYTES)
                 .timeout(FETCH_TIMEOUT_MS)
                 .get();
     }
@@ -237,6 +245,15 @@ class CodeforcesService {
         command.add("--show-error");
         command.add("--location");
         command.add("--compressed");
+        // Bound the time we can spend connecting, the time we can spend in
+        // total, and the body size we'll accept. Any of these tripping turns
+        // into an IOException that the caller already handles.
+        command.add("--connect-timeout");
+        command.add(Integer.toString(CURL_CONNECT_TIMEOUT_SECONDS));
+        command.add("--max-time");
+        command.add(Integer.toString(CURL_MAX_TIME_SECONDS));
+        command.add("--max-filesize");
+        command.add(Integer.toString(MAX_PROBLEM_BODY_BYTES));
         command.add("--user-agent");
         command.add(BROWSER_USER_AGENT);
         command.add("--referer");
@@ -305,7 +322,7 @@ class CodeforcesService {
 
         byte[] output;
         try (InputStream input = process.getInputStream()) {
-            output = input.readAllBytes();
+            output = readBounded(input, MAX_PROBLEM_BODY_BYTES, url);
         }
 
         try {
@@ -330,6 +347,17 @@ class CodeforcesService {
                 cancellationWatcher.interrupt();
             }
         }
+    }
+
+    /**
+     * Reads up to {@code maxBytes} from {@code in} and returns them. If the
+     * stream is still open at the cap, the underlying process is destroyed and
+     * an IOException is thrown so the caller never allocates more than the
+     * limit. This is a defense-in-depth measure in case the bundled curl does
+     * not support --max-filesize.
+     */
+    private static byte[] readBounded(InputStream in, int maxBytes, String url) throws IOException {
+        return BoundedStreams.read(in, maxBytes, url);
     }
 
     /**
