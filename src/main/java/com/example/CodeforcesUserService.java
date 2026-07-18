@@ -1,9 +1,15 @@
 package com.example;
 
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
+
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.HashMap;
@@ -13,8 +19,13 @@ import java.util.regex.Pattern;
 
 class CodeforcesUserService {
 
-    private static final String API_BASE =
-            "https://codeforces.com/api/user.status?handle=%s&from=1&count=1000";
+    private static final String API_BASE_TEMPLATE =
+            "https://codeforces.com/api/user.status?handle=%s&from=%d&count=%d";
+    // Codeforces allows up to count=1000 per call. We page through older
+    // submissions until we either find an Accepted for the requested problem
+    // (success) or the contestId drops below the requested one (give up).
+    private static final int PAGE_SIZE = 1000;
+    private static final int MAX_PAGES = 10; // 10 * 1000 = 10 000 submissions
     private static final int TIMEOUT_MS = 7000;
 
     // Splits "2208A" → group 1 = "2208", group 2 = "A"
@@ -22,8 +33,7 @@ class CodeforcesUserService {
     private static final Pattern PROBLEM_CODE_PATTERN =
             Pattern.compile("^(\\d+)([A-Za-z]+\\d*)$");
 
-    private static final Pattern VERDICT_PATTERN =
-            Pattern.compile("\"verdict\"\\s*:\\s*\"([^\"]+)\"");
+    private static final JsonFactory JSON_FACTORY = new JsonFactory();
 
     // Session-level cache: "handle|CODE" → display string (empty = no submissions)
     private final Map<String, String> cache =
@@ -45,25 +55,32 @@ class CodeforcesUserService {
         String index = cm.group(2);
 
         String result = "";
-        HttpURLConnection conn = null;
-        try {
-            URL url = URI.create(String.format(API_BASE,
-                    java.net.URLEncoder.encode(handle, StandardCharsets.UTF_8))).toURL();
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(TIMEOUT_MS);
-            conn.setReadTimeout(TIMEOUT_MS);
-            conn.setRequestMethod("GET");
-            conn.setRequestProperty("Accept", "application/json");
-            if (conn.getResponseCode() == 200) {
-                try (InputStream in = conn.getInputStream()) {
-                    String json = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-                    result = parseBestVerdict(json, contestId, index);
-                }
+        // Page through the user's submissions from most recent to older. We
+        // can stop as soon as we find an Accepted verdict for our problem,
+        // or when a submission's contestId is older than the requested
+        // contest — that means there's no further relevant data to scan.
+        for (int page = 0; page < MAX_PAGES; page++) {
+            int from = 1 + page * PAGE_SIZE;
+            String json = httpGetJson(String.format(API_BASE_TEMPLATE,
+                    URLEncoder.encode(handle, StandardCharsets.UTF_8), from, PAGE_SIZE));
+            if (json == null) {
+                break;
             }
-        } catch (Exception e) {
-            DiagnosticLogger.warn("[CodeforcesUserService] Could not fetch user status: " + e.getMessage());
-        } finally {
-            if (conn != null) conn.disconnect();
+            PageResult pr = scanPage(json, contestId, index);
+            if (pr.foundAccepted) {
+                result = "Accepted";
+                break;
+            }
+            if (pr.latestOther != null && result.isEmpty()) {
+                result = pr.latestOther;
+            }
+            if (pr.stop) {
+                break;
+            }
+            if (pr.entriesInPage < PAGE_SIZE) {
+                // We exhausted the user's submission history.
+                break;
+            }
         }
 
         cache.put(key, result);
@@ -75,47 +92,117 @@ class CodeforcesUserService {
         cache.clear();
     }
 
-    private String parseBestVerdict(String json, int contestId, String index) {
-        // Locate the "result" array
-        int resultIdx = json.indexOf("\"result\"");
-        if (resultIdx < 0) return "";
-        int arrStart = json.indexOf('[', resultIdx);
-        if (arrStart < 0) return "";
-
-        String latestOther = null;
-        int i = arrStart + 1;
-
-        while (i < json.length()) {
-            // Skip whitespace and commas between objects
-            while (i < json.length() && (json.charAt(i) == ',' || json.charAt(i) <= ' ')) i++;
-            if (i >= json.length() || json.charAt(i) == ']') break;
-            if (json.charAt(i) != '{') { i++; continue; }
-
-            // Extract one complete submission object using bracket-depth counting
-            int depth = 0, objEnd = -1;
-            for (int j = i; j < json.length(); j++) {
-                char c = json.charAt(j);
-                if (c == '{') depth++;
-                else if (c == '}' && --depth == 0) { objEnd = j; break; }
-            }
-            if (objEnd < 0) break;
-
-            String obj = json.substring(i, objEnd + 1);
-            i = objEnd + 1;
-
-            // Check contestId and problem index
-            if (obj.contains("\"contestId\":" + contestId)
-                    && obj.contains("\"index\":\"" + index + "\"")) {
-                Matcher vm = VERDICT_PATTERN.matcher(obj);
-                if (vm.find()) {
-                    String v = vm.group(1);
-                    if ("OK".equals(v)) return "Accepted"; // short-circuit on first AC
-                    if (latestOther == null) latestOther = toDisplayVerdict(v);
+    /**
+     * Streams one page of the user.status response, looking only for entries
+     * whose contestId and index match {@code contestId}/{@code index}.
+     * Returns the most recent non-OK verdict seen (if any) and whether to
+     * stop paging. Package-private for testing.
+     */
+    static PageResult scanPage(String json, int contestId, String index) {
+        PageResult result = new PageResult();
+        int minContestIdSeen = Integer.MAX_VALUE;
+        try (JsonParser parser = JSON_FACTORY.createParser(json)) {
+            boolean inResultArray = false;
+            int objectDepth = 0;
+            String currentVerdict = null;
+            int currentContestId = Integer.MIN_VALUE;
+            String currentIndex = null;
+            while (parser.nextToken() != null) {
+                JsonToken token = parser.currentToken();
+                if (token == JsonToken.START_ARRAY && "result".equals(parser.currentName())) {
+                    inResultArray = true;
+                    continue;
+                }
+                if (!inResultArray) {
+                    continue;
+                }
+                if (token == JsonToken.END_ARRAY) {
+                    inResultArray = false;
+                    break;
+                }
+                if (token == JsonToken.START_OBJECT) {
+                    objectDepth++;
+                    currentVerdict = null;
+                    currentContestId = Integer.MIN_VALUE;
+                    currentIndex = null;
+                    continue;
+                }
+                if (token == JsonToken.END_OBJECT) {
+                    objectDepth--;
+                    if (objectDepth == 0) {
+                        result.entriesInPage++;
+                        if (currentContestId == contestId && index.equals(currentIndex)) {
+                            if ("OK".equals(currentVerdict)) {
+                                result.foundAccepted = true;
+                                return result;
+                            }
+                            if (result.latestOther == null && currentVerdict != null) {
+                                result.latestOther = toDisplayVerdict(currentVerdict);
+                            }
+                        }
+                        if (currentContestId != Integer.MIN_VALUE && currentContestId < minContestIdSeen) {
+                            minContestIdSeen = currentContestId;
+                        }
+                    }
+                    continue;
+                }
+                if (token == JsonToken.FIELD_NAME) {
+                    String name = parser.currentName();
+                    JsonParser p = parser;
+                    // Read the value token that follows the field name.
+                    JsonToken value = p.nextToken();
+                    if ("verdict".equals(name) && value == JsonToken.VALUE_STRING) {
+                        currentVerdict = p.getValueAsString();
+                    } else if ("contestId".equals(name) && value == JsonToken.VALUE_NUMBER_INT) {
+                        currentContestId = p.getValueAsInt();
+                    } else if ("index".equals(name) && value == JsonToken.VALUE_STRING) {
+                        currentIndex = p.getValueAsString();
+                    }
                 }
             }
+        } catch (IOException ioe) {
+            DiagnosticLogger.warn("[CodeforcesUserService] Failed to parse user status JSON: " + ioe.getMessage());
         }
+        // If we've already scanned submissions older than the requested
+        // contest, the user has no further history relevant to us.
+        if (minContestIdSeen < contestId) {
+            result.stop = true;
+        }
+        return result;
+    }
 
-        return latestOther != null ? latestOther : "";
+    /**
+     * Performs a GET and returns the response body, or {@code null} on any
+     * network/parse failure or non-2xx response. Caps the body at 2 MiB.
+     */
+    private String httpGetJson(String urlStr) {
+        HttpURLConnection conn = null;
+        try {
+            URL url = URI.create(urlStr).toURL();
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(TIMEOUT_MS);
+            conn.setReadTimeout(TIMEOUT_MS);
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("Accept", "application/json");
+            int code = conn.getResponseCode();
+            if (code < 200 || code >= 300) {
+                return null;
+            }
+            try (InputStream in = conn.getInputStream()) {
+                byte[] bytes = BoundedStreams.read(in, 2 * 1024 * 1024, "codeforces user.status");
+                return new String(bytes, StandardCharsets.UTF_8);
+            }
+        } catch (Exception e) {
+            DiagnosticLogger.warn("[CodeforcesUserService] HTTP GET failed for " + urlStr + ": " + e.getMessage());
+            return null;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    /** Visible for tests. */
+    static String toDisplayVerdictForTest(String cfVerdict) {
+        return toDisplayVerdict(cfVerdict);
     }
 
     private static String toDisplayVerdict(String cfVerdict) {
@@ -123,5 +210,13 @@ class CodeforcesUserService {
             case "WRONG_ANSWER", "PARTIAL" -> "Wrong Answer";
             default -> "Error"; // RE, TLE, MLE, CE, SKIPPED, etc.
         };
+    }
+
+    /** Aggregated result of scanning one user.status page. Visible for tests. */
+    static final class PageResult {
+        boolean foundAccepted;
+        String latestOther;
+        boolean stop;
+        int entriesInPage;
     }
 }

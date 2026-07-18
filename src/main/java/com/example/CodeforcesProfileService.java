@@ -1,96 +1,87 @@
 package com.example;
 
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
+
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import javax.imageio.ImageIO;
 
 class CodeforcesProfileService {
 
-    private static final String USER_INFO_URL   = "https://codeforces.com/api/user.info?handles=%s";
-    private static final String USER_STATUS_URL = "https://codeforces.com/api/user.status?handle=%s&from=1&count=10000";
-    private static final int    TIMEOUT_MS      = 12000;
+    private static final String USER_INFO_URL_TEMPLATE =
+            "https://codeforces.com/api/user.info?handles=%s";
+    private static final String USER_STATUS_URL_TEMPLATE =
+            "https://codeforces.com/api/user.status?handle=%s&from=%d&count=%d";
+    private static final int PAGE_SIZE = 1000;
+    private static final int MAX_PAGES = 10;
+    private static final int TIMEOUT_MS = 12000;
+    private static final int MAX_BODY_BYTES = 5 * 1024 * 1024;
 
-    private static final Pattern STRING_FIELD    = Pattern.compile("\"(\\w+)\"\\s*:\\s*\"([^\"]*)\"");
-    private static final Pattern NUMBER_FIELD    = Pattern.compile("\"(\\w+)\"\\s*:\\s*(-?\\d+)");
-    private static final Pattern VERDICT_PATTERN = Pattern.compile("\"verdict\"\\s*:\\s*\"([^\"]+)\"");
-    private static final Pattern CONTEST_ID_PAT  = Pattern.compile("\"contestId\"\\s*:\\s*(\\d+)");
-    private static final Pattern INDEX_PAT       = Pattern.compile("\"index\"\\s*:\\s*\"([^\"]+)\"");
-    private static final Pattern CREATION_PAT    = Pattern.compile("\"creationTimeSeconds\"\\s*:\\s*(\\d+)");
+    private static final JsonFactory JSON_FACTORY = new JsonFactory();
 
     UserProfile fetchProfile(String handle) throws Exception {
-        String encodedHandle = java.net.URLEncoder.encode(handle, StandardCharsets.UTF_8);
-        String infoJson = httpGet(String.format(USER_INFO_URL, encodedHandle));
-        if (infoJson == null)
+        String encodedHandle = URLEncoder.encode(handle, StandardCharsets.UTF_8);
+        String infoJson = httpGet(String.format(USER_INFO_URL_TEMPLATE, encodedHandle),
+                "codeforces user.info");
+        if (infoJson == null) {
             throw new IOException("No response from Codeforces API");
-        if (infoJson.contains("\"status\":\"FAILED\"")) {
-            String comment = extractFirstString(infoJson, "comment");
-            throw new IOException(comment.isEmpty() ? "Handle not found: " + handle : comment);
+        }
+        ApiStatus status = readApiStatus(infoJson);
+        if ("FAILED".equals(status.status)) {
+            throw new IOException(status.comment.isEmpty() ? "Handle not found: " + handle : status.comment);
+        }
+        UserInfo info = parseFirstUserInfo(infoJson);
+        if (info == null) {
+            throw new IOException("Unexpected user.info response format");
         }
 
-        // Extract first object from "result" array
-        int resultIdx = infoJson.indexOf("\"result\"");
-        int arrStart  = infoJson.indexOf('[', Math.max(resultIdx, 0));
-        int objStart  = infoJson.indexOf('{', Math.max(arrStart, 0));
-        int objEnd    = findObjectEnd(infoJson, objStart);
-        if (objStart < 0 || objEnd < 0)
-            throw new IOException("Unexpected API response format");
-        String resultObj = infoJson.substring(objStart, objEnd + 1);
-
-        Map<String, String> strFields = new HashMap<>();
-        Matcher sm = STRING_FIELD.matcher(resultObj);
-        while (sm.find()) strFields.put(sm.group(1), sm.group(2));
-
-        Map<String, Long> numFields = new HashMap<>();
-        Matcher nm = NUMBER_FIELD.matcher(resultObj);
-        while (nm.find()) {
-            try { numFields.put(nm.group(1), Long.parseLong(nm.group(2))); }
-            catch (NumberFormatException ignored) {}
-        }
-
-        String rankStr      = strFields.getOrDefault("rank", "");
-        String maxRankStr   = strFields.getOrDefault("maxRank", "");
-        int    rating       = numFields.getOrDefault("rating", 0L).intValue();
-        int    maxRating    = numFields.getOrDefault("maxRating", 0L).intValue();
-        String country      = strFields.getOrDefault("country", "");
-        String organization = strFields.getOrDefault("organization", "");
-        long   regTime      = numFields.getOrDefault("registrationTimeSeconds", 0L);
-        long   lastOnline   = numFields.getOrDefault("lastOnlineTimeSeconds", 0L);
-        String avatar       = strFields.getOrDefault("avatar", "");
-
-        int problemsSolved = 0, totalSubmissions = 0, currentStreak = 0, longestStreak = 0;
+        SubmissionStats stats = new SubmissionStats();
         try {
-            String statusJson = httpGet(String.format(USER_STATUS_URL, encodedHandle));
-            if (statusJson != null && !statusJson.contains("\"status\":\"FAILED\"")) {
-                int[] stats  = parseSubmissionStats(statusJson);
-                problemsSolved   = stats[0];
-                totalSubmissions = stats[1];
-                currentStreak    = stats[2];
-                longestStreak    = stats[3];
+            // Page through user.status, accumulating solved-problem and
+            // streak statistics. This is much cheaper than asking for
+            // count=10000 in a single request, both in terms of memory
+            // and of network bytes.
+            for (int page = 0; page < MAX_PAGES; page++) {
+                int from = 1 + page * PAGE_SIZE;
+                String statusJson = httpGet(String.format(USER_STATUS_URL_TEMPLATE,
+                        encodedHandle, from, PAGE_SIZE), "codeforces user.status");
+                if (statusJson == null) {
+                    break;
+                }
+                ApiStatus pageStatus = readApiStatus(statusJson);
+                if ("FAILED".equals(pageStatus.status)) {
+                    break;
+                }
+                int processedBefore = stats.totalSubmissions;
+                scanSubmissionPage(statusJson, stats);
+                if (stats.totalSubmissions - processedBefore < PAGE_SIZE) {
+                    break; // last page
+                }
             }
         } catch (Exception e) {
             DiagnosticLogger.warn("[CodeforcesProfileService] Status fetch failed: " + e.getMessage());
         }
 
-        return new UserProfile(handle, rankStr, maxRankStr, rating, maxRating,
-                country, organization, regTime, lastOnline, avatar,
-                problemsSolved, currentStreak, longestStreak, totalSubmissions);
+        return new UserProfile(handle, info.rank, info.maxRank, info.rating, info.maxRating,
+                info.country, info.organization, info.registrationTimeSeconds, info.lastOnlineTimeSeconds,
+                info.avatar, stats.problemsSolved, stats.currentStreak, stats.longestStreak,
+                stats.totalSubmissions);
     }
 
     BufferedImage fetchAvatar(String avatarUrl) {
@@ -116,52 +107,82 @@ class CodeforcesProfileService {
         return null;
     }
 
-    private int[] parseSubmissionStats(String json) {
-        Set<String> solvedProblems = new HashSet<>();
-        TreeSet<LocalDate> acDates = new TreeSet<>();
-        int totalSubmissions = 0;
-
-        int resultIdx = json.indexOf("\"result\"");
-        if (resultIdx < 0) return new int[]{0, 0, 0, 0};
-        int arrStart = json.indexOf('[', resultIdx);
-        if (arrStart < 0) return new int[]{0, 0, 0, 0};
-
-        int i = arrStart + 1;
-        while (i < json.length()) {
-            while (i < json.length() && (json.charAt(i) == ',' || json.charAt(i) <= ' ')) i++;
-            if (i >= json.length() || json.charAt(i) == ']') break;
-            if (json.charAt(i) != '{') { i++; continue; }
-
-            int objEnd = findObjectEnd(json, i);
-            if (objEnd < 0) break;
-
-            String obj = json.substring(i, objEnd + 1);
-            i = objEnd + 1;
-            totalSubmissions++;
-
-            Matcher vm = VERDICT_PATTERN.matcher(obj);
-            if (vm.find() && "OK".equals(vm.group(1))) {
-                Matcher cidm = CONTEST_ID_PAT.matcher(obj);
-                Matcher idxm = INDEX_PAT.matcher(obj);
-                if (cidm.find() && idxm.find()) {
-                    solvedProblems.add(cidm.group(1) + "_" + idxm.group(1));
+    /**
+     * Streams one user.status page and accumulates per-user statistics: total
+     * submission count, distinct solved problems, and AC date set for streak
+     * computation. The full UserProfile object is built from these counters
+     * plus the user.info response.
+     */
+    /**
+     * Visible for testing. Streams one user.status page into the supplied
+     * {@link SubmissionStats} accumulator.
+     */
+    static void scanSubmissionPage(String json, SubmissionStats stats) throws IOException {
+        try (JsonParser parser = JSON_FACTORY.createParser(json)) {
+            boolean inResultArray = false;
+            int objectDepth = 0;
+            String currentVerdict = null;
+            int currentContestId = Integer.MIN_VALUE;
+            String currentIndex = null;
+            long currentCreation = 0L;
+            while (parser.nextToken() != null) {
+                JsonToken token = parser.currentToken();
+                if (token == JsonToken.START_ARRAY && "result".equals(parser.currentName())) {
+                    inResultArray = true;
+                    continue;
                 }
-                Matcher ctm = CREATION_PAT.matcher(obj);
-                if (ctm.find()) {
-                    long ts = Long.parseLong(ctm.group(1));
-                    acDates.add(Instant.ofEpochSecond(ts).atZone(ZoneOffset.UTC).toLocalDate());
+                if (!inResultArray) continue;
+                if (token == JsonToken.END_ARRAY) {
+                    break;
+                }
+                if (token == JsonToken.START_OBJECT) {
+                    objectDepth++;
+                    currentVerdict = null;
+                    currentContestId = Integer.MIN_VALUE;
+                    currentIndex = null;
+                    currentCreation = 0L;
+                    continue;
+                }
+                if (token == JsonToken.END_OBJECT) {
+                    objectDepth--;
+                    if (objectDepth == 0) {
+                        stats.totalSubmissions++;
+                        if ("OK".equals(currentVerdict)
+                                && currentContestId != Integer.MIN_VALUE
+                                && currentIndex != null) {
+                            stats.solvedProblems.add(currentContestId + "_" + currentIndex);
+                            if (currentCreation > 0) {
+                                stats.acDates.add(Instant.ofEpochSecond(currentCreation)
+                                        .atZone(ZoneOffset.UTC).toLocalDate());
+                            }
+                        }
+                    }
+                    continue;
+                }
+                if (token == JsonToken.FIELD_NAME) {
+                    String name = parser.currentName();
+                    JsonToken value = parser.nextToken();
+                    if ("verdict".equals(name) && value == JsonToken.VALUE_STRING) {
+                        currentVerdict = parser.getValueAsString();
+                    } else if ("contestId".equals(name) && value == JsonToken.VALUE_NUMBER_INT) {
+                        currentContestId = parser.getValueAsInt();
+                    } else if ("index".equals(name) && value == JsonToken.VALUE_STRING) {
+                        currentIndex = parser.getValueAsString();
+                    } else if ("creationTimeSeconds".equals(name) && value == JsonToken.VALUE_NUMBER_INT) {
+                        currentCreation = parser.getValueAsLong();
+                    }
                 }
             }
         }
-
-        int[] streaks = computeStreaks(acDates);
-        return new int[]{solvedProblems.size(), totalSubmissions, streaks[0], streaks[1]};
+        stats.problemsSolved = stats.solvedProblems.size();
+        int[] streaks = computeStreaks(stats.acDates);
+        stats.currentStreak = streaks[0];
+        stats.longestStreak = streaks[1];
     }
 
-    private int[] computeStreaks(TreeSet<LocalDate> acDates) {
+    private static int[] computeStreaks(TreeSet<LocalDate> acDates) {
         if (acDates.isEmpty()) return new int[]{0, 0};
-
-        List<LocalDate> sorted = new ArrayList<>(acDates); // TreeSet is already sorted
+        List<LocalDate> sorted = new ArrayList<>(acDates);
 
         int longest = 1, run = 1;
         for (int i = 1; i < sorted.size(); i++) {
@@ -179,27 +200,87 @@ class CodeforcesProfileService {
             current++;
             check = check.minusDays(1);
         }
-
         return new int[]{current, longest};
     }
 
-    private static int findObjectEnd(String json, int start) {
-        if (start < 0 || start >= json.length() || json.charAt(start) != '{') return -1;
-        int depth = 0;
-        for (int j = start; j < json.length(); j++) {
-            char c = json.charAt(j);
-            if (c == '{') depth++;
-            else if (c == '}' && --depth == 0) return j;
+    private static ApiStatus readApiStatus(String json) {
+        try (JsonParser parser = JSON_FACTORY.createParser(json)) {
+            while (parser.nextToken() != null) {
+                if (parser.currentToken() == JsonToken.FIELD_NAME) {
+                    String name = parser.currentName();
+                    JsonToken value = parser.nextToken();
+                    if ("status".equals(name) && value == JsonToken.VALUE_STRING) {
+                        String s = parser.getValueAsString();
+                        parser.nextToken(); // skip "comment" key
+                        if (parser.currentToken() == JsonToken.FIELD_NAME
+                                && "comment".equals(parser.currentName())) {
+                            parser.nextToken();
+                            String comment = parser.getValueAsString();
+                            return new ApiStatus(s, comment == null ? "" : comment);
+                        }
+                        return new ApiStatus(s, "");
+                    }
+                }
+            }
+        } catch (IOException ioe) {
+            DiagnosticLogger.warn("[CodeforcesProfileService] Failed to read API status: " + ioe.getMessage());
         }
-        return -1;
+        return new ApiStatus("", "");
     }
 
-    private static String extractFirstString(String json, String field) {
-        Matcher m = Pattern.compile("\"" + field + "\"\\s*:\\s*\"([^\"]*)\"").matcher(json);
-        return m.find() ? m.group(1) : "";
+    private static UserInfo parseFirstUserInfo(String json) throws IOException {
+        try (JsonParser parser = JSON_FACTORY.createParser(json)) {
+            boolean inResultArray = false;
+            while (parser.nextToken() != null) {
+                if (parser.currentToken() == JsonToken.START_ARRAY && "result".equals(parser.currentName())) {
+                    inResultArray = true;
+                    continue;
+                }
+                if (!inResultArray) continue;
+                if (parser.currentToken() == JsonToken.START_OBJECT) {
+                    return readUserInfoObject(parser);
+                }
+                if (parser.currentToken() == JsonToken.END_ARRAY) {
+                    return null;
+                }
+            }
+        }
+        return null;
     }
 
-    private String httpGet(String urlStr) throws Exception {
+    private static UserInfo readUserInfoObject(JsonParser parser) throws IOException {
+        UserInfo info = new UserInfo();
+        while (parser.nextToken() != JsonToken.END_OBJECT) {
+            if (parser.currentToken() != JsonToken.FIELD_NAME) continue;
+            String name = parser.currentName();
+            JsonToken value = parser.nextToken();
+            if (value == JsonToken.VALUE_STRING) {
+                String s = parser.getValueAsString();
+                switch (name) {
+                    case "rank" -> info.rank = s;
+                    case "maxRank" -> info.maxRank = s;
+                    case "country" -> info.country = s;
+                    case "organization" -> info.organization = s;
+                    case "avatar" -> info.avatar = s;
+                    default -> { /* ignore unknown field */ }
+                }
+            } else if (value == JsonToken.VALUE_NUMBER_INT) {
+                long n = parser.getValueAsLong();
+                switch (name) {
+                    case "rating" -> info.rating = (int) n;
+                    case "maxRating" -> info.maxRating = (int) n;
+                    case "registrationTimeSeconds" -> info.registrationTimeSeconds = n;
+                    case "lastOnlineTimeSeconds" -> info.lastOnlineTimeSeconds = n;
+                    default -> { /* ignore */ }
+                }
+            }
+            // Other value types (booleans, null, nested objects/arrays) are
+            // silently skipped — we only need the fields listed above.
+        }
+        return info;
+    }
+
+    private String httpGet(String urlStr, String source) throws IOException {
         HttpURLConnection conn = null;
         try {
             URL url = URI.create(urlStr).toURL();
@@ -210,12 +291,48 @@ class CodeforcesProfileService {
             conn.setRequestProperty("Accept", "application/json");
             int code = conn.getResponseCode();
             InputStream in = (code < 400) ? conn.getInputStream() : conn.getErrorStream();
-            if (in == null) return null;
+            if (in == null) {
+                return null;
+            }
             try (in) {
-                return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                byte[] bytes = BoundedStreams.read(in, MAX_BODY_BYTES, source);
+                return new String(bytes, StandardCharsets.UTF_8);
             }
         } finally {
             if (conn != null) conn.disconnect();
         }
+    }
+
+    /** Result of a Codeforces API call. */
+    private static final class ApiStatus {
+        final String status;
+        final String comment;
+        ApiStatus(String status, String comment) {
+            this.status = status;
+            this.comment = comment;
+        }
+    }
+
+    /** Subset of user.info that the profile dialog actually uses. */
+    private static final class UserInfo {
+        String rank = "";
+        String maxRank = "";
+        String country = "";
+        String organization = "";
+        String avatar = "";
+        int rating;
+        int maxRating;
+        long registrationTimeSeconds;
+        long lastOnlineTimeSeconds;
+    }
+
+    /** Mutable accumulator for streaming stats from paged user.status calls. Visible for tests. */
+    static final class SubmissionStats {
+        int problemsSolved;
+        int totalSubmissions;
+        int currentStreak;
+        int longestStreak;
+        final Set<String> solvedProblems = new HashSet<>();
+        final TreeSet<LocalDate> acDates = new TreeSet<>();
     }
 }
