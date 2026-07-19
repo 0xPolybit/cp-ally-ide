@@ -63,6 +63,8 @@ It is built specifically for Codeforces workflows: type a problem code, read the
 - Shows a statement-only view alongside a full view that includes sample test cases.
 - Detects and discards bot-check pages — re-fetches automatically when the cached page is invalid.
 - One-click **Refresh Problem** to re-fetch without clearing your editor.
+- Recent-problem history with browser links and source-copy/submit-page workflow.
+- GitHub Releases update checks run in the background without blocking startup.
 
 ### Deep Link Protocol
 - Open problems from anywhere with `cpally://problem/2208A` links.
@@ -84,7 +86,9 @@ It is built specifically for Codeforces workflows: type a problem code, read the
 ### Test Cases
 - Extracts sample test cases from the problem statement automatically.
 - Add custom test cases with your own input and expected output (`Ctrl+Shift+T`).
+- Edit, duplicate, copy, import, export, and run individual custom tests.
 - `YES`/`NO` outputs are judged case-insensitively.
+- Configurable execution timeout and output-size limits.
 - Displays execution time, memory usage, and detailed comparison results.
 
 ### Caching
@@ -95,7 +99,9 @@ It is built specifically for Codeforces workflows: type a problem code, read the
 ### Interface
 - Multiple themes: **Dark**, **Ultra Dark**, and **Light**, switchable from Preferences.
 - Persistent window state: size, divider positions, last-used language, and zoom levels.
-- Splash screen on startup.
+- Splash screen closes as soon as essential startup completes.
+- Keyboard-accessible controls with global Find, Replace, Go to Line, Run, and zoom shortcuts.
+- Credits and Diagnostics are available from the Help menu.
 - Diagnostic log written to `%APPDATA%\CompetitiveProgrammingAlly\diagnostics.log`.
 
 ---
@@ -205,6 +211,9 @@ start cpally://problem/2208A
 | Zoom In | `Ctrl+=` |
 | Zoom Out | `Ctrl+-` |
 | Reset Zoom | `Ctrl+0` |
+| Find | `Ctrl+F` |
+| Replace | `Ctrl+H` |
+| Go to Line | `Ctrl+G` |
 
 ---
 
