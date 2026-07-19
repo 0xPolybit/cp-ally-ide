@@ -48,10 +48,12 @@ jobs:
         # Catch syntax / API errors first; faster than full package.
         run: mvn -B -ntp -DskipTests clean compile
 
+      - name: Test
+        run: mvn -B -ntp test
+
       - name: Package (fat JAR)
-        # Produces the self-contained JAR the installer wraps. `-DskipTests`
-        # is used because the project has no test suite yet (per HANDOFF.md).
-        run: mvn -B -ntp -DskipTests clean package
+        # Package only after the complete test suite passes.
+        run: mvn -B -ntp package
 
       - name: Verify shaded JAR was produced
         shell: bash
@@ -63,6 +65,15 @@ jobs:
           if command -v unzip >/dev/null 2>&1; then
             unzip -p target/cp-ally-ide-*.jar META-INF/MANIFEST.MF | grep -i 'Main-Class'
           fi
+
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports-${{ matrix.os }}
+          path: target/surefire-reports/
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Upload fat JAR
         uses: actions/upload-artifact@v4
