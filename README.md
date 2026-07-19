@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/0xPolybit/cp-ally-ide/releases"><img src="https://img.shields.io/badge/version-0.2.2-4A90D9?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/0xPolybit/cp-ally-ide/releases"><img src="https://img.shields.io/badge/version-0.3.0-4A90D9?style=flat-square" alt="Version"></a>
   <a href="https://www.oracle.com/java/technologies/javase/jdk17-archive-downloads.html"><img src="https://img.shields.io/badge/Java-17%2B-f89820?style=flat-square&logo=openjdk&logoColor=white" alt="Java 17+"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-4caf50?style=flat-square" alt="Apache 2.0"></a>
   <a href="https://github.com/0xPolybit/cp-ally-ide/releases"><img src="https://img.shields.io/badge/platform-Windows-0078D6?style=flat-square&logo=windows&logoColor=white" alt="Windows"></a>
@@ -123,7 +123,7 @@ It is built specifically for Codeforces workflows: type a problem code, read the
 If you have Java 17 or later installed:
 
 ```bash
-java -jar cp-ally-ide-0.2.2.jar
+java -jar cp-ally-ide-0.3.0.jar
 ```
 
 Download the JAR from the [Releases page](https://github.com/0xPolybit/cp-ally-ide/releases). The `cpally://` protocol handler is not set up automatically when running the JAR directly.
@@ -150,10 +150,10 @@ cd cp-ally-ide
 mvn package
 
 # Run directly
-java -jar target/cp-ally-ide-0.2.2.jar
+java -jar target/cp-ally-ide-0.3.0.jar
 ```
 
-The build produces a single self-contained JAR at `target/cp-ally-ide-0.2.2.jar`.
+The build produces a single self-contained JAR at `target/cp-ally-ide-0.3.0.jar`.
 
 **Packaging for Windows**
 

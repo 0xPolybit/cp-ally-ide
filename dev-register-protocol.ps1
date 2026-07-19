@@ -19,7 +19,7 @@ Write-Host "Java:  $javaExe"
 
 # --- Locate the jar ---
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$jar = Join-Path $scriptDir "target\cp-ally-ide-0.2.2.jar"
+$jar = Join-Path $scriptDir "target\cp-ally-ide-0.3.0.jar"
 if (-not (Test-Path $jar)) {
     Write-Error "Jar not found at $jar`nRun 'mvn package' first."
     exit 1

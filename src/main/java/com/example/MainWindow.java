@@ -79,7 +79,7 @@ public class MainWindow {
     private static final String EMPTY_PROBLEM_CODE = "__EMPTY_PROBLEM__";
     private static final String SETTINGS_DIR_NAME = "CompetitiveProgrammingAlly";
     private static final String SETTINGS_FILE_NAME = "settings.properties";
-    private static final String CURRENT_APP_VERSION = "0.2.2";
+    private static final String CURRENT_APP_VERSION = "0.3.0";
     private static final String RELEASES_API_URL = "https://api.github.com/repos/0xPolybit/cp-ally-ide/releases/latest";
     private static final String RELEASES_URL = "https://github.com/0xPolybit/cp-ally-ide/releases";
     private static final Pattern SEMVER_PATTERN = Pattern.compile("\\b(\\d+\\.\\d+\\.\\d+)\\b");
