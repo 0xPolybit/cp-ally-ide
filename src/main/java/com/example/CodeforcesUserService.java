@@ -38,6 +38,7 @@ class CodeforcesUserService {
     // Session-level cache: "handle|CODE" → display string (empty = no submissions)
     private final Map<String, String> cache =
             Collections.synchronizedMap(new HashMap<>());
+    private final HttpService http = new HttpService();
 
     /**
      * Returns the best display verdict for the given handle + problem code.
@@ -176,27 +177,12 @@ class CodeforcesUserService {
      * network/parse failure or non-2xx response. Caps the body at 2 MiB.
      */
     private String httpGetJson(String urlStr) {
-        HttpURLConnection conn = null;
         try {
-            URL url = URI.create(urlStr).toURL();
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(TIMEOUT_MS);
-            conn.setReadTimeout(TIMEOUT_MS);
-            conn.setRequestMethod("GET");
-            conn.setRequestProperty("Accept", "application/json");
-            int code = conn.getResponseCode();
-            if (code < 200 || code >= 300) {
-                return null;
-            }
-            try (InputStream in = conn.getInputStream()) {
-                byte[] bytes = BoundedStreams.read(in, 2 * 1024 * 1024, "codeforces user.status").bytes();
-                return new String(bytes, StandardCharsets.UTF_8);
-            }
+            return http.get(urlStr, TIMEOUT_MS, 2 * 1024 * 1024,
+                    Map.of("Accept", "application/json"));
         } catch (Exception e) {
             DiagnosticLogger.warn("[CodeforcesUserService] HTTP GET failed for " + urlStr + ": " + e.getMessage());
             return null;
-        } finally {
-            if (conn != null) conn.disconnect();
         }
     }
 

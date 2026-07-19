@@ -18,6 +18,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import javax.imageio.ImageIO;
@@ -34,6 +35,7 @@ class CodeforcesProfileService {
     private static final int MAX_BODY_BYTES = 5 * 1024 * 1024;
 
     private static final JsonFactory JSON_FACTORY = new JsonFactory();
+    private final HttpService http = new HttpService();
 
     UserProfile fetchProfile(String handle) throws Exception {
         String encodedHandle = URLEncoder.encode(handle, StandardCharsets.UTF_8);
@@ -281,25 +283,12 @@ class CodeforcesProfileService {
     }
 
     private String httpGet(String urlStr, String source) throws IOException {
-        HttpURLConnection conn = null;
         try {
-            URL url = URI.create(urlStr).toURL();
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(TIMEOUT_MS);
-            conn.setReadTimeout(TIMEOUT_MS);
-            conn.setRequestMethod("GET");
-            conn.setRequestProperty("Accept", "application/json");
-            int code = conn.getResponseCode();
-            InputStream in = (code < 400) ? conn.getInputStream() : conn.getErrorStream();
-            if (in == null) {
-                return null;
-            }
-            try (in) {
-                byte[] bytes = BoundedStreams.read(in, MAX_BODY_BYTES, source).bytes();
-                return new String(bytes, StandardCharsets.UTF_8);
-            }
-        } finally {
-            if (conn != null) conn.disconnect();
+            return http.get(urlStr, TIMEOUT_MS, MAX_BODY_BYTES,
+                    Map.of("Accept", "application/json"));
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while fetching " + source, ie);
         }
     }
 
