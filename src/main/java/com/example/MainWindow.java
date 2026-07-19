@@ -494,11 +494,19 @@ public class MainWindow {
                     resetZoom();
                 }
             };
-            rootPane.getInputMap(javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW)
-                    .put(javax.swing.KeyStroke.getKeyStroke(
-                                    KeyEvent.VK_0, java.awt.event.InputEvent.CTRL_DOWN_MASK),
-                            "cpa.resetZoom");
-            rootPane.getActionMap().put("cpa.resetZoom", resetZoomAction);
+            bindGlobalShortcut(rootPane, KeyEvent.VK_0, java.awt.event.InputEvent.CTRL_DOWN_MASK,
+                    "cpa.resetZoom", resetZoomAction);
+            bindGlobalShortcut(rootPane, KeyEvent.VK_F, java.awt.event.InputEvent.CTRL_DOWN_MASK,
+                    "cpa.find", action(e -> openFindDialog()));
+            bindGlobalShortcut(rootPane, KeyEvent.VK_H, java.awt.event.InputEvent.CTRL_DOWN_MASK,
+                    "cpa.replace", action(e -> openReplaceDialog()));
+            bindGlobalShortcut(rootPane, KeyEvent.VK_G, java.awt.event.InputEvent.CTRL_DOWN_MASK,
+                    "cpa.goToLine", action(e -> openGoToLineDialog()));
+            bindGlobalShortcut(rootPane, KeyEvent.VK_R, java.awt.event.InputEvent.CTRL_DOWN_MASK,
+                    "cpa.run", action(e -> onRunButtonClicked()));
+            bindGlobalShortcut(rootPane, KeyEvent.VK_T,
+                    java.awt.event.InputEvent.CTRL_DOWN_MASK | java.awt.event.InputEvent.SHIFT_DOWN_MASK,
+                    "cpa.addTest", action(e -> { if (testCasesPanel != null) testCasesPanel.addCustomTestCase(); }));
         }
 
         // Run Menu
@@ -533,11 +541,13 @@ public class MainWindow {
         JPanel zoomPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
         zoomPanel.setOpaque(false);
         javax.swing.JButton zoomOutBtn = new javax.swing.JButton("-");
-        zoomOutBtn.setFocusable(false);
+        zoomOutBtn.setFocusable(true);
+        zoomOutBtn.getAccessibleContext().setAccessibleName("Zoom out");
         zoomOutBtn.setToolTipText("Zoom out active region (Ctrl+Wheel or touch pinch)");
         zoomOutBtn.addActionListener(e -> zoomOut(activeZoomTarget));
         javax.swing.JButton zoomInBtn = new javax.swing.JButton("+");
-        zoomInBtn.setFocusable(false);
+        zoomInBtn.setFocusable(true);
+        zoomInBtn.getAccessibleContext().setAccessibleName("Zoom in");
         zoomInBtn.setToolTipText("Zoom in active region (Ctrl+Wheel or touch pinch)");
         zoomInBtn.addActionListener(e -> zoomIn(activeZoomTarget));
         zoomPercentLabel = new JLabel(zoomLabelText());
@@ -921,7 +931,8 @@ public class MainWindow {
         languageDropdown.setMaximumSize(new Dimension(220, LEFT_FIELD_HEIGHT));
         languageDropdown.setBackground(palette.inputBackground());
         languageDropdown.setForeground(palette.inputForeground());
-        languageDropdown.setFocusable(false);
+        languageDropdown.setFocusable(true);
+        languageDropdown.getAccessibleContext().setAccessibleName("Programming language");
         languageDropdown.setRequestFocusEnabled(false);
         languageDropdown.addItemListener(e -> {
             if (e.getStateChange() == ItemEvent.DESELECTED) {
@@ -946,7 +957,8 @@ public class MainWindow {
         codeEditor.setTabSize(appSettings != null ? appSettings.tabSpacing() : 4);
         codeEditor.setCodeFoldingEnabled(appSettings == null || appSettings.codeFolding());
         codeEditor.setEditable(false);
-        codeEditor.setFocusable(false);
+        codeEditor.setFocusable(true);
+        codeEditor.getAccessibleContext().setAccessibleName("Source code editor");
         codeEditor.setRequestFocusEnabled(false);
         applyEditorPreferences(
             codeEditor,
@@ -1451,8 +1463,25 @@ public class MainWindow {
 
     private JButton createToolbarButton(String text) {
         JButton button = new JButton(text);
-        disableFocus(button);
+        button.setFocusable(true);
+        button.getAccessibleContext().setAccessibleName(text);
         return button;
+    }
+
+    private static javax.swing.Action action(java.awt.event.ActionListener listener) {
+        return new javax.swing.AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent event) {
+                listener.actionPerformed(event);
+            }
+        };
+    }
+
+    private static void bindGlobalShortcut(javax.swing.JRootPane rootPane, int keyCode,
+                                           int modifiers, String name, javax.swing.Action action) {
+        javax.swing.KeyStroke keyStroke = javax.swing.KeyStroke.getKeyStroke(keyCode, modifiers);
+        rootPane.getInputMap(javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW).put(keyStroke, name);
+        rootPane.getActionMap().put(name, action);
     }
 
     private void checkCodeforcesStatusAsync(JLabel statusLabel) {
@@ -1810,7 +1839,8 @@ public class MainWindow {
             };
             problemPane.setContentType("text/html");
             problemPane.setEditable(false);
-            problemPane.setFocusable(false);
+            problemPane.setFocusable(true);
+            problemPane.getAccessibleContext().setAccessibleName("Problem statement");
             problemPane.addMouseListener(new MouseAdapter() {
                 @Override
                 public void mouseEntered(MouseEvent e) {
