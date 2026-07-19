@@ -36,7 +36,8 @@ class CodeforcesUserService {
     private static final JsonFactory JSON_FACTORY = new JsonFactory();
 
     // Session-level cache: "handle|CODE" → display string (empty = no submissions)
-    private final Map<String, String> cache =
+    private static final long VERDICT_TTL_MILLIS = 5 * 60 * 1000L;
+    private final Map<String, TimedValue> cache =
             Collections.synchronizedMap(new HashMap<>());
     private final HttpService http = new HttpService();
 
@@ -46,8 +47,9 @@ class CodeforcesUserService {
      * Blocks on network — always call from a background thread.
      */
     String fetchBestVerdictDisplay(String handle, String problemCode) {
-        String key = handle + "|" + problemCode.toUpperCase();
-        if (cache.containsKey(key)) return cache.get(key);
+        String key = handle.trim().toLowerCase(java.util.Locale.ROOT) + "|" + problemCode.toUpperCase();
+        TimedValue cached = cache.get(key);
+        if (cached != null && !cached.expired()) return cached.value();
 
         Matcher cm = PROBLEM_CODE_PATTERN.matcher(problemCode.toUpperCase());
         if (!cm.matches()) return "";
@@ -84,8 +86,16 @@ class CodeforcesUserService {
             }
         }
 
-        cache.put(key, result);
+        cache.put(key, new TimedValue(result));
         return result;
+    }
+
+    private static final class TimedValue {
+        private final String value;
+        private final long createdAt = System.currentTimeMillis();
+        TimedValue(String value) { this.value = value; }
+        String value() { return value; }
+        boolean expired() { return System.currentTimeMillis() - createdAt > VERDICT_TTL_MILLIS; }
     }
 
     /** Clears the in-memory verdict cache (call when the stored handle changes). */

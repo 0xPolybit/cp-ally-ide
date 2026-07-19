@@ -33,11 +33,18 @@ class CodeforcesProfileService {
     private static final int MAX_PAGES = 10;
     private static final int TIMEOUT_MS = 12000;
     private static final int MAX_BODY_BYTES = 5 * 1024 * 1024;
+    private static final long PROFILE_TTL_MILLIS = 10 * 60 * 1000L;
+    private static final long AVATAR_TTL_MILLIS = 60 * 60 * 1000L;
 
     private static final JsonFactory JSON_FACTORY = new JsonFactory();
     private final HttpService http = new HttpService();
+    private final Map<String, TimedValue<UserProfile>> profileCache = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String, TimedValue<BufferedImage>> avatarCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     UserProfile fetchProfile(String handle) throws Exception {
+        String normalizedHandle = handle == null ? "" : handle.trim().toLowerCase(java.util.Locale.ROOT);
+        TimedValue<UserProfile> cached = profileCache.get(normalizedHandle);
+        if (cached != null && !cached.expired(PROFILE_TTL_MILLIS)) return cached.value();
         String encodedHandle = URLEncoder.encode(handle, StandardCharsets.UTF_8);
         String infoJson = httpGet(String.format(USER_INFO_URL_TEMPLATE, encodedHandle),
                 "codeforces user.info");
@@ -80,14 +87,18 @@ class CodeforcesProfileService {
             DiagnosticLogger.warn("[CodeforcesProfileService] Status fetch failed: " + e.getMessage());
         }
 
-        return new UserProfile(handle, info.rank, info.maxRank, info.rating, info.maxRating,
+        UserProfile profile = new UserProfile(handle, info.rank, info.maxRank, info.rating, info.maxRating,
                 info.country, info.organization, info.registrationTimeSeconds, info.lastOnlineTimeSeconds,
                 info.avatar, stats.problemsSolved, stats.currentStreak, stats.longestStreak,
                 stats.totalSubmissions);
+        profileCache.put(normalizedHandle, new TimedValue<>(profile));
+        return profile;
     }
 
     BufferedImage fetchAvatar(String avatarUrl) {
         if (avatarUrl == null || avatarUrl.isBlank()) return null;
+        TimedValue<BufferedImage> cached = avatarCache.get(avatarUrl);
+        if (cached != null && !cached.expired(AVATAR_TTL_MILLIS)) return cached.value();
         HttpURLConnection conn = null;
         try {
             URL url = URI.create(avatarUrl).toURL();
@@ -98,7 +109,9 @@ class CodeforcesProfileService {
             conn.setRequestProperty("User-Agent", "cp-ally-ide");
             if (conn.getResponseCode() == 200) {
                 try (InputStream in = conn.getInputStream()) {
-                    return ImageIO.read(in);
+                    BufferedImage image = ImageIO.read(in);
+                    if (image != null) avatarCache.put(avatarUrl, new TimedValue<>(image));
+                    return image;
                 }
             }
         } catch (Exception e) {
@@ -107,6 +120,16 @@ class CodeforcesProfileService {
             if (conn != null) conn.disconnect();
         }
         return null;
+    }
+
+    void clearCache() {
+        profileCache.clear();
+        avatarCache.clear();
+    }
+
+    private record TimedValue<T>(T value, long createdAt) {
+        TimedValue(T value) { this(value, System.currentTimeMillis()); }
+        boolean expired(long ttl) { return System.currentTimeMillis() - createdAt > ttl; }
     }
 
     /**
