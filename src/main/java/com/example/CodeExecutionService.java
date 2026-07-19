@@ -448,7 +448,7 @@ class CodeExecutionService {
         builder.redirectErrorStream(false);
         Process process = builder.start();
 
-        ExecutorService executor = Executors.newFixedThreadPool(3);
+        ExecutorService executor = TaskCoordinator.shared().processIo();
         Future<BoundedStreams.Result> stdoutFuture = executor.submit(() ->
                 BoundedStreams.read(process.getInputStream(), maxProcessOutputBytes, "stdout"));
         Future<BoundedStreams.Result> stderrFuture = executor.submit(() ->
@@ -511,7 +511,9 @@ class CodeExecutionService {
 
         BoundedStreams.Result stdoutResult = readFutureResult(stdoutFuture);
         BoundedStreams.Result stderrResult = readFutureResult(stderrFuture);
-        executor.shutdownNow();
+        // The process-I/O executor is application-scoped; do not shut it
+        // down after one run. Individual futures are complete or bounded
+        // by readFutureResult's timeout here.
 
         boolean outputTruncated = stdoutResult.truncated() || stderrResult.truncated();
         int exitCode = timedOut ? -1 : safeExitValue(process);

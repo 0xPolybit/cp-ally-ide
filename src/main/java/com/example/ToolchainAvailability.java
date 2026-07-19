@@ -2,8 +2,6 @@ package com.example;
 
 import javax.swing.SwingUtilities;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.function.Consumer;
 
@@ -26,14 +24,8 @@ import java.util.function.Consumer;
  */
 final class ToolchainAvailability {
 
-    private static final ExecutorService PROBE_EXECUTOR =
-            Executors.newFixedThreadPool(2, runnable -> {
-                Thread t = new Thread(runnable, "cpa-toolchain-probe");
-                t.setDaemon(true);
-                return t;
-            });
-
     private final CodeExecutionService codeExecutionService;
+    private final TaskCoordinator coordinator = TaskCoordinator.shared();
     private final java.util.Map<String, CodeExecutionService.LanguageSupport> cache =
             new ConcurrentHashMap<>();
     private final java.util.Set<String> inFlight =
@@ -69,7 +61,7 @@ final class ToolchainAvailability {
         pendingListeners
                 .computeIfAbsent(language, key -> new java.util.concurrent.CopyOnWriteArrayList<>())
                 .add(onComplete);
-        return PROBE_EXECUTOR.submit(() -> {
+        return coordinator.toolchain().submit(() -> {
             CodeExecutionService.LanguageSupport result;
             try {
                 result = codeExecutionService.detectSupport(language);

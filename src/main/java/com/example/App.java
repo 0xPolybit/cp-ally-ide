@@ -63,7 +63,10 @@ public class App {
         }
 
         DiagnosticLogger.info("[App] This is the primary instance. Starting UI.");
-        Runtime.getRuntime().addShutdownHook(new Thread(instanceServer::close, "cpally-shutdown"));
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            instanceServer.close();
+            TaskCoordinator.shared().shutdownNow();
+        }, "cpally-shutdown"));
 
         final InstanceServer primaryServer = instanceServer;
         final PendingCommands pending = pendingCommands;

@@ -11,7 +11,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -37,11 +36,7 @@ final class CustomTestRepository {
             new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, ScheduledFuture<?>> pendingSaves =
             new ConcurrentHashMap<>();
-    private final ScheduledExecutorService writer = Executors.newSingleThreadScheduledExecutor(r -> {
-        Thread t = new Thread(r, "cpa-test-writer");
-        t.setDaemon(true);
-        return t;
-    });
+    private final ScheduledExecutorService writer = TaskCoordinator.shared().scheduler();
 
     CustomTestRepository(Path appDataDirectory) {
         this.testsDirectory = appDataDirectory.resolve(TESTS_DIRECTORY);

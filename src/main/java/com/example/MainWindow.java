@@ -3063,11 +3063,7 @@ public class MainWindow {
      */
     private void startAutosave(int intervalSeconds) {
         try {
-            autosaveExecutor = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
-                Thread t = new Thread(r, "cpa-autosave");
-                t.setDaemon(true);
-                return t;
-            });
+            autosaveExecutor = TaskCoordinator.shared().scheduler();
             // The debounce window is fixed at AUTOSAVE_DEBOUNCE_MILLIS; the
             // configured interval acts as a hard upper bound for the time
             // between an edit and the next save attempt, but in practice
@@ -3161,10 +3157,9 @@ public class MainWindow {
                 pendingAutosave.cancel(false);
                 pendingAutosave = null;
             }
-            if (autosaveExecutor != null) {
-                autosaveExecutor.shutdownNow();
-                autosaveExecutor = null;
-            }
+            // The scheduler is application-scoped; cancel only this
+            // window's pending task, never shut down the shared pool.
+            autosaveExecutor = null;
         } catch (Exception ignored) {
         }
     }
