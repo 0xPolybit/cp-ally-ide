@@ -476,7 +476,10 @@ class CodeExecutionService {
                 long mem = readMemoryUsageKb(pid);
                 if (mem > 0) peakMemoryKb.updateAndGet(cur -> Math.max(cur, mem));
                 try {
-                    Thread.sleep(100);
+                    // Windows tasklist is itself a process launch; sampling
+                    // every 500 ms keeps monitoring overhead low while still
+                    // providing useful peak-memory telemetry.
+                    Thread.sleep(500);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
@@ -511,6 +514,11 @@ class CodeExecutionService {
 
         BoundedStreams.Result stdoutResult = readFutureResult(stdoutFuture);
         BoundedStreams.Result stderrResult = readFutureResult(stderrFuture);
+        if (process.isAlive()) {
+            destroyProcessTree(process);
+            stdoutFuture.cancel(true);
+            stderrFuture.cancel(true);
+        }
         // The process-I/O executor is application-scoped; do not shut it
         // down after one run. Individual futures are complete or bounded
         // by readFutureResult's timeout here.
