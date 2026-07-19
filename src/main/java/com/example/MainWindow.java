@@ -529,11 +529,18 @@ public class MainWindow {
         documentationItem.addActionListener(e -> openExternalUrl("https://github.com/0xPolybit/cp-ally-ide#readme"));
         JMenuItem checkUpdatesItem = new JMenuItem("Check for Updates");
         checkUpdatesItem.addActionListener(e -> onFetchLatestVersionClicked());
+        JMenuItem creditsItem = new JMenuItem("Credits");
+        creditsItem.addActionListener(e -> SupportDialogs.showCreditsDialog(mainFrame, currentThemePalette()));
+        JMenuItem diagnosticsItem = new JMenuItem("Diagnostics");
+        diagnosticsItem.addActionListener(e -> SupportDialogs.showDiagnosticsDialog(mainFrame,
+                buildDiagnosticsText(), currentThemePalette()));
         JMenuItem aboutItem = new JMenuItem("About");
         aboutItem.addActionListener(e -> showAboutDialog());
         helpMenu.add(documentationItem);
         helpMenu.add(checkUpdatesItem);
         helpMenu.addSeparator();
+        helpMenu.add(diagnosticsItem);
+        helpMenu.add(creditsItem);
         helpMenu.add(aboutItem);
         titleBar.add(helpMenu);
         // Right-aligned zoom controls
@@ -675,6 +682,22 @@ public class MainWindow {
         }
     }
 
+    private String buildDiagnosticsText() {
+        StringBuilder text = new StringBuilder();
+        text.append(APP_NAME).append(" ").append(CURRENT_APP_VERSION).append('\n');
+        text.append("Java: ").append(System.getProperty("java.version")).append('\n');
+        text.append("Runtime: ").append(System.getProperty("java.runtime.version")).append('\n');
+        text.append("OS: ").append(System.getProperty("os.name")).append(" ")
+                .append(System.getProperty("os.version")).append(" (")
+                .append(System.getProperty("os.arch")).append(")\n");
+        text.append("Language: ").append(languageDropdown == null ? "(not initialized)" : languageDropdown.getSelectedItem()).append('\n');
+        text.append("Toolchain: ").append(runtimeSupportLabel == null ? "(not initialized)" : runtimeSupportLabel.getText()).append('\n');
+        text.append("App data: ").append(settingsRepository == null ? "(unavailable)" : settingsRepository.getAppDataDirectory()).append('\n');
+        text.append("Memory: ").append(Runtime.getRuntime().freeMemory()).append(" free / ")
+                .append(Runtime.getRuntime().maxMemory()).append(" max bytes\n");
+        return text.toString();
+    }
+
     private void showAboutDialog() {
         AppThemePalette palette = currentThemePalette();
         String aboutText = "<html>" +
@@ -682,7 +705,7 @@ public class MainWindow {
                 "<h2 style='color: " + toHex(palette.accentColor()) + ";'>" + APP_NAME + "</h2>" +
                 "<p><strong>Version:</strong> " + CURRENT_APP_VERSION + "</p>" +
                 "<p>A competitive programming IDE for CodeForces integration.</p>" +
-                "<p>Write, test, and submit solutions directly from the editor.</p>" +
+                "<p>Write and test solutions directly from the editor.</p>" +
                 "<br>" +
                 "<p><em>Built with Java Swing & RSyntaxTextArea</em></p>" +
                 "<p><a href='https://github.com/0xPolybit/cp-ally-ide'>GitHub Repository</a></p>" +

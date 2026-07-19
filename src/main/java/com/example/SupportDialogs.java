@@ -57,6 +57,40 @@ final class SupportDialogs {
         dialog.setVisible(true);
     }
 
+    static void showDiagnosticsDialog(Frame owner, String diagnostics, AppThemePalette theme) {
+        AppThemePalette palette = theme != null ? theme : AppThemePalette.dark();
+        JDialog dialog = new JDialog(owner, "Diagnostics", true);
+        dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+        dialog.setLayout(new BorderLayout(8, 8));
+        dialog.setSize(new Dimension(650, 480));
+        dialog.setLocationRelativeTo(owner);
+
+        javax.swing.JTextArea text = new javax.swing.JTextArea(diagnostics == null ? "" : diagnostics);
+        text.setEditable(false);
+        text.setLineWrap(false);
+        text.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        text.setBackground(palette.panelBackground());
+        text.setForeground(palette.textColor());
+        text.getAccessibleContext().setAccessibleName("Diagnostic information");
+        dialog.add(new JScrollPane(text), BorderLayout.CENTER);
+
+        JPanel footer = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT));
+        JButton copy = new JButton("Copy");
+        copy.addActionListener(e -> {
+            java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(
+                    new java.awt.datatransfer.StringSelection(text.getText()), null);
+        });
+        JButton close = new JButton("Close");
+        close.addActionListener(e -> dialog.dispose());
+        footer.add(copy);
+        footer.add(close);
+        dialog.add(footer, BorderLayout.SOUTH);
+        dialog.getRootPane().setDefaultButton(close);
+        dialog.getRootPane().registerKeyboardAction(e -> dialog.dispose(),
+                KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), JComponent.WHEN_IN_FOCUSED_WINDOW);
+        dialog.setVisible(true);
+    }
+
     static void showCreditsDialog(Frame owner, AppThemePalette theme) {
         AppThemePalette palette = theme != null ? theme : AppThemePalette.dark();
         JDialog dialog = new JDialog(owner, "Credits", true);
