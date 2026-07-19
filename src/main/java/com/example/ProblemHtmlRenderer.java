@@ -58,32 +58,38 @@ class ProblemHtmlRenderer {
     }
 
     RenderedProblemView render(ProblemDetails details) {
-        Map<String, String> copyPayloads = new HashMap<>();
-        String problemHtml = prepareProblemHtml(details.problemHtml(), copyPayloads, details.code());
-        String css = buildThemeCss();
-
-        String body = "<div class='problem-statement'>" + problemHtml + "</div>";
-        String html = "<html><head>" + css + "</head><body>" + body + "</body></html>";
-        return new RenderedProblemView(html, copyPayloads);
+        return renderBoth(details)[1];
     }
 
     RenderedProblemView renderStatementOnly(ProblemDetails details) {
+        return renderBoth(details)[0];
+    }
+
+    /**
+     * Prepares the problem DOM once and derives both views from that prepared
+     * DOM. This avoids repeating Jsoup enhancement, LaTeX rasterization, icon
+     * loading, and sample-copy extraction for the same problem.
+     */
+    RenderedProblemView[] renderBoth(ProblemDetails details) {
         Map<String, String> copyPayloads = new HashMap<>();
-        String problemHtml = prepareProblemHtml(details.problemHtml(), copyPayloads, details.code());
-        
-        Document doc = Jsoup.parseBodyFragment(problemHtml);
-        Element root = doc.body();
-        
-        for (Element sampleTests : root.select("div.sample-tests")) {
+        String preparedHtml = prepareProblemHtml(details.problemHtml(), copyPayloads, details.code());
+        String css = buildThemeCss();
+
+        String fullBody = "<div class='problem-statement'>" + preparedHtml + "</div>";
+        String fullHtml = "<html><head>" + css + "</head><body>" + fullBody + "</body></html>";
+
+        Document statementDoc = Jsoup.parseBodyFragment(preparedHtml);
+        Element statementRoot = statementDoc.body();
+        for (Element sampleTests : statementRoot.select("div.sample-tests")) {
             sampleTests.remove();
         }
-        
-        String problemHtmlWithoutTests = root.outerHtml();
-        String css = buildThemeCss();
-        
-        String body = "<div class='problem-statement'>" + problemHtmlWithoutTests + "</div>";
-        String html = "<html><head>" + css + "</head><body>" + body + "</body></html>";
-        return new RenderedProblemView(html, copyPayloads);
+        String statementBody = "<div class='problem-statement'>" + statementRoot.html() + "</div>";
+        String statementHtml = "<html><head>" + css + "</head><body>" + statementBody + "</body></html>";
+
+        return new RenderedProblemView[]{
+                new RenderedProblemView(statementHtml, copyPayloads),
+                new RenderedProblemView(fullHtml, copyPayloads)
+        };
     }
 
     RenderedProblemView renderEmptyProblem() {

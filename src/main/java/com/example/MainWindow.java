@@ -1542,8 +1542,9 @@ public class MainWindow {
                 if (myToken.isCancelled() || isCancelled()) {
                     return null;
                 }
-                RenderedProblemView full = problemHtmlRenderer.render(details);
-                RenderedProblemView statementOnly = problemHtmlRenderer.renderStatementOnly(details);
+                RenderedProblemView[] renderedViews = problemHtmlRenderer.renderBoth(details);
+                RenderedProblemView statementOnly = renderedViews[0];
+                RenderedProblemView full = renderedViews[1];
                 if (!sheets.isEmpty()) {
                     String sheetHtml = buildSheetInfoHtml(sheets, appThemePalette);
                     full = injectSheetInfo(full, sheetHtml);
@@ -3016,8 +3017,9 @@ public class MainWindow {
                 return;
             }
             if (currentProblemDetails != null) {
-                RenderedProblemView full = problemHtmlRenderer.render(currentProblemDetails);
-                RenderedProblemView statementOnly = problemHtmlRenderer.renderStatementOnly(currentProblemDetails);
+                RenderedProblemView[] renderedViews = problemHtmlRenderer.renderBoth(currentProblemDetails);
+                RenderedProblemView statementOnly = renderedViews[0];
+                RenderedProblemView full = renderedViews[1];
                 if (problemSheetsService != null && currentProblemCode != null) {
                     List<SheetInfo> sheets = problemSheetsService.getCached(currentProblemCode);
                     if (!sheets.isEmpty()) {
