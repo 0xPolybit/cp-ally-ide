@@ -31,7 +31,12 @@ final class LatexImageRenderer {
     private static final int SUPERSAMPLE = 3;
 
     private final Path appDataDirectory;
-    private final Map<String, LatexImage> latexImageCache = new HashMap<>();
+    private final Map<String, LatexImage> latexImageCache = new java.util.LinkedHashMap<>(128, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, LatexImage> eldest) {
+            return size() > 256;
+        }
+    };
     private static final Pattern LATEX_COLOR_CMD = Pattern.compile("\\\\(textcolor|color)\\b");
     private static final Pattern LATEX_COLOR_WRAP = Pattern.compile("\\\\(textcolor|color)\\s*\\{\\s*([^}]+)\\s*\\}\\s*(?:\\{([^}]*)\\})?");
     private static final Pattern CSS_COLOR_DECL = Pattern.compile("color\\s*:\\s*([^;]+)", Pattern.CASE_INSENSITIVE);
@@ -41,6 +46,8 @@ final class LatexImageRenderer {
 
     LatexImageRenderer(Path appDataDirectory) {
         this.appDataDirectory = appDataDirectory;
+        TaskCoordinator.shared().scheduler().execute(() ->
+                RenderCacheMaintenance.cleanup(CacheNames.latexDir(appDataDirectory)));
     }
 
     /** Drops in-memory pointers to cached files; call after the disk cache is deleted. */
@@ -229,7 +236,7 @@ final class LatexImageRenderer {
                 String colorKey = baseKey + "|c:" + explicitCssColor;
                 LatexImage cached = latexImageCache.get(colorKey);
                 if (cached == null) {
-                    Path file = latexCacheDir.resolve(Integer.toHexString(colorKey.hashCode()) + ".png");
+                    Path file = latexCacheDir.resolve(CacheKey.sha256(colorKey + "|renderer-v3") + ".png");
                     if (Files.exists(file)) {
                         cached = fromExistingFile(file);
                     } else {
@@ -247,7 +254,7 @@ final class LatexImageRenderer {
                 String mixedKey = baseKey + "|mixed|" + (wantLight ? "light" : "dark");
                 LatexImage cached = latexImageCache.get(mixedKey);
                 if (cached == null) {
-                    Path file = latexCacheDir.resolve(Integer.toHexString(mixedKey.hashCode()) + (wantLight ? "-light.png" : "-dark.png"));
+                    Path file = latexCacheDir.resolve(CacheKey.sha256(mixedKey + "|renderer-v3") + ".png");
                     if (Files.exists(file)) {
                         cached = fromExistingFile(file);
                     } else {
@@ -265,7 +272,7 @@ final class LatexImageRenderer {
             String themedKey = baseKey + (wantLight ? "|light" : "|dark");
             LatexImage cached = latexImageCache.get(themedKey);
             if (cached == null) {
-                Path file = latexCacheDir.resolve(Integer.toHexString(themedKey.hashCode()) + (wantLight ? "-light.png" : "-dark.png"));
+                Path file = latexCacheDir.resolve(CacheKey.sha256(themedKey + "|renderer-v3") + ".png");
                 if (Files.exists(file)) {
                     cached = fromExistingFile(file);
                 } else {

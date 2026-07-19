@@ -23,7 +23,12 @@ class ProblemHtmlRenderer {
     private static final int INLINE_ICON_DISPLAY_SIZE = 14;
 
     private final Path appDataDirectory;
-    private final Map<String, String> iconSourceCache = new HashMap<>();
+    private final Map<String, String> iconSourceCache = new java.util.LinkedHashMap<>(64, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
+            return size() > 128;
+        }
+    };
     private final LatexImageRenderer latexImageRenderer;
     private AppThemePalette appTheme = AppThemePalette.dark();
     private double zoomFactor = 1.0;
@@ -31,6 +36,8 @@ class ProblemHtmlRenderer {
     ProblemHtmlRenderer(Path appDataDirectory) {
         this.appDataDirectory = appDataDirectory;
         this.latexImageRenderer = new LatexImageRenderer(appDataDirectory);
+        TaskCoordinator.shared().scheduler().execute(() ->
+                RenderCacheMaintenance.cleanup(CacheNames.iconsDir(appDataDirectory)));
     }
 
     void setZoomFactor(double zoom) {
@@ -469,9 +476,9 @@ class ProblemHtmlRenderer {
             // <img width/height> so the editor pane scales it smoothly.
             Path iconCacheDir = CacheNames.iconsDir(appDataDirectory);
             Files.createDirectories(iconCacheDir);
-            String sanitized = iconFile.replace('.', '_');
             String themeVariant = (appTheme != null && appTheme.lightTheme()) ? "light" : "dark";
-            Path cachedFile = iconCacheDir.resolve(sanitized + "_native_" + themeVariant + ".png");
+            String cacheFileKey = CacheKey.sha256(iconFile + "|" + themeVariant + "|native-v2");
+            Path cachedFile = iconCacheDir.resolve(cacheFileKey + ".png");
             if (!Files.exists(cachedFile)) {
                 ImageIO.write(source, "png", cachedFile.toFile());
             }
