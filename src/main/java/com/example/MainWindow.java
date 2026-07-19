@@ -97,6 +97,7 @@ public class MainWindow {
             DEFAULT_LANGUAGE);
         private final ProgramCacheRepository programCacheRepository = new ProgramCacheRepository(settingsRepository.getAppDataDirectory());
     private final CustomTestRepository customTestRepository = new CustomTestRepository(settingsRepository.getAppDataDirectory());
+    private final RecentProblemRepository recentProblemRepository = new RecentProblemRepository(settingsRepository.getAppDataDirectory());
     private ToolchainAvailability toolchainAvailability;
     private CodeforcesService codeforcesService;
     private ProblemSheetsService problemSheetsService;
@@ -428,6 +429,12 @@ public class MainWindow {
         refreshProblemItem = new JMenuItem("Refresh Problem");
         refreshProblemItem.addActionListener(e -> refreshCurrentProblem());
         refreshProblemItem.setEnabled(false);
+        JMenuItem recentProblemsItem = new JMenuItem("Recent Problems…");
+        recentProblemsItem.addActionListener(e -> showRecentProblems());
+        JMenuItem openBrowserItem = new JMenuItem("Open Current Problem in Browser");
+        openBrowserItem.addActionListener(e -> openCurrentProblemInBrowser());
+        JMenuItem submitItem = new JMenuItem("Copy Source and Open Submit Page");
+        submitItem.addActionListener(e -> copySourceAndOpenSubmitPage());
         JMenuItem exitItem = new JMenuItem("Exit");
         exitItem.addActionListener(e -> shutdownAndExit());
         fileMenu.add(preferencesItem);
@@ -442,6 +449,9 @@ public class MainWindow {
         fileMenu.add(chooseDifferentProblemItem);
         fileMenu.add(openEmptyProblemItem);
         fileMenu.add(refreshProblemItem);
+        fileMenu.add(recentProblemsItem);
+        fileMenu.add(openBrowserItem);
+        fileMenu.add(submitItem);
         fileMenu.addSeparator();
         fileMenu.add(clearCacheItem);
         fileMenu.add(restoreSnapshotItem);
@@ -1951,8 +1961,43 @@ public class MainWindow {
         leftPanelContainer.repaint();
 
         currentProblemCode = problemCode;
+        if (currentProblemDetails != null) {
+            recentProblemRepository.record(problemCode, currentProblemDetails.title());
+        }
         problemStatementLoaded = true;
         enableEditorForProblem();
+    }
+
+    private void showRecentProblems() {
+        List<RecentProblemRepository.RecentProblem> recent = recentProblemRepository.list();
+        if (recent.isEmpty()) {
+            JOptionPane.showMessageDialog(mainFrame, "No recent problems.", "Recent Problems", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        String[] choices = recent.stream().map(item -> item.code() + " — " + item.title()).toArray(String[]::new);
+        Object selected = JOptionPane.showInputDialog(mainFrame, "Choose a recent problem:",
+                "Recent Problems", JOptionPane.PLAIN_MESSAGE, null, choices, choices[0]);
+        if (selected != null) fetchProblemByCode(((String) selected).split(" — ", 2)[0], true);
+    }
+
+    private void openCurrentProblemInBrowser() {
+        if (currentProblemCode == null || currentProblemCode.isBlank() || currentProblemIsEmpty) return;
+        openExternalUrl(problemUrlForCode(currentProblemCode));
+    }
+
+    private void copySourceAndOpenSubmitPage() {
+        if (currentProblemCode == null || currentProblemCode.isBlank() || currentProblemIsEmpty) return;
+        if (codeEditor != null) {
+            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(
+                    new StringSelection(codeEditor.getText()), null);
+        }
+        openExternalUrl("https://codeforces.com/problemset/submit");
+    }
+
+    private String problemUrlForCode(String code) {
+        Matcher matcher = PROBLEM_CODE_PATTERN.matcher(code == null ? "" : code.trim());
+        if (!matcher.matches()) return "https://codeforces.com";
+        return "https://codeforces.com/problemset/problem/" + matcher.group(1) + "/" + matcher.group(2).toUpperCase();
     }
 
     private void promptOpenEmptyProblem() {
