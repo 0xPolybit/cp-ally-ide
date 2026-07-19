@@ -1538,14 +1538,26 @@ public class MainWindow {
                     return null;
                 }
                 fetched[0] = details;
-                List<SheetInfo> sheets = problemSheetsService.fetchSheets(contestId + index);
-                if (myToken.isCancelled() || isCancelled()) {
-                    return null;
-                }
+                java.util.concurrent.Future<List<SheetInfo>> sheetsFuture =
+                        TaskCoordinator.shared().submitNetwork(() ->
+                                problemSheetsService.fetchSheets(contestId + index));
                 RenderedProblemView[] renderedViews = problemHtmlRenderer.renderBoth(details);
                 RenderedProblemView statementOnly = renderedViews[0];
                 RenderedProblemView full = renderedViews[1];
-                if (!sheets.isEmpty()) {
+                if (myToken.isCancelled() || isCancelled()) {
+                    sheetsFuture.cancel(true);
+                    return null;
+                }
+                List<SheetInfo> sheets;
+                try {
+                    sheets = sheetsFuture.get(7, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (Exception metadataFailure) {
+                    sheetsFuture.cancel(true);
+                    DiagnosticLogger.warn("[MainWindow] Optional practice-sheet metadata unavailable: "
+                            + metadataFailure.getMessage());
+                    sheets = List.of();
+                }
+                if (!sheets.isEmpty() && !myToken.isCancelled() && problemFetchArbiter.isCurrent(myRequestId)) {
                     String sheetHtml = buildSheetInfoHtml(sheets, appThemePalette);
                     full = injectSheetInfo(full, sheetHtml);
                     statementOnly = injectSheetInfo(statementOnly, sheetHtml);
