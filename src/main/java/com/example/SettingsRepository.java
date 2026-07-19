@@ -36,6 +36,12 @@ class SettingsRepository {
                 properties.load(input);
             }
 
+            int schemaVersion = parseInt(properties.getProperty("settings.schemaVersion"), 1);
+            if (schemaVersion < 2) {
+                // Version 2 introduced execution limits and zoom/folding
+                // fields; missing values below receive safe defaults.
+                properties.setProperty("settings.schemaVersion", "2");
+            }
             int x = parseInt(properties.getProperty("window.x"), -1);
             int y = parseInt(properties.getProperty("window.y"), -1);
             int width = parseInt(properties.getProperty("window.width"), 1200);
@@ -69,6 +75,7 @@ class SettingsRepository {
         try {
             Files.createDirectories(settingsFile.getParent());
             Properties properties = new Properties();
+            properties.setProperty("settings.schemaVersion", "2");
             properties.setProperty("window.x", Integer.toString(settings.x()));
             properties.setProperty("window.y", Integer.toString(settings.y()));
             properties.setProperty("window.width", Integer.toString(settings.width()));

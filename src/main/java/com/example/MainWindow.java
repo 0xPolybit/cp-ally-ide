@@ -171,6 +171,7 @@ public class MainWindow {
         applyAppTheme(appThemePalette);
 
         Path appDataDir = settingsRepository.getAppDataDirectory();
+        CacheMaintenance.schedule(appDataDir);
         DiagnosticLogger.initialize(appDataDir);
         DiagnosticLogger.info("App starting up. Version: " + CURRENT_APP_VERSION);
 
