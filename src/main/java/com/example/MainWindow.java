@@ -80,7 +80,7 @@ public class MainWindow {
     private static final String SETTINGS_DIR_NAME = "CompetitiveProgrammingAlly";
     private static final String SETTINGS_FILE_NAME = "settings.properties";
     private static final String CURRENT_APP_VERSION = "0.2.2";
-    private static final String VERSION_SOURCE_URL = "https://pastebin.com/raw/uzU8MUWs";
+    private static final String RELEASES_API_URL = "https://api.github.com/repos/0xPolybit/cp-ally-ide/releases/latest";
     private static final String RELEASES_URL = "https://github.com/0xPolybit/cp-ally-ide/releases";
     private static final Pattern SEMVER_PATTERN = Pattern.compile("\\b(\\d+\\.\\d+\\.\\d+)\\b");
     private static final int LEFT_FIELD_WIDTH = 280;
@@ -102,6 +102,7 @@ public class MainWindow {
     private CodeforcesService codeforcesService;
     private ProblemSheetsService problemSheetsService;
     private final CodeExecutionService codeExecutionService = new CodeExecutionService();
+    private final HttpService httpService = new HttpService();
 
     private ProblemHtmlRenderer problemHtmlRenderer;
     private JButton initialFocusButton;
@@ -262,7 +263,7 @@ public class MainWindow {
                     if (latestVersion == null || latestVersion.isBlank()) {
                         return;
                     }
-                    if (!CURRENT_APP_VERSION.equals(latestVersion)) {
+                    if (isNewerVersion(latestVersion, CURRENT_APP_VERSION)) {
                         showUpdateAvailableDialog(latestVersion);
                     }
                 } catch (Exception ignored) {
@@ -274,29 +275,13 @@ public class MainWindow {
     }
 
     private String fetchLatestVersion() {
-        HttpURLConnection connection = null;
         try {
-            URL url = URI.create(VERSION_SOURCE_URL).toURL();
-            connection = (HttpURLConnection) url.openConnection();
-            connection.setRequestMethod("GET");
-            connection.setConnectTimeout(5000);
-            connection.setReadTimeout(5000);
-            connection.setRequestProperty("User-Agent", "cp-ally-ide");
-
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
-                StringBuilder content = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    content.append(line).append('\n');
-                }
-                return extractVersion(content.toString());
-            }
-        } catch (IOException ignored) {
+            String json = httpService.get(RELEASES_API_URL, 5000, 256 * 1024,
+                    Map.of("Accept", "application/vnd.github+json"));
+            Matcher tag = Pattern.compile("\\\"tag_name\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"").matcher(json);
+            return tag.find() ? extractVersion(tag.group(1)) : "";
+        } catch (Exception ignored) {
             return "";
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
         }
     }
 
@@ -310,6 +295,22 @@ public class MainWindow {
             return matcher.group(1).trim();
         }
         return "";
+    }
+
+    private boolean isNewerVersion(String candidate, String current) {
+        int[] newer = parseVersion(candidate);
+        int[] installed = parseVersion(current);
+        for (int i = 0; i < 3; i++) {
+            if (newer[i] != installed[i]) return newer[i] > installed[i];
+        }
+        return false;
+    }
+
+    private int[] parseVersion(String version) {
+        Matcher matcher = SEMVER_PATTERN.matcher(version == null ? "" : version);
+        if (!matcher.find()) return new int[]{0, 0, 0};
+        String[] parts = matcher.group(1).split("\\.");
+        return new int[]{Integer.parseInt(parts[0]), Integer.parseInt(parts[1]), Integer.parseInt(parts[2])};
     }
 
     private void showUpdateAvailableDialog(String latestVersion) {
