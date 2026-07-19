@@ -2586,6 +2586,10 @@ public class MainWindow {
     }
 
     private String resolveSyntaxStyle(String language) {
+        LanguageDefinition definition = LanguageDefinition.forDisplayName(language);
+        if (definition != null) {
+            return definition.syntaxStyle();
+        }
         if (language.startsWith("Python") || language.startsWith("PyPy")) {
             return SyntaxConstants.SYNTAX_STYLE_PYTHON;
         }
@@ -2629,6 +2633,10 @@ public class MainWindow {
     }
 
     private String boilerplateFor(String language) {
+        LanguageDefinition definition = LanguageDefinition.forDisplayName(language);
+        if (definition != null) {
+            return definition.boilerplate();
+        }
         if (language.startsWith("Python") || language.startsWith("PyPy")) {
             return "import sys\n"
                 + "\n"
