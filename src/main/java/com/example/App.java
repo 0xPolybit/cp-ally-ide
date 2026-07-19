@@ -88,9 +88,11 @@ public class App {
                     primaryServer.startListening(pending::submit);
                     DiagnosticLogger.info("[App] IPC listener started.");
 
-                    splashScreenWindow.sleepUntilMinimumDuration(3000L);
+                    // Do not hold startup behind an artificial multi-second
+                    // delay. The splash closes once the essential window and
+                    // IPC listener are initialized; optional work continues
+                    // asynchronously from the window lifecycle.
                     splashScreenWindow.closeSplash();
-                    splashScreenWindow.sleepSilently(500L);
 
                     SwingUtilities.invokeLater(() -> {
                         try {
